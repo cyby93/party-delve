@@ -3,3 +3,4 @@ dist/
 .env
 .env.*
 *.local
+apps/*/node_modules
