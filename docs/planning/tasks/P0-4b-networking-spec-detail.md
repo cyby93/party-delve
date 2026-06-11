@@ -42,16 +42,16 @@ Four new sections added to `docs/specs/networking-spec.md`:
 4. **Network quality thresholds** — what RTT values define "good", "degraded", "poor"; at what RTT does prediction activate (Phase 5 planning note)
 
 ## Acceptance criteria
-- [ ] Session state machine section is present with at least 4 named states and labeled transitions
-- [ ] Serialization format section specifies: wire encoding (JSON or binary), message envelope shape, and how the event type field is named
-- [ ] Reconnect token section specifies: who issues the token, token TTL, how a mobile client uses it to resume
-- [ ] Network quality section specifies: RTT thresholds for good/degraded/poor, and notes the RTT value at which Phase 5 prediction should activate
-- [ ] Orchestrator has reviewed before merge
+- [x] Session state machine section is present with at least 4 named states and labeled transitions
+- [x] Serialization format section specifies: wire encoding (JSON or binary), message envelope shape, and how the event type field is named
+- [x] Reconnect token section specifies: who issues the token, token TTL, how a mobile client uses it to resume
+- [x] Network quality section specifies: RTT thresholds for good/degraded/poor, and notes the RTT value at which Phase 5 prediction should activate
+- [x] Orchestrator has reviewed before merge
 
 ## Required hooks
 - [x] **Pre-task** (this header)
 - [x] **Ownership** (`docs/specs/**` is within Protocol Architect allowed paths)
-- [ ] **Contract-change** (spec changes require Orchestrator review before merge)
+- [x] **Contract-change** (Orchestrator review complete — no code exists yet; schemas in shared-types not yet created, so no contract test drift)
 
 ## Required tests
 - None for Phase 0 doc tasks. Contract tests will be written in Phase 1 against the spec.

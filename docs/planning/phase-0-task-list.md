@@ -13,8 +13,8 @@ Validate core technical decisions and establish the contract-first foundation be
 **Status:** Done
 **Deliverable:** Monorepo folder skeleton matching `CLAUDE.md` shape
 **Acceptance:**
-- [ ] `apps/`, `packages/`, `docs/`, `tests/`, `tools/` directories exist
-- [ ] `docs/adr/` and `docs/specs/` directories exist
+- [x] `apps/`, `packages/`, `docs/`, `tests/`, `tools/` directories exist
+- [x] `docs/adr/` and `docs/specs/` directories exist
 
 ---
 
@@ -43,7 +43,7 @@ Validate core technical decisions and establish the contract-first foundation be
 
 ### P0-4 — Write networking specification
 **Owner:** Protocol Architect
-**Status:** Done (draft) — serialization detail and session state machine pending
+**Status:** Done — expanded by P0-4b (session state machine, serialization format, reconnect token lifecycle, network quality thresholds added)
 **Deliverable:** `docs/specs/networking-spec.md`
 **Acceptance:**
 - [ ] Event categories defined (input, state, session, error)
