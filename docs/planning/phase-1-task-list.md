@@ -47,11 +47,12 @@ Tasks are listed in dependency order. Do not start a task until its dependencies
 **Inputs:** `docs/specs/networking-spec.md`, `packages/shared-types/`
 **Allowed paths:** `packages/net-protocol/**`
 **Deliverable:** TypeScript package that defines message envelope types and event name constants
+**Status:** Done
 **Acceptance:**
-- [ ] Package builds with `pnpm -F net-protocol typecheck`
-- [ ] Exports: `MessageEnvelope`, event name string constants (`EVENT_NAMES`), message type guards
-- [ ] Depends on `shared-types` (not the other way around)
-- [ ] `README.md` describes the package purpose in one paragraph
+- [x] Package builds with `pnpm -F net-protocol typecheck`
+- [x] Exports: `MessageEnvelope`, event name string constants (`EVENT_NAMES`), message type guards
+- [x] Depends on `shared-types` (not the other way around)
+- [x] `README.md` describes the package purpose in one paragraph
 
 ---
 
@@ -62,13 +63,14 @@ Tasks are listed in dependency order. Do not start a task until its dependencies
 **Inputs:** `docs/specs/networking-spec.md`, `docs/adr/ADR-0001-hybrid-authority.md`, `packages/shared-types/`, `packages/net-protocol/`
 **Allowed paths:** `apps/simulation-server/**`, `packages/game-rules/**`
 **Deliverable:** Runnable Node.js server with empty tick loop and WebSocket listener
+**Status:** Done
 **Acceptance:**
-- [ ] `pnpm -F simulation-server start` starts without errors
-- [ ] WebSocket server binds to a configurable port (default 8080)
-- [ ] Tick loop runs at 20Hz and logs tick count (can be a no-op loop)
-- [ ] Imports and uses types from `shared-types`
-- [ ] `pnpm -F simulation-server typecheck` passes
-- [ ] At least one unit test exists (even a trivial sanity test)
+- [x] `pnpm -F simulation-server start` starts without errors
+- [x] WebSocket server binds to a configurable port (default 8080)
+- [x] Tick loop runs at 20Hz and logs tick count (can be a no-op loop)
+- [x] Imports and uses types from `shared-types`
+- [x] `pnpm -F simulation-server typecheck` passes
+- [x] At least one unit test exists (even a trivial sanity test)
 
 ---
 
@@ -79,12 +81,13 @@ Tasks are listed in dependency order. Do not start a task until its dependencies
 **Inputs:** `docs/specs/host-ux-spec.md`, `docs/adr/ADR-0001-hybrid-authority.md`, `packages/shared-types/`
 **Allowed paths:** `apps/host-client/**`, `packages/ui-kit/**` (host parts only)
 **Deliverable:** Runnable browser app that renders a blank canvas and connects to simulation-server
+**Status:** Done
 **Acceptance:**
-- [ ] `pnpm -F host-client dev` starts and serves at `localhost:3000`
-- [ ] Blank canvas or placeholder screen renders without errors
-- [ ] Imports types from `shared-types`
-- [ ] Attempts WebSocket connection to simulation-server (connection failure is handled gracefully — shows "offline" state)
-- [ ] `pnpm -F host-client typecheck` passes
+- [x] `pnpm -F host-client dev` starts and serves at `localhost:3000`
+- [x] Blank canvas or placeholder screen renders without errors
+- [x] Imports types from `shared-types`
+- [x] Attempts WebSocket connection to simulation-server (connection failure is handled gracefully — shows "offline" state)
+- [x] `pnpm -F host-client typecheck` passes
 
 ---
 
@@ -95,12 +98,13 @@ Tasks are listed in dependency order. Do not start a task until its dependencies
 **Inputs:** `docs/specs/controller-ux-spec.md`, `docs/adr/ADR-0001-hybrid-authority.md`, `packages/shared-types/`
 **Allowed paths:** `apps/mobile-controller/**`, `packages/ui-kit/**` (mobile parts only)
 **Deliverable:** Runnable mobile-optimized browser app
+**Status:** Done
 **Acceptance:**
-- [ ] `pnpm -F mobile-controller dev` starts and serves at `localhost:3001`
-- [ ] Page renders correctly on a 390px-wide viewport (iPhone SE)
-- [ ] Imports types from `shared-types`
-- [ ] Attempts WebSocket connection to simulation-server (connection failure is handled gracefully)
-- [ ] `pnpm -F mobile-controller typecheck` passes
+- [x] `pnpm -F mobile-controller dev` starts and serves at `localhost:3001`
+- [x] Page renders correctly on a 390px-wide viewport (iPhone SE)
+- [x] Imports types from `shared-types`
+- [x] Attempts WebSocket connection to simulation-server (connection failure is handled gracefully)
+- [x] `pnpm -F mobile-controller typecheck` passes
 
 ---
 
@@ -110,11 +114,12 @@ Tasks are listed in dependency order. Do not start a task until its dependencies
 **Depends on:** P1-1, P1-2, P1-3, P1-4, P1-5
 **Allowed paths:** `tools/**`, `package.json` (root), all `package.json` files, `tsconfig*.json` files, `.eslintrc*`
 **Deliverable:** Root-level scripts that run lint, typecheck, and tests across all packages
+**Status:** Done
 **Acceptance:**
-- [ ] `pnpm typecheck` runs `tsc --noEmit` across all packages — no errors
-- [ ] `pnpm lint` runs ESLint across all packages — no errors on scaffolded code
-- [ ] `pnpm test` runs all test suites — no failures (passing with zero tests is acceptable at this stage)
-- [ ] All three commands exit 0 on a clean checkout
+- [x] `pnpm typecheck` runs `tsc --noEmit` across all packages — no errors
+- [x] `pnpm lint` runs ESLint across all packages — no errors on scaffolded code
+- [x] `pnpm test` runs all test suites — no failures (passing with zero tests is acceptable at this stage)
+- [x] All three commands exit 0 on a clean checkout
 
 ---
 
@@ -124,11 +129,12 @@ Tasks are listed in dependency order. Do not start a task until its dependencies
 **Depends on:** P1-6
 **Allowed paths:** `.github/workflows/**`
 **Deliverable:** GitHub Actions workflow that runs on every PR
+**Status:** Done
 **Acceptance:**
-- [ ] Workflow triggers on `pull_request` to `main`
-- [ ] Runs `pnpm typecheck`, `pnpm lint`, `pnpm test` in sequence
-- [ ] Fails the PR check if any command exits non-zero
-- [ ] Completes in under 5 minutes on a cold runner
+- [x] Workflow triggers on `pull_request` to `main`
+- [x] Runs `pnpm typecheck`, `pnpm lint`, `pnpm test` in sequence
+- [x] Fails the PR check if any command exits non-zero
+- [x] Completes in under 5 minutes on a cold runner
 
 ---
 
