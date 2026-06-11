@@ -8,6 +8,16 @@ importers:
 
   .: {}
 
+  packages/net-protocol:
+    dependencies:
+      shared-types:
+        specifier: workspace:*
+        version: link:../shared-types
+    devDependencies:
+      typescript:
+        specifier: ^5.4.0
+        version: 5.9.3
+
   packages/shared-types:
     devDependencies:
       typescript:

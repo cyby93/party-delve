@@ -1,0 +1,3 @@
+# net-protocol
+
+Types-only package that defines the WebSocket wire contract for party-delve. It exports `MessageEnvelope<T>` (the top-level JSON frame shape used in every direction), `isMessageEnvelope` (a type guard for narrowing unknown values at receive boundaries), `EVENT_NAMES` (string constants for every canonical event name across all categories — session, input, simulation, UI, and meta), and the `EventName` union type derived from those constants. The package depends on `shared-types` for payload type definitions and has no runtime dependencies of its own; all exports are pure TypeScript types and frozen constant objects.
