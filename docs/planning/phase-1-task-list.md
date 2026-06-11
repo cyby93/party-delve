@@ -28,12 +28,15 @@ Tasks are listed in dependency order. Do not start a task until its dependencies
 **Inputs:** `docs/specs/networking-spec.md`, `docs/adr/ADR-0001-hybrid-authority.md`
 **Allowed paths:** `packages/shared-types/**`
 **Deliverable:** TypeScript package that compiles and exports core domain types
+**Status:** Done
 **Acceptance:**
-- [ ] Package builds with `pnpm -F shared-types typecheck`
-- [ ] Exports at minimum: `PlayerState`, `InputEvent` (union of `MoveInputEvent` | `SkillInputEvent`), `RoomState`, `SessionState`
-- [ ] Has `index.ts` barrel export
-- [ ] No runtime dependencies — types only
-- [ ] `README.md` describes the package purpose in one paragraph
+- [x] Package builds with `pnpm -F shared-types typecheck`
+- [x] Exports at minimum: `PlayerState`, `InputEvent` (union of `MoveInputEvent` | `SkillInputEvent`), `RoomState`, `SessionState`
+- [x] Has `index.ts` barrel export
+- [x] No runtime dependencies — types only
+- [x] `README.md` describes the package purpose in one paragraph
+
+**Note:** Root `pnpm-workspace.yaml` and `package.json` created as minimal scope addition (3 lines each) required to make `pnpm -F` discoverable. P1-6 owns expanding these.
 
 ---
 
