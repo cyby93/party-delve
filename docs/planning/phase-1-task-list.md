@@ -168,9 +168,9 @@ Tasks are listed in dependency order. Do not start a task until its dependencies
 **Acceptance:**
 - [x] `session_create_started` and `session_create_succeeded` fire when host creates a session
 - [x] `join_attempt_started`, `join_attempt_succeeded`, and `join_attempt_failed` fire on mobile join
-- [ ] Each event payload includes all required common fields: `session_id`, `mode`, `build_version`, `timestamp`
-- [ ] Events are logged to console in local mode (no external service required yet)
-- [ ] A contract test asserts that each event payload matches its schema from `telemetry-spec.md`
+- [x] Each event payload includes all required common fields: `session_id`, `mode`, `build_version`, `timestamp`
+- [x] Events are logged to console in local mode (no external service required yet)
+- [x] A contract test asserts that each event payload matches its schema from `telemetry-spec.md`
 
 ---
 
@@ -185,7 +185,7 @@ Tasks are listed in dependency order. Do not start a task until its dependencies
 ## Phase 1 → Phase 2 Gate
 
 Phase 2 (Local Party MVP) may not start until:
-- [ ] P1-8 e2e smoke test passes in CI
-- [ ] P1-9 session funnel events fire with correct payloads
-- [ ] All three apps start cleanly from a cold checkout
-- [ ] P1-7 CI is green on `main`
+- [x] P1-8 e2e smoke test passes in CI
+- [x] P1-9 session funnel events fire with correct payloads
+- [x] All three apps start cleanly from a cold checkout
+- [x] P1-7 CI is green on `main`

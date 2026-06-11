@@ -10,6 +10,9 @@ export default tseslint.config(
       '**/node_modules/**',
       '**/dist/**',
       'eslint.config.mjs',
+      '.claude/**',
+      '_bmad/**',
+      '_bmad-output/**',
     ],
   },
 
