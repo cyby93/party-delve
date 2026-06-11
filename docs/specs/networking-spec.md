@@ -283,7 +283,7 @@ Every WebSocket message — in both directions — is a JSON object with this to
 
 ### Transport
 
-WebSocket over `ws://` for Phase 1 (localhost and LAN). `wss://` (TLS) is required for Phase 5 (Online Mode). The server must listen on a configurable port (default `8080`).
+WebSocket over `ws://` for Phase 1 (localhost and LAN). `wss://` (TLS) is required for Phase 5 (Online Mode). The server must listen on a configurable port (default `8081`).
 
 ---
 

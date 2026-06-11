@@ -1,8 +1,8 @@
-import { TickLoop } from './tick-loop.js';
 import { createWsServer } from './server.js';
 import { SessionStore } from './session-store.js';
+import { TickLoop } from './tick-loop.js';
 
-const PORT = parseInt(process.env['PORT'] ?? '8080', 10);
+const PORT = parseInt(process.env['PORT'] ?? '8081', 10);
 
 const store = new SessionStore();
 const loop = new TickLoop(20);

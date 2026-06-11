@@ -1,8 +1,8 @@
-import { useRef, useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import type { RoomState } from 'shared-types';
 import { useHostSession } from './hooks/useHostSession';
 
-const SIM_URL = 'ws://localhost:8080';
+const SIM_URL = 'ws://localhost:8081';
 const MAX_SLOTS = 4;
 
 // RoomState imported to satisfy "imports types from shared-types" criterion.

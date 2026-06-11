@@ -66,7 +66,7 @@ Tasks are listed in dependency order. Do not start a task until its dependencies
 **Status:** Done
 **Acceptance:**
 - [x] `pnpm -F simulation-server start` starts without errors
-- [x] WebSocket server binds to a configurable port (default 8080)
+- [x] WebSocket server binds to a configurable port (default 8081)
 - [x] Tick loop runs at 20Hz and logs tick count (can be a no-op loop)
 - [x] Imports and uses types from `shared-types`
 - [x] `pnpm -F simulation-server typecheck` passes

@@ -1,9 +1,9 @@
-import './styles.css';
 import { usePlayerSession } from './hooks/usePlayerSession';
-import { JoinScreen } from './screens/JoinScreen';
 import { ConnectedScreen } from './screens/ConnectedScreen';
+import { JoinScreen } from './screens/JoinScreen';
+import './styles.css';
 
-const SIM_URL = 'ws://localhost:8080';
+const SIM_URL = 'ws://localhost:8081';
 
 export default function App() {
   const session = usePlayerSession(SIM_URL);
