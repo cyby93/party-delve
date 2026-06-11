@@ -6,7 +6,8 @@
   "scripts": {
     "start": "tsx src/index.ts",
     "typecheck": "tsc",
-    "test": "vitest run"
+    "test": "vitest run",
+    "lint": "eslint src"
   },
   "dependencies": {
     "shared-types": "workspace:*",

@@ -6,7 +6,8 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "typecheck": "tsc"
+    "typecheck": "tsc",
+    "lint": "eslint src"
   },
   "dependencies": {
     "shared-types": "workspace:*"
