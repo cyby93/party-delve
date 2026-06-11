@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { SessionStateEvent } from 'shared-types';
 import type { MessageEnvelope } from 'net-protocol';
+import { track } from 'telemetry';
 
 export interface PlayerEntry {
   playerId: string;
@@ -26,6 +27,9 @@ export function useHostSession(url: string): HostSessionState {
   useEffect(() => {
     let cancelled = false;
     let ws: WebSocket;
+    // Closure variables shared between onopen and onmessage for timing the session create funnel.
+    let createStartedAt = 0;
+    let provisionalSessionId = '';
 
     try {
       ws = new WebSocket(url);
@@ -33,6 +37,17 @@ export function useHostSession(url: string): HostSessionState {
 
       ws.onopen = () => {
         if (cancelled) return;
+        createStartedAt = Date.now();
+        provisionalSessionId = crypto.randomUUID();
+        track({
+          event: 'session_create_started',
+          timestamp: createStartedAt,
+          session_id: provisionalSessionId,
+          build_version: '0.1.0',
+          mode: 'local',
+          region: null,
+          platform: 'host',
+        });
         ws.send(JSON.stringify({ v: 1, t: 'join', p: { role: 'host' } }));
         setState(s => ({ ...s, status: 'connected' }));
       };
@@ -47,6 +62,17 @@ export function useHostSession(url: string): HostSessionState {
           setState(s => {
             switch (payload.event) {
               case 'session-start':
+                track({
+                  event: 'session_create_succeeded',
+                  timestamp: Date.now(),
+                  session_id: payload.sessionId,
+                  build_version: '0.1.0',
+                  mode: 'local',
+                  region: null,
+                  platform: 'host',
+                  room_code: payload.roomCode ?? '',
+                  duration_ms: Date.now() - createStartedAt,
+                });
                 return {
                   ...s,
                   sessionId: payload.sessionId,

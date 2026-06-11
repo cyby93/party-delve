@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { SessionStateEvent } from 'shared-types';
+import { track } from 'telemetry';
 
 type ConnectionStatus = 'connecting' | 'connected' | 'offline';
 type JoinStatus = 'idle' | 'joining' | 'joined' | 'error';
@@ -24,6 +25,10 @@ export function usePlayerSession(url: string): PlayerSessionState {
   const wsRef = useRef<WebSocket | null>(null);
   // Use a ref to avoid stale closure in onmessage
   const joinStatusRef = useRef<JoinStatus>('idle');
+  // Telemetry timing refs shared across effect and join callback
+  const joinStartedAtRef = useRef<number | null>(null);
+  const provisionalPlayerIdRef = useRef<string | null>(null);
+  const lastRoomCodeRef = useRef<string | null>(null);
 
   // Keep joinStatusRef in sync with state
   useEffect(() => {
@@ -62,6 +67,17 @@ export function usePlayerSession(url: string): PlayerSessionState {
               payload.event === 'player-joined' &&
               joinStatusRef.current === 'joining'
             ) {
+              track({
+                event: 'join_attempt_succeeded',
+                timestamp: Date.now(),
+                session_id: payload.sessionId,
+                build_version: '0.1.0',
+                mode: 'local',
+                region: null,
+                platform: 'mobile',
+                player_id: payload.affectedPlayerId ?? provisionalPlayerIdRef.current ?? '',
+                duration_ms: Date.now() - (joinStartedAtRef.current ?? Date.now()),
+              });
               setSessionId(payload.sessionId);
               setPlayerId(payload.affectedPlayerId ?? null);
               setReconnectToken(payload.reconnectToken ?? null);
@@ -71,6 +87,19 @@ export function usePlayerSession(url: string): PlayerSessionState {
 
           if (msg.t === 'error') {
             const err = msg.p as { code: string; message: string };
+            track({
+              event: 'join_attempt_failed',
+              timestamp: Date.now(),
+              session_id: '',
+              build_version: '0.1.0',
+              mode: 'local',
+              region: null,
+              platform: 'mobile',
+              player_id: provisionalPlayerIdRef.current ?? '',
+              room_code: lastRoomCodeRef.current ?? '',
+              error_code: err.code,
+              duration_ms: Date.now() - (joinStartedAtRef.current ?? Date.now()),
+            });
             setJoinError(err.message ?? err.code);
             setJoinStatus('error');
           }
@@ -91,6 +120,26 @@ export function usePlayerSession(url: string): PlayerSessionState {
   const join = useCallback((roomCode: string) => {
     const ws = wsRef.current;
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
+
+    const joinStartedAt = Date.now();
+    const provisionalPlayerId = crypto.randomUUID();
+    joinStartedAtRef.current = joinStartedAt;
+    provisionalPlayerIdRef.current = provisionalPlayerId;
+    lastRoomCodeRef.current = roomCode.toUpperCase();
+
+    track({
+      event: 'join_attempt_started',
+      timestamp: joinStartedAt,
+      // session_id is not known before join completes; spec allows empty for started event
+      session_id: '',
+      build_version: '0.1.0',
+      mode: 'local',
+      region: null,
+      platform: 'mobile',
+      player_id: provisionalPlayerId,
+      room_code: roomCode.toUpperCase(),
+    });
+
     // Set the ref immediately so onmessage sees 'joining' even before
     // the state setter has flushed.
     joinStatusRef.current = 'joining';
