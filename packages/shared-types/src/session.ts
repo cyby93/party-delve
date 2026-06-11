@@ -23,6 +23,8 @@ export interface SessionStateEvent {
   affectedPlayerId?: string;
   /** Only present on player-joined, sent only to the joining player. */
   reconnectToken?: string;
+  /** Only present on session-start, directed to the host. The room code players use to join. */
+  roomCode?: string;
 }
 
 /** Accumulated room state maintained by the host client. */
