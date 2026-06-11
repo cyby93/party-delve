@@ -146,13 +146,14 @@ Tasks are listed in dependency order. Do not start a task until its dependencies
 **Allowed paths:** `apps/**`, `packages/net-protocol/**` (additive only), `packages/shared-types/**` (additive only)
 **Non-goals:** Movement, combat, character selection, authentication
 **Deliverable:** End-to-end flow: host creates session → mobile joins → mobile appears as connected player on host
+**Status:** Done
 **Acceptance:**
-- [ ] Host app creates a session and displays a room code or QR code
-- [ ] Mobile app can enter the room code and join
-- [ ] Host app shows the joined player as connected (slot filled)
-- [ ] Joining a second mobile device fills a second slot (up to 4 players)
-- [ ] Disconnecting a mobile device shows the slot as disconnected on host
-- [ ] E2e smoke test (script or Playwright test) validates this flow and passes in CI
+- [x] Host app creates a session and displays a room code or QR code
+- [x] Mobile app can enter the room code and join
+- [x] Host app shows the joined player as connected (slot filled)
+- [x] Joining a second mobile device fills a second slot (up to 4 players)
+- [x] Disconnecting a mobile device shows the slot as disconnected on host
+- [x] E2e smoke test (script or Playwright test) validates this flow and passes in CI
 
 ---
 
@@ -163,9 +164,10 @@ Tasks are listed in dependency order. Do not start a task until its dependencies
 **Inputs:** `docs/specs/telemetry-spec.md` (including payload schemas from P0-11)
 **Allowed paths:** `packages/telemetry/**`, `apps/simulation-server/**` (telemetry calls only), `apps/host-client/**` (telemetry calls only), `apps/mobile-controller/**` (telemetry calls only)
 **Deliverable:** Session funnel events firing with correct payloads
+**Status:** Done
 **Acceptance:**
-- [ ] `session_create_started` and `session_create_succeeded` fire when host creates a session
-- [ ] `join_attempt_started`, `join_attempt_succeeded`, and `join_attempt_failed` fire on mobile join
+- [x] `session_create_started` and `session_create_succeeded` fire when host creates a session
+- [x] `join_attempt_started`, `join_attempt_succeeded`, and `join_attempt_failed` fire on mobile join
 - [ ] Each event payload includes all required common fields: `session_id`, `mode`, `build_version`, `timestamp`
 - [ ] Events are logged to console in local mode (no external service required yet)
 - [ ] A contract test asserts that each event payload matches its schema from `telemetry-spec.md`
