@@ -3,8 +3,8 @@ id: GDS-001
 title: Hub world — player movement on shared map
 created: 2026-06-12
 priority: high
-status: active
-current_owner: workflow-manager
+status: done
+current_owner: ~
 next_owner: ~
 qa_retries: 0
 pipeline:
