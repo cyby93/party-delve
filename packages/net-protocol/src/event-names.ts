@@ -45,6 +45,12 @@ export const EVENT_NAMES = {
   RUN_COMPLETE: 'run-complete',
   STATS_UPLOAD: 'stats-upload',
   UNLOCK_GRANTED: 'unlock-granted',
+
+  // Type-name wire constants (t field must match the TypeScript type name — see networking-spec.md § Message envelope)
+  MOVE_INPUT_EVENT: 'MoveInputEvent',
+  SKILL_INPUT_EVENT: 'SkillInputEvent',
+  PLAYER_STATE_SNAPSHOT: 'PlayerStateSnapshot',
+  SESSION_STATE_EVENT: 'SessionStateEvent',
 } as const;
 
 /** Union of all canonical event name string values. */
