@@ -29,6 +29,17 @@ interface TestClient {
   close(): void;
 }
 
+/**
+ * Consume messages from `client` until one whose `t` field matches `type`.
+ * Discards any interleaved messages (e.g. PlayerStateSnapshot tick broadcasts).
+ */
+async function findMessage(client: TestClient, type: string): Promise<unknown> {
+  for (;;) {
+    const msg = await client.nextMessage() as { t: string };
+    if (msg.t === type) return msg;
+  }
+}
+
 function makeClient(port: number): Promise<TestClient> {
   return new Promise((resolve, reject) => {
     const ws = new WebSocket(`ws://localhost:${port}`);
@@ -125,8 +136,8 @@ describe('e2e join-room happy path', () => {
     player.send({ v: 1, t: 'join', p: { role: 'player', roomCode } });
 
     const [hostMsg, playerMsg] = await Promise.all([
-      host.nextMessage() as Promise<{ t: string; p: Record<string, unknown> }>,
-      player.nextMessage() as Promise<{ t: string; p: Record<string, unknown> }>,
+      findMessage(host, 'SessionStateEvent') as Promise<{ t: string; p: Record<string, unknown> }>,
+      findMessage(player, 'SessionStateEvent') as Promise<{ t: string; p: Record<string, unknown> }>,
     ]);
 
     for (const msg of [hostMsg, playerMsg]) {
@@ -161,9 +172,9 @@ describe('e2e join-room happy path', () => {
     const player = await makeClient(TEST_PORT);
     player.send({ v: 1, t: 'join', p: { role: 'player', roomCode } });
 
-    // Consume player-joined on both sides
-    const joinedOnHost = await host.nextMessage() as { p: { affectedPlayerId: string } };
-    await player.nextMessage(); // player's own join ack
+    // Consume player-joined on both sides (discard any snapshot messages)
+    const joinedOnHost = await findMessage(host, 'SessionStateEvent') as { p: { affectedPlayerId: string } };
+    await findMessage(player, 'SessionStateEvent'); // player's own join ack
 
     const leavingPlayerId = joinedOnHost.p.affectedPlayerId;
 
@@ -171,7 +182,8 @@ describe('e2e join-room happy path', () => {
     player.close();
     await new Promise<void>((r) => setTimeout(r, 50));
 
-    const leftMsg = await host.nextMessage() as {
+    // Drain any PlayerStateSnapshot messages that arrived during the wait
+    const leftMsg = await findMessage(host, 'SessionStateEvent') as {
       t: string;
       p: { event: string; affectedPlayerId: string };
     };
@@ -230,9 +242,9 @@ describe('e2e join-room happy path', () => {
 
     // Host receives p2's join; p1 also receives a broadcast; p2 gets its own ack
     const [join2OnHost, join2OnP1, join2OnP2] = await Promise.all([
-      host.nextMessage() as Promise<{ t: string; p: { event: string; affectedPlayerId: string } }>,
-      p1.nextMessage() as Promise<{ t: string; p: { affectedPlayerId: string } }>,
-      p2.nextMessage() as Promise<{ t: string; p: { affectedPlayerId: string } }>,
+      findMessage(host, 'SessionStateEvent') as Promise<{ t: string; p: { event: string; affectedPlayerId: string } }>,
+      findMessage(p1, 'SessionStateEvent') as Promise<{ t: string; p: { affectedPlayerId: string } }>,
+      findMessage(p2, 'SessionStateEvent') as Promise<{ t: string; p: { affectedPlayerId: string } }>,
     ]);
 
     expect(join2OnHost.t).toBe('SessionStateEvent');

@@ -2,6 +2,7 @@ import { WebSocket, WebSocketServer } from 'ws';
 import { isMessageEnvelope, EVENT_NAMES } from 'net-protocol';
 import type { SessionStore } from './session-store.js';
 import { handleJoin } from './handlers/join.js';
+import { handleMoveInput } from './handlers/input.js';
 
 export interface WsServerWithTick extends WebSocketServer {
   setTick(tick: number): void;
@@ -29,6 +30,9 @@ export function createWsServer(port: number, store: SessionStore): WsServerWithT
         switch (msg.t) {
           case EVENT_NAMES.JOIN:
             handleJoin(socket, msg.p, store, currentTick);
+            break;
+          case EVENT_NAMES.MOVE_INPUT_EVENT:
+            handleMoveInput(socket, msg.p, store);
             break;
           default:
             console.log(`[server] unhandled event: ${msg.t}`);
