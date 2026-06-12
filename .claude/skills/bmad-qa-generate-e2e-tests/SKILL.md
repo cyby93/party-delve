@@ -3,6 +3,10 @@ name: bmad-qa-generate-e2e-tests
 description: 'Generate end to end automated tests for existing features. Use when the user says "create qa automated tests for [feature]"'
 ---
 
+## Cascade QA Mode
+When invoked by the Workflow Manager with --cascade <path>, load cascade-qa-mode.md
+instead of the standard activation sequence.
+
 # QA Generate E2E Tests Workflow
 
 **Goal:** Generate automated API and E2E tests for implemented code.
