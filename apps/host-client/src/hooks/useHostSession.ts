@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { SessionStateEvent } from 'shared-types';
+import type { SessionStateEvent, PlayerStateSnapshot } from 'shared-types';
 import type { MessageEnvelope } from 'net-protocol';
 import { track } from 'telemetry';
 
@@ -13,6 +13,9 @@ export interface HostSessionState {
   sessionId: string | null;
   roomCode: string | null;
   players: PlayerEntry[];
+  playerPositions: Record<string, { x: number; y: number }>;
+  playerConnected: Record<string, boolean>;
+  playerStates: Record<string, 'moving' | 'idle'>;
 }
 
 export function useHostSession(url: string): HostSessionState {
@@ -21,13 +24,15 @@ export function useHostSession(url: string): HostSessionState {
     sessionId: null,
     roomCode: null,
     players: [],
+    playerPositions: {},
+    playerConnected: {},
+    playerStates: {},
   });
   const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     let ws: WebSocket;
-    // Closure variables shared between onopen and onmessage for timing the session create funnel.
     let createStartedAt = 0;
     let provisionalSessionId = '';
 
@@ -56,48 +61,60 @@ export function useHostSession(url: string): HostSessionState {
         if (cancelled) return;
         try {
           const msg = JSON.parse(ev.data as string) as MessageEnvelope<unknown>;
-          if (msg.t !== 'SessionStateEvent') return;
-          const payload = msg.p as SessionStateEvent;
 
-          setState(s => {
-            switch (payload.event) {
-              case 'session-start':
-                track({
-                  event: 'session_create_succeeded',
-                  timestamp: Date.now(),
-                  session_id: payload.sessionId,
-                  build_version: '0.1.0',
-                  mode: 'local',
-                  region: null,
-                  platform: 'host',
-                  room_code: payload.roomCode ?? '',
-                  duration_ms: Date.now() - createStartedAt,
-                });
-                return {
-                  ...s,
-                  sessionId: payload.sessionId,
-                  roomCode: payload.roomCode ?? null,
-                };
-              case 'player-joined': {
-                if (!payload.affectedPlayerId) return s;
-                // avoid duplicates
-                if (s.players.some(p => p.playerId === payload.affectedPlayerId)) return s;
-                return {
-                  ...s,
-                  players: [...s.players, { playerId: payload.affectedPlayerId, connected: true }],
-                };
+          if (msg.t === 'SessionStateEvent') {
+            const payload = msg.p as SessionStateEvent;
+            setState(s => {
+              switch (payload.event) {
+                case 'session-start':
+                  track({
+                    event: 'session_create_succeeded',
+                    timestamp: Date.now(),
+                    session_id: payload.sessionId,
+                    build_version: '0.1.0',
+                    mode: 'local',
+                    region: null,
+                    platform: 'host',
+                    room_code: payload.roomCode ?? '',
+                    duration_ms: Date.now() - createStartedAt,
+                  });
+                  return {
+                    ...s,
+                    sessionId: payload.sessionId,
+                    roomCode: payload.roomCode ?? null,
+                  };
+                case 'player-joined': {
+                  if (!payload.affectedPlayerId) return s;
+                  if (s.players.some(p => p.playerId === payload.affectedPlayerId)) return s;
+                  return {
+                    ...s,
+                    players: [...s.players, { playerId: payload.affectedPlayerId, connected: true }],
+                  };
+                }
+                case 'player-left':
+                  return {
+                    ...s,
+                    players: s.players.map(p =>
+                      p.playerId === payload.affectedPlayerId ? { ...p, connected: false } : p
+                    ),
+                  };
+                default:
+                  return s;
               }
-              case 'player-left':
-                return {
-                  ...s,
-                  players: s.players.map(p =>
-                    p.playerId === payload.affectedPlayerId ? { ...p, connected: false } : p
-                  ),
-                };
-              default:
-                return s;
-            }
-          });
+            });
+            return;
+          }
+
+          if (msg.t === 'PlayerStateSnapshot') {
+            const payload = msg.p as PlayerStateSnapshot;
+            const movementState: 'moving' | 'idle' = payload.state === 'moving' ? 'moving' : 'idle';
+            setState(s => ({
+              ...s,
+              playerPositions: { ...s.playerPositions, [payload.playerId]: payload.position },
+              playerConnected: { ...s.playerConnected, [payload.playerId]: payload.connected },
+              playerStates: { ...s.playerStates, [payload.playerId]: movementState },
+            }));
+          }
         } catch { /* ignore parse errors */ }
       };
 
