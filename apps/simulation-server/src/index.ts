@@ -1,6 +1,7 @@
 import { createWsServer } from './server.js';
 import { SessionStore } from './session-store.js';
 import { TickLoop } from './tick-loop.js';
+import { applyMovementTick } from './game/movement.js';
 
 const PORT = parseInt(process.env['PORT'] ?? '8081', 10);
 
@@ -10,6 +11,7 @@ const wss = createWsServer(PORT, store);
 
 loop.start((tick) => {
   wss.setTick(tick);
+  applyMovementTick(store, loop.tickRateHz, tick);
   if (tick % 100 === 0) {
     console.log(`[tick] tick=${tick}`);
   }

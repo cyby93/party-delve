@@ -1,10 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import type { WebSocket } from 'ws';
+import type { Vec2 } from 'shared-types';
 
 export interface PlayerSlot {
   playerId: string;
   socket: WebSocket;
   reconnectToken: string;
+  position: Vec2;
+  pendingDirection: Vec2;
+  connected: boolean;
 }
 
 export interface Session {
@@ -17,7 +21,8 @@ export interface Session {
 export class SessionStore {
   private byRoomCode = new Map<string, Session>();
   private byHostSocket = new Map<WebSocket, Session>();
-  private byPlayerSocket = new Map<WebSocket, PlayerSlot & { session: Session }>();
+  // Stores { playerId, session } — NOT a copy of the slot, so handlers can mutate the live slot.
+  private byPlayerSocket = new Map<WebSocket, { playerId: string; session: Session }>();
 
   createSession(hostSocket: WebSocket): Session {
     const sessionId = randomUUID();
@@ -35,10 +40,30 @@ export class SessionStore {
   addPlayer(session: Session, playerSocket: WebSocket): PlayerSlot {
     const playerId = randomUUID();
     const reconnectToken = randomUUID();
-    const slot: PlayerSlot = { playerId, socket: playerSocket, reconnectToken };
+    const slot: PlayerSlot = {
+      playerId,
+      socket: playerSocket,
+      reconnectToken,
+      position: { x: 0, y: 0 },
+      pendingDirection: { x: 0, y: 0 },
+      connected: true,
+    };
     session.players.set(playerId, slot);
-    this.byPlayerSocket.set(playerSocket, { ...slot, session });
+    this.byPlayerSocket.set(playerSocket, { playerId, session });
     return slot;
+  }
+
+  /** Returns the live PlayerSlot reference and its session for the given WebSocket. */
+  findSlotBySocket(socket: WebSocket): { slot: PlayerSlot; session: Session } | undefined {
+    const entry = this.byPlayerSocket.get(socket);
+    if (!entry) return undefined;
+    const slot = entry.session.players.get(entry.playerId);
+    return slot ? { slot, session: entry.session } : undefined;
+  }
+
+  /** All active sessions — used by the movement tick. */
+  allSessions(): Session[] {
+    return Array.from(this.byRoomCode.values());
   }
 
   removeSocket(
@@ -55,8 +80,13 @@ export class SessionStore {
     }
     const playerEntry = this.byPlayerSocket.get(socket);
     if (playerEntry) {
-      const { session, playerId } = playerEntry;
-      session.players.delete(playerId);
+      const { playerId, session } = playerEntry;
+      // Freeze the slot — keep it in session.players so the host canvas retains the dot.
+      const slot = session.players.get(playerId);
+      if (slot) {
+        slot.connected = false;
+        slot.pendingDirection = { x: 0, y: 0 };
+      }
       this.byPlayerSocket.delete(socket);
       return { session, role: 'player', playerId };
     }
