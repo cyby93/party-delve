@@ -13,6 +13,7 @@ export interface PlayerSessionState {
   playerId: string | null;
   reconnectToken: string | null;
   join: (roomCode: string) => void;
+  sendMessage: (envelope: object) => void;
 }
 
 export function usePlayerSession(url: string): PlayerSessionState {
@@ -154,6 +155,13 @@ export function usePlayerSession(url: string): PlayerSessionState {
     );
   }, []);
 
+  const sendMessage = useCallback((envelope: object) => {
+    const ws = wsRef.current;
+    if (ws?.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify(envelope));
+    }
+  }, []);
+
   return {
     connectionStatus,
     joinStatus,
@@ -162,5 +170,6 @@ export function usePlayerSession(url: string): PlayerSessionState {
     playerId,
     reconnectToken,
     join,
+    sendMessage,
   };
 }
