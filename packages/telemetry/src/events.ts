@@ -50,4 +50,35 @@ export type SessionFunnelEvent =
   | JoinAttemptSucceeded
   | JoinAttemptFailed;
 
-export type TelemetryEvent = SessionFunnelEvent;
+// ---------------------------------------------------------------------------
+// Hub events — KPI funnel step: fires after session.player_joined
+// ---------------------------------------------------------------------------
+
+/** Fires once when a player's WebSocket first connects and enters the hub. */
+export interface HubPlayerEntered extends TelemetryBaseEvent {
+  event: 'hub.player_entered';
+  player_id: string;
+  slot_index: number;
+}
+
+// ---------------------------------------------------------------------------
+// Input events — engagement signal: measures active controller usage per session
+// ---------------------------------------------------------------------------
+
+/**
+ * Fires when joystick delta exceeds dead zone (magnitude > 0.05).
+ * Dead zone filtering is applied inside trackInputMove before calling track().
+ * Responsibility: mobile controller (client-side filtering reduces event volume).
+ */
+export interface InputMove extends TelemetryBaseEvent {
+  event: 'input.move';
+  player_id: string;
+  dx: number;
+  dy: number;
+  sequence_number: number;
+}
+
+export type HubEvent = HubPlayerEntered;
+export type InputEvent = InputMove;
+
+export type TelemetryEvent = SessionFunnelEvent | HubEvent | InputEvent;
