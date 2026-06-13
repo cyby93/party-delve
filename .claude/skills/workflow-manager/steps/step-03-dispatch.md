@@ -10,7 +10,28 @@ Execute developer shards in dependency order — each in its own git worktree. A
 
 ## Instructions
 
+### Dispatch Plan
+
+Before starting the loop, print this block once. After printing it, produce no further output until the loop finishes — except for HALT conditions (blocker, deadlock, sub-60% confidence, missing confidence tag), which are always permitted:
+
+```
+Dispatch Plan: {story-id} — {story title}
+──────────────────────────────────────────
+Developer shards (dependency order) — qa-agent and telemetry-agent run in later steps:
+  {n}. {shard_id}  owner: {owner}  depends_on: {depends_on list or "—"}
+──────────────────────────────────────────
+Running autonomously. Next output: final summary or a HALT if an error condition triggers.
+```
+
+---
+
 ### Dispatch Loop
+
+> **SILENT LOOP — autonomous mode active.**
+> Once this loop starts, produce **no user-facing text output** between shard completions.
+> All state is tracked via story file and Phase Log updates only.
+> The only permitted user-facing output inside the loop is a HALT for a blocker, deadlock, sub-60% confidence, or missing confidence tag.
+> Do not end your turn between loop iterations. Use tool calls only (file reads/writes, EnterWorktree, ExitWorktree, Agent).
 
 Repeat until all shards in the pipeline (excluding qa-agent and telemetry-agent) have `status: complete` or `status: failed`:
 
@@ -38,7 +59,11 @@ e.g. `shard/GDS-003-shard-simulation-engineer`
 
 Store the worktree path.
 
-#### 3. Invoke the agent
+#### 3. Record Phase Log baseline
+
+Before invoking the agent, count the current number of Phase Log entries in the parent story and store it as `pre_count`. After the agent completes, a valid new entry exists when the entry count is exactly `pre_count + 1` AND the newest entry is authored by `{shard.owner}`.
+
+#### 4. Invoke the agent
 
 Invoke the shard's assigned skill (from `role_config_map[shard.owner].skill`) with:
 - The shard file as primary input
@@ -57,15 +82,14 @@ Invoke the shard's assigned skill (from `role_config_map[shard.owner].skill`) wi
 
 Wait for the agent to complete. The agent writes its Phase Log entry to the parent story file directly.
 
-#### 4. Exit worktree
+#### 5. Exit worktree
 
 Use `ExitWorktree` to exit the shard's worktree.
 
-#### 5. Read Phase Log and assess confidence
+#### 6. Read Phase Log and assess confidence
 
-Read the latest Phase Log entry from the parent story (the one just appended by the agent).
+Using the `pre_count` baseline from step 3, verify a new entry exists (count = `pre_count + 1`, newest entry authored by `{shard.owner}`). Then check the entry type:
 
-Check for:
 - **Completion entry** format: `### {role} — {datetime} [confidence: N%]`
 - **Blocker entry** format: `⚠ {role} — {datetime} blocked: ...`
 
@@ -83,6 +107,17 @@ Check for:
   ```
   HALT until user responds
 
+**If no entry or missing confidence tag:**
+- If the Phase Log has no new entry at all, or has an entry but no `[confidence: N%]` tag:
+  ```
+  ⚠ Agent {role} Phase Log entry is missing or has no confidence tag.
+  
+  [R] Retry this shard
+  [D] Default to 0% confidence — immediately triggers the sub-60% review menu below
+  [X] Abort
+  ```
+  HALT until user responds. On [D]: treat as confidence 0% and apply the `< 60%` threshold below.
+
 **If completion entry found — apply confidence threshold:**
 - Extract confidence percentage from `[confidence: N%]`
 - `>= 80%` → update shard `status: complete`, `confidence: N`, continue silently
@@ -98,9 +133,9 @@ Check for:
   [R] Retry this shard
   [X] Abort
   ```
-  HALT until user responds
+  HALT until user responds. On [C]: set shard `status: complete` and `confidence: N` with the actual value, then continue.
 
-#### 6. Update shard status in parent story frontmatter
+#### 7. Update shard status in parent story frontmatter
 
 After completing the confidence check:
 - Read parent story frontmatter
@@ -108,7 +143,7 @@ After completing the confidence check:
 - Update `status` and `confidence`
 - Write frontmatter back (preserve body)
 
-#### 7. Loop
+#### 8. Loop
 
 Return to step 1 of the dispatch loop.
 
@@ -154,10 +189,15 @@ When a blocker targets a role already in the pipeline:
 
 When all pipeline shards (excluding qa-agent and telemetry-agent) are `status: complete`:
 
+**This is the first and only permitted output after the SILENT LOOP.** Print the following summary:
+
 ```
-All developer shards complete.
-Pipeline: {roles}
-Confidence scores: {role: N% for each}
+✓ All developer shards complete — {story-id}
+──────────────────────────────────────────
+{For each developer shard in dependency order:}
+  {shard_id}  owner: {owner}  confidence: {N}%{  ⚠ continued silently (60–79%)}
+──────────────────────────────────────────
+Overall min confidence: {lowest N}%  (completed shards only; failed shards excluded)
 ```
 
 Proceed to: `./step-04-merge.md`
