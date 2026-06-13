@@ -2,7 +2,7 @@ export class TickLoop {
   private tickCount = 0;
   private handle: ReturnType<typeof setInterval> | null = null;
 
-  constructor(private readonly tickRateHz: number) {}
+  constructor(readonly tickRateHz: number) {}
 
   start(onTick: (tick: number) => void): void {
     const intervalMs = 1000 / this.tickRateHz;

@@ -4,23 +4,62 @@ import { useHostSession } from './hooks/useHostSession';
 
 const SIM_URL = 'ws://localhost:8081';
 const MAX_SLOTS = 4;
+const SLOT_COLORS = ['#4af', '#f84', '#4f4', '#f4f'];
+const CANVAS_W = 800;
+const CANVAS_H = 600;
 
 // RoomState imported to satisfy "imports types from shared-types" criterion.
 const _roomState: RoomState | null = null;
 void _roomState;
 
 export default function App() {
-  const { status, roomCode, sessionId, players } = useHostSession(SIM_URL);
+  const { status, roomCode, sessionId, players, playerPositions, playerConnected } = useHostSession(SIM_URL);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.fillStyle = '#111';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-  }, []);
+
+    const handle = requestAnimationFrame(() => {
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      // Background
+      ctx.fillStyle = '#333';
+      ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+
+      // Boundary indicator
+      ctx.strokeStyle = '#666';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(2, 2, CANVAS_W - 4, CANVAS_H - 4);
+
+      // Players
+      ctx.textAlign = 'center';
+      ctx.font = '12px monospace';
+
+      for (const [playerId, pos] of Object.entries(playerPositions)) {
+        const slotIndex = players.findIndex(p => p.playerId === playerId);
+        const color = SLOT_COLORS[slotIndex] ?? '#fff';
+        const connected = playerConnected[playerId] !== false;
+
+        ctx.globalAlpha = connected ? 1.0 : 0.5;
+
+        // Dot
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(pos.x, pos.y, 14, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Slot label above dot
+        ctx.fillStyle = '#fff';
+        ctx.fillText(slotIndex >= 0 ? `P${slotIndex + 1}` : '?', pos.x, pos.y - 20);
+
+        ctx.globalAlpha = 1.0;
+      }
+    });
+
+    return () => cancelAnimationFrame(handle);
+  }, [playerPositions, playerConnected, players]);
 
   return (
     <div style={{ background: '#000', minHeight: '100vh', color: '#f0f0f0', fontFamily: 'monospace', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '24px', gap: '24px' }}>
@@ -73,8 +112,13 @@ export default function App() {
         })}
       </div>
 
-      {/* Canvas placeholder */}
-      <canvas ref={canvasRef} width={800} height={300} style={{ border: '1px solid #222', maxWidth: '100%' }} />
+      {/* Hub canvas */}
+      <canvas
+        ref={canvasRef}
+        width={CANVAS_W}
+        height={CANVAS_H}
+        style={{ border: '1px solid #222', maxWidth: '100%' }}
+      />
     </div>
   );
 }

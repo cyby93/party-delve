@@ -1,5 +1,5 @@
 import { usePlayerSession } from './hooks/usePlayerSession';
-import { ConnectedScreen } from './screens/ConnectedScreen';
+import { InHubController } from './screens/InHubController';
 import { JoinScreen } from './screens/JoinScreen';
 import './styles.css';
 
@@ -37,9 +37,10 @@ export default function App() {
         {session.joinStatus === 'joined' &&
         session.playerId &&
         session.sessionId ? (
-          <ConnectedScreen
+          <InHubController
             playerId={session.playerId}
             sessionId={session.sessionId}
+            sendMessage={session.sendMessage}
           />
         ) : (
           <JoinScreen

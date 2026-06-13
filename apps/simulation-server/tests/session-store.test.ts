@@ -109,7 +109,7 @@ describe('SessionStore', () => {
   });
 
   describe('removeSocket — player', () => {
-    it('removes the player from the session', () => {
+    it('freezes the player slot on disconnect (keeps in session, marks connected false)', () => {
       const store = new SessionStore();
       const session = store.createSession(mockSocket());
       const playerSocket = mockSocket();
@@ -121,9 +121,12 @@ describe('SessionStore', () => {
       expect(result?.role).toBe('player');
       expect(result?.playerId).toBe(slot.playerId);
       expect(result?.session).toBe(session);
-      // Session remains; player is gone
-      expect(session.players.size).toBe(0);
+      // Session remains; slot is frozen (not removed) so the host canvas retains the dot
+      expect(session.players.size).toBe(1);
       expect(store.sessionCount).toBe(1);
+      const frozen = session.players.get(slot.playerId);
+      expect(frozen?.connected).toBe(false);
+      expect(frozen?.pendingDirection).toEqual({ x: 0, y: 0 });
     });
   });
 
