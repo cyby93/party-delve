@@ -10,8 +10,8 @@
     "lint": "eslint src"
   },
   "dependencies": {
-    "shared-types": "workspace:*",
-    "net-protocol": "workspace:*",
+    "shared-types": "*",
+    "net-protocol": "*",
     "ws": "^8.18.0"
   },
   "devDependencies": {
