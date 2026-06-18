@@ -1,0 +1,731 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Party Delve — Controller Layout Options</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Uncial+Antiqua&family=Lora:ital,wght@0,400;0,600;1,400&display=swap');
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: #0a0908;
+  font-family: 'Lora', serif;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 48px 32px 64px;
+  gap: 0;
+}
+
+h1 {
+  font-family: 'Uncial Antiqua', cursive;
+  color: #d8d0e8;
+  font-size: 26px;
+  letter-spacing: 0.06em;
+  margin-bottom: 6px;
+  text-align: center;
+}
+
+.page-subtitle {
+  color: #a89ec0;
+  font-size: 13px;
+  font-style: italic;
+  margin-bottom: 48px;
+  text-align: center;
+  letter-spacing: 0.03em;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 48px 40px;
+}
+
+.phone-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
+.phone-label {
+  text-align: center;
+}
+
+.phone-label .layout-letter {
+  font-family: 'Uncial Antiqua', cursive;
+  font-size: 18px;
+  color: #6ea8d8;
+  margin-right: 6px;
+}
+
+.phone-label .layout-name {
+  font-family: 'Lora', serif;
+  font-size: 16px;
+  font-weight: 600;
+  color: #d8d0e8;
+}
+
+.phone-label .layout-desc {
+  display: block;
+  font-size: 12px;
+  color: #a89ec0;
+  font-style: italic;
+  margin-top: 4px;
+  line-height: 1.4;
+}
+
+/* Phone frame */
+.phone {
+  width: 390px;
+  height: 844px;
+  background: #1a1820;
+  border-radius: 40px;
+  box-shadow:
+    0 0 0 1.5px #36334a,
+    0 24px 64px rgba(0,0,0,0.7),
+    0 8px 24px rgba(0,0,0,0.5);
+  position: relative;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+/* Notch */
+.phone::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 120px;
+  height: 30px;
+  background: #0f0e10;
+  border-radius: 0 0 18px 18px;
+  z-index: 20;
+}
+
+/* HP bar — thin strip at very top, full width */
+.hp-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 8px;
+  background: #36334a;
+  z-index: 15;
+  opacity: 0.75;
+}
+
+.hp-fill {
+  height: 100%;
+  width: 70%;
+  background: linear-gradient(90deg, #c07d35 0%, #d4943d 100%);
+  border-radius: 0 2px 2px 0;
+}
+
+/* Class label — top-left */
+.class-label-tl {
+  position: absolute;
+  top: 18px;
+  left: 20px;
+  font-family: 'Lora', serif;
+  font-size: 10px;
+  font-style: italic;
+  color: #a89ec0;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.7;
+  z-index: 10;
+}
+
+/* Class label — top-right */
+.class-label-tr {
+  position: absolute;
+  top: 18px;
+  right: 20px;
+  font-family: 'Lora', serif;
+  font-size: 10px;
+  font-style: italic;
+  color: #a89ec0;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.7;
+  z-index: 10;
+  text-align: right;
+}
+
+/* ---- JOYSTICK ---- */
+.joystick-outer {
+  position: absolute;
+  width: 110px;
+  height: 110px;
+  border-radius: 50%;
+  border: 2px solid #36334a;
+  background: rgba(54,51,74,0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.joystick-inner {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #8ebadf, #6ea8d8);
+  box-shadow: 0 2px 8px rgba(110,168,216,0.4);
+  position: relative;
+  /* Slightly offset to suggest active use */
+  transform: translate(-8px, 6px);
+}
+
+/* ---- SKILL BUTTON BASE ---- */
+.skill-btn {
+  position: absolute;
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  background: #181620;
+  border: 2px solid #6ea8d8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 2px;
+  box-shadow: 0 0 12px rgba(110,168,216,0.15), inset 0 1px 3px rgba(255,255,255,0.04);
+  overflow: hidden;
+}
+
+.skill-btn .skill-label {
+  font-family: 'Lora', serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: #6ea8d8;
+  letter-spacing: 0.05em;
+  position: relative;
+  z-index: 2;
+  line-height: 1;
+}
+
+/* Skill icon placeholder — small geometric shape */
+.skill-btn .skill-icon {
+  position: relative;
+  z-index: 2;
+}
+
+/* S1 icon — triangle */
+.icon-triangle {
+  width: 0;
+  height: 0;
+  border-left: 8px solid transparent;
+  border-right: 8px solid transparent;
+  border-bottom: 13px solid #6ea8d8;
+  opacity: 0.6;
+}
+
+/* S2 icon — square (with cooldown overlay) */
+.icon-square {
+  width: 11px;
+  height: 11px;
+  background: #6ea8d8;
+  opacity: 0.6;
+}
+
+/* S3 icon — diamond */
+.icon-diamond {
+  width: 11px;
+  height: 11px;
+  background: #6ea8d8;
+  transform: rotate(45deg);
+  opacity: 0.6;
+}
+
+/* S4 icon — circle */
+.icon-circle {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: #6ea8d8;
+  opacity: 0.6;
+}
+
+/* Cooldown overlay on S2 */
+.cooldown-overlay {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: rgba(15,14,16,0.60);
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+/* Conic-gradient timer sweep in corruption purple */
+.cooldown-sweep {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: conic-gradient(
+    transparent 0deg,
+    transparent 245deg,
+    rgba(125,45,255,0.75) 245deg,
+    rgba(125,45,255,0.75) 360deg
+  );
+}
+
+.cooldown-ring {
+  position: absolute;
+  inset: 4px;
+  border-radius: 50%;
+  border: 2px solid #7d2dff;
+  opacity: 0.8;
+}
+
+.cooldown-text {
+  position: absolute;
+  font-family: 'Lora', serif;
+  font-size: 10px;
+  font-weight: 600;
+  color: #d8d0e8;
+  z-index: 3;
+}
+
+/* ============================================================
+   LAYOUT A — CLASSIC DIAMOND
+   ============================================================ */
+
+/* Joystick: left half, vertically below center */
+#phone-a .joystick-outer {
+  left: calc(195px/2 - 55px); /* center of left half */
+  top: 490px;
+}
+
+/* Diamond: top, left, right, bottom */
+/* Center of right zone: x=~292px, y=~500px */
+#phone-a .skill-s1 { right: 48px;  top: 360px; }   /* top */
+#phone-a .skill-s2 { right: 128px; top: 445px; }   /* left */
+#phone-a .skill-s3 { right: 0px;   top: 445px; }   /* right — but let's use left-edge of right zone */
+#phone-a .skill-s4 { right: 48px;  top: 530px; }   /* bottom */
+
+/* ============================================================
+   LAYOUT B — THUMB ARC
+   ============================================================ */
+
+/* Joystick same as A */
+#phone-b .joystick-outer {
+  left: calc(195px/2 - 55px);
+  top: 490px;
+}
+
+/* Arc from bottom-right toward top-right, shrinking upward */
+/* Btn 1 (bottom, largest): center ~(315, 580) */
+/* Btn 2: center ~(330, 495) */
+/* Btn 3: center ~(338, 410) */
+/* Btn 4 (top, smallest): center ~(340, 328) */
+
+#phone-b .skill-s1 { /* biggest — bottom */
+  right: 32px;
+  top: 537px;
+  width: 90px;
+  height: 90px;
+}
+#phone-b .skill-s2 { /* cooldown one */
+  right: 16px;
+  top: 450px;
+  width: 82px;
+  height: 82px;
+}
+#phone-b .skill-s3 {
+  right: 24px;
+  top: 366px;
+  width: 72px;
+  height: 72px;
+}
+#phone-b .skill-s4 { /* smallest — top */
+  right: 42px;
+  top: 290px;
+  width: 60px;
+  height: 60px;
+}
+
+/* Adjust S2 label / icons for arc sizes */
+#phone-b .skill-s4 .skill-label { font-size: 11px; }
+#phone-b .skill-s3 .skill-label { font-size: 12px; }
+
+/* ============================================================
+   LAYOUT C — 2×2 GRID
+   ============================================================ */
+
+#phone-c .joystick-outer {
+  left: calc(195px/2 - 55px);
+  top: 490px;
+}
+
+/* 2×2 grid centered on right half */
+/* Right half center x ~ 292. Grid cell spacing 96px */
+/* Top-left of grid: x=252-84=~208... let's use right-anchored */
+#phone-c .skill-s1 { right: 126px; top: 400px; }
+#phone-c .skill-s2 { right: 26px;  top: 400px; }
+#phone-c .skill-s3 { right: 126px; top: 496px; }
+#phone-c .skill-s4 { right: 26px;  top: 496px; }
+
+/* ============================================================
+   LAYOUT D — SPLIT + AIM ZONE
+   ============================================================ */
+
+#phone-d .joystick-outer {
+  left: calc(195px/2 - 55px);
+  top: 560px;
+}
+
+/* Aim zone: upper-right, large dashed rectangle */
+.aim-zone {
+  position: absolute;
+  right: 16px;
+  top: 200px;
+  width: 168px;
+  height: 220px;
+  border: 2px dashed rgba(110,168,216,0.35);
+  border-radius: 16px;
+  background: rgba(110,168,216,0.03);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.aim-zone-label {
+  font-family: 'Uncial Antiqua', cursive;
+  font-size: 14px;
+  color: #6ea8d8;
+  opacity: 0.45;
+  letter-spacing: 0.12em;
+}
+
+.aim-zone-sub {
+  font-family: 'Lora', serif;
+  font-size: 9px;
+  color: #6ea8d8;
+  opacity: 0.3;
+  font-style: italic;
+  letter-spacing: 0.06em;
+  text-align: center;
+  line-height: 1.5;
+}
+
+/* Crosshair/target hint inside aim zone */
+.aim-crosshair {
+  position: relative;
+  width: 32px;
+  height: 32px;
+  opacity: 0.25;
+}
+.aim-crosshair::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 0; right: 0;
+  height: 1.5px;
+  background: #6ea8d8;
+  transform: translateY(-50%);
+}
+.aim-crosshair::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 0; bottom: 0;
+  width: 1.5px;
+  background: #6ea8d8;
+  transform: translateX(-50%);
+}
+.aim-crosshair-ring {
+  position: absolute;
+  inset: 6px;
+  border-radius: 50%;
+  border: 1.5px solid #6ea8d8;
+}
+
+/* 3 tap buttons in triangle, bottom-right cluster */
+/* S1 top of triangle */
+#phone-d .skill-s1 { right: 68px;  top: 474px; }
+/* S2 bottom-left of triangle */
+#phone-d .skill-s2 { right: 138px; top: 562px; }
+/* S3 bottom-right of triangle */
+#phone-d .skill-s3 { right: 12px;  top: 562px; }
+
+/* "HOLD" skill on S1 for D — relabeled for tap context */
+
+/* ============================================================
+   SHARED LAYOUT HELPERS
+   ============================================================ */
+
+/* Vertical divider line between left/right zones (subtle) */
+.zone-divider {
+  position: absolute;
+  left: 195px;
+  top: 100px;
+  bottom: 60px;
+  width: 1px;
+  background: linear-gradient(to bottom, transparent, #36334a 30%, #36334a 70%, transparent);
+  opacity: 0.3;
+}
+
+/* Input type badge — very subtle, below buttons */
+.input-badge {
+  position: absolute;
+  font-family: 'Lora', serif;
+  font-size: 9px;
+  color: #a89ec0;
+  opacity: 0.45;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+
+</style>
+</head>
+<body>
+
+<h1>Party Delve</h1>
+<p class="page-subtitle">Mobile Controller Layout Explorations &mdash; Portrait / Two-Hand Grip</p>
+
+<div class="grid">
+
+  <!-- =========================================================
+       LAYOUT A — CLASSIC DIAMOND
+       ========================================================= -->
+  <div class="phone-wrap">
+    <div class="phone-label">
+      <span class="layout-letter">A</span><span class="layout-name">Classic Diamond</span>
+      <span class="layout-desc">PlayStation-style face-button diamond on the right — familiar muscle memory for gamers</span>
+    </div>
+    <div class="phone" id="phone-a">
+      <div class="hp-bar"><div class="hp-fill"></div></div>
+      <div class="class-label-tl">Souldrinker</div>
+      <div class="zone-divider"></div>
+
+      <!-- Joystick -->
+      <div class="joystick-outer">
+        <div class="joystick-inner"></div>
+      </div>
+
+      <!-- S1 — top of diamond -->
+      <div class="skill-btn skill-s1" style="position:absolute; right:48px; top:360px;">
+        <div class="skill-icon icon-triangle"></div>
+        <span class="skill-label">S1</span>
+      </div>
+
+      <!-- S2 — left of diamond + cooldown -->
+      <div class="skill-btn skill-s2" style="position:absolute; right:128px; top:445px;">
+        <div class="cooldown-overlay">
+          <div class="cooldown-sweep"></div>
+          <div class="cooldown-ring"></div>
+          <span class="cooldown-text">2s</span>
+        </div>
+        <div class="skill-icon icon-square"></div>
+        <span class="skill-label">S2</span>
+      </div>
+
+      <!-- S3 — right of diamond -->
+      <div class="skill-btn skill-s3" style="position:absolute; right:4px; top:445px;">
+        <div class="skill-icon icon-diamond"></div>
+        <span class="skill-label">S3</span>
+      </div>
+
+      <!-- S4 — bottom of diamond -->
+      <div class="skill-btn skill-s4" style="position:absolute; right:48px; top:530px;">
+        <div class="skill-icon icon-circle"></div>
+        <span class="skill-label">S4</span>
+      </div>
+
+      <!-- Input type hints -->
+      <div class="input-badge" style="right:6px; bottom:80px; font-size:8px; text-align:right;">
+        S1 Hold+Aim &middot; S2 Charge &middot; S3&ndash;S4 Tap
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================================
+       LAYOUT B — THUMB ARC
+       ========================================================= -->
+  <div class="phone-wrap">
+    <div class="phone-label">
+      <span class="layout-letter">B</span><span class="layout-name">Thumb Arc</span>
+      <span class="layout-desc">Buttons follow the thumb&rsquo;s natural sweep arc &mdash; size scales with reach difficulty</span>
+    </div>
+    <div class="phone" id="phone-b">
+      <div class="hp-bar"><div class="hp-fill"></div></div>
+      <div class="class-label-tr">Souldrinker</div>
+      <div class="zone-divider"></div>
+
+      <!-- Joystick -->
+      <div class="joystick-outer" style="left:42px; top:490px;">
+        <div class="joystick-inner"></div>
+      </div>
+
+      <!-- S1 — bottom of arc, largest -->
+      <div class="skill-btn" style="position:absolute; right:32px; top:537px; width:90px; height:90px;">
+        <div class="skill-icon icon-circle"></div>
+        <span class="skill-label" style="font-size:14px;">S1</span>
+      </div>
+
+      <!-- S2 — with cooldown, second from bottom -->
+      <div class="skill-btn" style="position:absolute; right:16px; top:450px; width:82px; height:82px;">
+        <div class="cooldown-overlay">
+          <div class="cooldown-sweep"></div>
+          <div class="cooldown-ring"></div>
+          <span class="cooldown-text">2s</span>
+        </div>
+        <div class="skill-icon icon-square"></div>
+        <span class="skill-label">S2</span>
+      </div>
+
+      <!-- S3 — second from top -->
+      <div class="skill-btn" style="position:absolute; right:24px; top:366px; width:72px; height:72px;">
+        <div class="skill-icon icon-diamond"></div>
+        <span class="skill-label" style="font-size:12px;">S3</span>
+      </div>
+
+      <!-- S4 — top of arc, smallest -->
+      <div class="skill-btn" style="position:absolute; right:46px; top:292px; width:60px; height:60px;">
+        <div class="skill-icon icon-triangle"></div>
+        <span class="skill-label" style="font-size:11px;">S4</span>
+      </div>
+
+      <!-- Arc curve guide line (decorative, very subtle) -->
+      <svg style="position:absolute; right:0; top:270px; width:120px; height:310px; pointer-events:none; opacity:0.08;" viewBox="0 0 120 310">
+        <path d="M 100 20 Q 140 120 100 290" stroke="#6ea8d8" stroke-width="1.5" fill="none" stroke-dasharray="4 6"/>
+      </svg>
+
+      <div class="input-badge" style="right:6px; bottom:80px; font-size:8px; text-align:right;">
+        Easiest reach: S1 &rarr; Hardest: S4
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================================
+       LAYOUT C — 2×2 GRID
+       ========================================================= -->
+  <div class="phone-wrap">
+    <div class="phone-label">
+      <span class="layout-letter">C</span><span class="layout-name">2&times;2 Grid</span>
+      <span class="layout-desc">Uniform 2-by-2 square grid &mdash; symmetric, clean, and easy to learn at a glance</span>
+    </div>
+    <div class="phone" id="phone-c">
+      <div class="hp-bar"><div class="hp-fill"></div></div>
+      <div class="class-label-tl">Souldrinker</div>
+      <div class="zone-divider"></div>
+
+      <!-- Joystick -->
+      <div class="joystick-outer" style="left:42px; top:490px;">
+        <div class="joystick-inner"></div>
+      </div>
+
+      <!-- Grid: top row -->
+      <div class="skill-btn" style="position:absolute; right:122px; top:400px;">
+        <div class="skill-icon icon-triangle"></div>
+        <span class="skill-label">S1</span>
+      </div>
+      <div class="skill-btn" style="position:absolute; right:24px; top:400px;">
+        <!-- S2 cooldown -->
+        <div class="cooldown-overlay">
+          <div class="cooldown-sweep"></div>
+          <div class="cooldown-ring"></div>
+          <span class="cooldown-text">2s</span>
+        </div>
+        <div class="skill-icon icon-square"></div>
+        <span class="skill-label">S2</span>
+      </div>
+
+      <!-- Grid: bottom row -->
+      <div class="skill-btn" style="position:absolute; right:122px; top:496px;">
+        <div class="skill-icon icon-diamond"></div>
+        <span class="skill-label">S3</span>
+      </div>
+      <div class="skill-btn" style="position:absolute; right:24px; top:496px;">
+        <div class="skill-icon icon-circle"></div>
+        <span class="skill-label">S4</span>
+      </div>
+
+      <div class="input-badge" style="right:6px; bottom:80px; font-size:8px; text-align:right;">
+        All 4 cells equal size &middot; uniform reach
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================================
+       LAYOUT D — SPLIT + AIM ZONE
+       ========================================================= -->
+  <div class="phone-wrap">
+    <div class="phone-label">
+      <span class="layout-letter">D</span><span class="layout-name">Split + Aim Zone</span>
+      <span class="layout-desc">Upper-right drag zone aims AutoFire skills &mdash; tap cluster handles instant casts</span>
+    </div>
+    <div class="phone" id="phone-d">
+      <div class="hp-bar"><div class="hp-fill"></div></div>
+      <div class="class-label-tl">Souldrinker</div>
+      <div class="zone-divider"></div>
+
+      <!-- Joystick — lower-left -->
+      <div class="joystick-outer" style="left:42px; top:560px;">
+        <div class="joystick-inner"></div>
+      </div>
+
+      <!-- Aim Zone — upper right -->
+      <div class="aim-zone">
+        <div class="aim-crosshair">
+          <div class="aim-crosshair-ring"></div>
+        </div>
+        <span class="aim-zone-label">AIM</span>
+        <span class="aim-zone-sub">Drag to aim<br>Hold S1 to fire</span>
+      </div>
+
+      <!-- S1 label near aim zone border — AutoFire skill -->
+      <div style="position:absolute; right:18px; top:428px; font-family:'Lora',serif; font-size:9px; color:#6ea8d8; opacity:0.5; letter-spacing:0.05em;">
+        S1 · AutoFire
+      </div>
+
+      <!-- 3 tap skills — triangle cluster, bottom-right -->
+      <!-- S2 — top of triangle -->
+      <div class="skill-btn" style="position:absolute; right:68px; top:474px;">
+        <!-- S2 cooldown -->
+        <div class="cooldown-overlay">
+          <div class="cooldown-sweep"></div>
+          <div class="cooldown-ring"></div>
+          <span class="cooldown-text">2s</span>
+        </div>
+        <div class="skill-icon icon-square"></div>
+        <span class="skill-label">S2</span>
+      </div>
+
+      <!-- S3 — bottom-left -->
+      <div class="skill-btn" style="position:absolute; right:136px; top:560px;">
+        <div class="skill-icon icon-diamond"></div>
+        <span class="skill-label">S3</span>
+      </div>
+
+      <!-- S4 — bottom-right -->
+      <div class="skill-btn" style="position:absolute; right:10px; top:560px;">
+        <div class="skill-icon icon-circle"></div>
+        <span class="skill-label">S4</span>
+      </div>
+
+      <!-- Tap label -->
+      <div class="input-badge" style="right:6px; bottom:80px; font-size:8px; text-align:right;">
+        AIM zone: Joystick-AutoFire &middot; S2&ndash;S4: Tap
+      </div>
+    </div>
+  </div>
+
+</div><!-- /grid -->
+
+</body>
+</html>

@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Party Delve — Host HUD Wireframe</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Uncial+Antiqua&family=Lora:ital,wght@0,400;0,600;0,700;1,400&display=swap');
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: #0f0e10;
+  overflow: hidden;
+  width: 100vw;
+  height: 100vh;
+}
+
+/* Scale container to fit browser window */
+#scale-root {
+  width: 1920px;
+  height: 1080px;
+  transform-origin: top left;
+  transform: scale(calc(100vw / 1920));
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: hidden;
+  background: #0a0908;
+}
+
+/* ================================================
+   GAME CANVAS AREA — isometric dungeon floor
+   ================================================ */
+#game-canvas {
+  position: absolute;
+  inset: 0;
+  background-color: #0a0908;
+  /* Diagonal isometric grid suggestion */
+  background-image:
+    repeating-linear-gradient(
+      45deg,
+      rgba(30, 27, 38, 0.55) 0px,
+      rgba(30, 27, 38, 0.55) 1px,
+      transparent 1px,
+      transparent 48px
+    ),
+    repeating-linear-gradient(
+      -45deg,
+      rgba(30, 27, 38, 0.55) 0px,
+      rgba(30, 27, 38, 0.55) 1px,
+      transparent 1px,
+      transparent 48px
+    );
+}
+
+/* Atmospheric vignette on the canvas */
+#game-canvas::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    ellipse 90% 80% at 50% 60%,
+    transparent 40%,
+    rgba(10, 9, 8, 0.55) 100%
+  );
+  pointer-events: none;
+}
+
+/* ================================================
+   SPIRIT BOND TETHERS
+   ================================================ */
+#tether-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* Cyby–Mira tether: spirit blue, diagonal line */
+.tether-cyby-mira {
+  position: absolute;
+  /* Cyby at ~530,540 → Mira at ~760,420 */
+  left: 530px;
+  top: 420px;
+  width: 252px;
+  height: 3px;
+  background: linear-gradient(
+    90deg,
+    #6ea8d8 0%,
+    rgba(110, 168, 216, 0.6) 50%,
+    #6ea8d8 100%
+  );
+  transform-origin: left center;
+  transform: rotate(-26.5deg);
+  box-shadow: 0 0 8px 2px rgba(110, 168, 216, 0.5), 0 0 18px 4px rgba(110, 168, 216, 0.25);
+  border-radius: 2px;
+}
+
+/* particle dots on cyby-mira tether */
+.tether-cyby-mira::before,
+.tether-cyby-mira::after {
+  content: '';
+  position: absolute;
+  top: -3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #6ea8d8;
+  box-shadow: 0 0 10px 3px rgba(110,168,216,0.8);
+}
+.tether-cyby-mira::before { left: 20%; }
+.tether-cyby-mira::after  { left: 70%; }
+
+/* Dani–Rexx tether: amber */
+.tether-dani-rexx {
+  position: absolute;
+  /* Dani at ~1020,560 → Rexx at ~1240,430 */
+  left: 1020px;
+  top: 430px;
+  width: 256px;
+  height: 3px;
+  background: linear-gradient(
+    90deg,
+    #c07d35 0%,
+    rgba(192, 125, 53, 0.55) 50%,
+    #c07d35 100%
+  );
+  transform-origin: left center;
+  transform: rotate(-29deg);
+  box-shadow: 0 0 8px 2px rgba(192, 125, 53, 0.5), 0 0 16px 4px rgba(192, 125, 53, 0.2);
+  border-radius: 2px;
+}
+
+.tether-dani-rexx::before,
+.tether-dani-rexx::after {
+  content: '';
+  position: absolute;
+  top: -3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #c07d35;
+  box-shadow: 0 0 10px 3px rgba(192,125,53,0.8);
+}
+.tether-dani-rexx::before { left: 25%; }
+.tether-dani-rexx::after  { left: 65%; }
+
+/* ================================================
+   PLAYER CHARACTERS (circles with name tags)
+   ================================================ */
+.character {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+}
+
+/* Floating name tag above character */
+.char-tag {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(24, 22, 32, 0.82);
+  border: 1px solid rgba(168, 158, 192, 0.22);
+  border-radius: 6px;
+  padding: 3px 8px 3px 6px;
+  margin-bottom: 6px;
+  white-space: nowrap;
+}
+
+.char-tag-name {
+  font-family: 'Lora', serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: #d8d0e8;
+  letter-spacing: 0.03em;
+}
+
+.char-tag-pips {
+  display: flex;
+  gap: 3px;
+  margin-left: 4px;
+}
+
+.pip {
+  width: 7px;
+  height: 7px;
+  border-radius: 1px;
+}
+
+.pip-full { background: #5aad5a; box-shadow: 0 0 4px rgba(90,173,90,0.6); }
+.pip-half { background: #c07d35; box-shadow: 0 0 4px rgba(192,125,53,0.5); }
+.pip-empty { background: rgba(168, 158, 192, 0.2); border: 1px solid rgba(168,158,192,0.3); }
+
+.char-dot {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  border: 3px solid rgba(255,255,255,0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Lora', serif;
+  font-size: 14px;
+  font-weight: 700;
+  color: rgba(255,255,255,0.9);
+  text-shadow: 0 1px 4px rgba(0,0,0,0.8);
+  position: relative;
+}
+
+/* Dani spirit/downed overlay */
+.char-spirit-overlay {
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  border: 2px solid rgba(125, 45, 255, 0.6);
+  background: radial-gradient(circle, rgba(125,45,255,0.18) 0%, transparent 70%);
+  animation: spirit-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes spirit-pulse {
+  0%, 100% { opacity: 0.5; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.08); }
+}
+
+/* Dani character ghost icon inside chip */
+.ghost-icon {
+  font-size: 11px;
+  opacity: 0.9;
+  filter: drop-shadow(0 0 4px rgba(125,45,255,0.8));
+}
+
+/* Character positions */
+.char-cyby  { left: 504px;  top: 480px; }
+.char-mira  { left: 734px;  top: 360px; }
+.char-dani  { left: 994px;  top: 498px; opacity: 0.55; }
+.char-rexx  { left: 1214px; top: 368px; }
+.char-kai   { left: 870px;  top: 640px; }
+
+/* ================================================
+   ENEMY POSITIONS
+   ================================================ */
+.enemy {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.enemy-shape {
+  width: 46px;
+  height: 46px;
+  background: linear-gradient(135deg, #5a1a1a 0%, #8b2020 60%, #3d0d0d 100%);
+  clip-path: polygon(50% 0%, 90% 25%, 90% 75%, 50% 100%, 10% 75%, 10% 25%);
+  border: 1px solid rgba(192, 45, 45, 0.5);
+  box-shadow: 0 0 12px rgba(139, 32, 32, 0.6), inset 0 0 8px rgba(0,0,0,0.4);
+}
+
+.enemy-label {
+  font-family: 'Lora', serif;
+  font-size: 11px;
+  font-weight: 600;
+  color: #c04040;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.9);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.enemy-1 { left: 640px;  top: 660px; }
+.enemy-2 { left: 1120px; top: 580px; }
+.enemy-3 { left: 1340px; top: 680px; }
+
+/* ================================================
+   TOP STRIP
+   ================================================ */
+#top-strip {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 52px;
+  background: #181620;
+  border-bottom: 1px solid #36334a;
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  z-index: 100;
+}
+
+#wordmark {
+  font-family: 'Uncial Antiqua', cursive;
+  font-size: 13px;
+  color: #6ea8d8;
+  letter-spacing: 0.06em;
+  opacity: 0.7;
+  white-space: nowrap;
+  margin-right: 28px;
+  flex-shrink: 0;
+  text-shadow: 0 0 10px rgba(110, 168, 216, 0.35);
+}
+
+#player-chips {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex: 1;
+}
+
+.player-chip {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 8px;
+  padding: 5px 10px 5px 8px;
+  height: 36px;
+}
+
+.chip-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.chip-name {
+  font-family: 'Lora', serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: #d8d0e8;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.chip-pips {
+  display: flex;
+  gap: 3px;
+  margin-left: 4px;
+}
+
+.chip-pip {
+  width: 9px;
+  height: 9px;
+  border-radius: 1px;
+}
+
+.chip-pip-full  { background: #5aad5a; box-shadow: 0 0 4px rgba(90,173,90,0.5); }
+.chip-pip-half  { background: #c07d35; box-shadow: 0 0 4px rgba(192,125,53,0.4); }
+.chip-pip-empty { background: rgba(168,158,192,0.15); border: 1px solid rgba(168,158,192,0.25); }
+
+/* Dani chip — downed/spirit state */
+.chip-dani {
+  opacity: 0.42;
+  border-color: rgba(125, 45, 255, 0.35);
+  background: rgba(125, 45, 255, 0.08);
+}
+
+.chip-ghost {
+  font-size: 14px;
+  margin-left: 2px;
+  filter: drop-shadow(0 0 5px rgba(125, 45, 255, 0.9));
+  opacity: 1;
+}
+
+/* ================================================
+   TOP-LEFT CORNER LABEL
+   ================================================ */
+#level-label {
+  position: absolute;
+  top: 64px;
+  left: 20px;
+  font-family: 'Lora', serif;
+  font-size: 14px;
+  font-weight: 400;
+  color: #a89ec0;
+  letter-spacing: 0.04em;
+  text-shadow: 0 1px 6px rgba(0,0,0,0.9), 0 0 12px rgba(0,0,0,0.7);
+  z-index: 50;
+}
+
+/* ================================================
+   TOP-RIGHT CORNER LABEL
+   ================================================ */
+#objective-label {
+  position: absolute;
+  top: 64px;
+  right: 20px;
+  font-family: 'Lora', serif;
+  font-size: 14px;
+  font-weight: 400;
+  color: #a89ec0;
+  letter-spacing: 0.04em;
+  text-shadow: 0 1px 6px rgba(0,0,0,0.9), 0 0 12px rgba(0,0,0,0.7);
+  z-index: 50;
+  text-align: right;
+}
+
+#objective-label span.obj-keyword {
+  font-weight: 700;
+  color: #c07d35;
+}
+
+/* ================================================
+   BOTTOM-CENTER REVIVE TIMER
+   ================================================ */
+#revive-timer {
+  position: absolute;
+  bottom: 28px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #181620;
+  border: 1.5px solid #7d2dff;
+  border-radius: 12px;
+  padding: 10px 22px 10px 18px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-width: 200px;
+  z-index: 100;
+  box-shadow: 0 0 20px rgba(125, 45, 255, 0.35), 0 2px 16px rgba(0,0,0,0.7);
+}
+
+#revive-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+#revive-player-name {
+  font-family: 'Lora', serif;
+  font-size: 15px;
+  font-weight: 700;
+  color: #d8d0e8;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.revive-bullet {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #7d2dff;
+  box-shadow: 0 0 6px rgba(125,45,255,0.8);
+  flex-shrink: 0;
+}
+
+#revive-time {
+  font-family: 'Lora', serif;
+  font-size: 15px;
+  font-weight: 700;
+  color: #7d2dff;
+  letter-spacing: 0.05em;
+  text-shadow: 0 0 8px rgba(125,45,255,0.7);
+}
+
+#revive-progress-track {
+  width: 100%;
+  height: 4px;
+  background: rgba(125, 45, 255, 0.15);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+#revive-progress-fill {
+  height: 100%;
+  width: 68%;  /* ~40s of 60s remaining → ~68% */
+  background: linear-gradient(90deg, #7d2dff 0%, #a855f7 100%);
+  border-radius: 2px;
+  box-shadow: 0 0 8px rgba(125,45,255,0.6);
+}
+
+/* ================================================
+   FLOOR ATMOSPHERE — subtle dungeon torchlight pools
+   ================================================ */
+.torch-pool {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.torch-pool-1 {
+  width: 320px;
+  height: 180px;
+  left: 320px;
+  top: 520px;
+  background: radial-gradient(ellipse, rgba(192,125,53,0.07) 0%, transparent 70%);
+}
+
+.torch-pool-2 {
+  width: 280px;
+  height: 160px;
+  left: 1080px;
+  top: 440px;
+  background: radial-gradient(ellipse, rgba(192,125,53,0.06) 0%, transparent 70%);
+}
+
+.torch-pool-3 {
+  width: 240px;
+  height: 140px;
+  left: 820px;
+  top: 610px;
+  background: radial-gradient(ellipse, rgba(192,125,53,0.05) 0%, transparent 70%);
+}
+</style>
+</head>
+<body>
+
+<div id="scale-root">
+
+  <!-- ============================================================
+       GAME CANVAS
+       ============================================================ -->
+  <div id="game-canvas">
+
+    <!-- Atmospheric torch pools -->
+    <div class="torch-pool torch-pool-1"></div>
+    <div class="torch-pool torch-pool-2"></div>
+    <div class="torch-pool torch-pool-3"></div>
+
+    <!-- Spirit Bond Tethers -->
+    <div id="tether-layer">
+      <div class="tether-cyby-mira"></div>
+      <div class="tether-dani-rexx"></div>
+    </div>
+
+    <!-- ENEMIES -->
+    <div class="enemy enemy-1">
+      <div class="enemy-shape"></div>
+      <div class="enemy-label">Shade</div>
+    </div>
+    <div class="enemy enemy-2">
+      <div class="enemy-shape"></div>
+      <div class="enemy-label">Shade</div>
+    </div>
+    <div class="enemy enemy-3">
+      <div class="enemy-shape"></div>
+      <div class="enemy-label">Hollow Knight</div>
+    </div>
+
+    <!-- PLAYER CHARACTERS -->
+
+    <!-- Cyby — blue, full health -->
+    <div class="character char-cyby">
+      <div class="char-tag">
+        <span class="char-tag-name">Cyby</span>
+        <div class="char-tag-pips">
+          <div class="pip pip-full"></div>
+          <div class="pip pip-full"></div>
+          <div class="pip pip-full"></div>
+        </div>
+      </div>
+      <div class="char-dot" style="background: radial-gradient(circle at 38% 35%, #6aabf7, #4a90d9 55%, #2a5a99); border-color: rgba(74,144,217,0.4); box-shadow: 0 0 16px rgba(74,144,217,0.5);">C</div>
+    </div>
+
+    <!-- Mira — green, full health -->
+    <div class="character char-mira">
+      <div class="char-tag">
+        <span class="char-tag-name">Mira</span>
+        <div class="char-tag-pips">
+          <div class="pip pip-full"></div>
+          <div class="pip pip-full"></div>
+          <div class="pip pip-full"></div>
+        </div>
+      </div>
+      <div class="char-dot" style="background: radial-gradient(circle at 38% 35%, #7dcc7d, #5aad5a 55%, #2e6b2e); border-color: rgba(90,173,90,0.4); box-shadow: 0 0 16px rgba(90,173,90,0.5);">M</div>
+    </div>
+
+    <!-- Dani — amber, downed / spirit form -->
+    <div class="character char-dani">
+      <div class="char-tag" style="border-color: rgba(125,45,255,0.35); background: rgba(125,45,255,0.1);">
+        <span class="char-tag-name" style="color: #a89ec0;">Dani</span>
+        <div class="char-tag-pips">
+          <div class="pip pip-empty"></div>
+          <div class="pip pip-empty"></div>
+          <div class="pip pip-empty"></div>
+        </div>
+        <span class="ghost-icon">👻</span>
+      </div>
+      <div class="char-dot" style="background: radial-gradient(circle at 38% 35%, #e09040, #c07d35 55%, #7a4d1d); border-color: rgba(125,45,255,0.5); box-shadow: 0 0 18px rgba(125,45,255,0.5);">
+        D
+        <div class="char-spirit-overlay"></div>
+      </div>
+    </div>
+
+    <!-- Rexx — purple, partial health -->
+    <div class="character char-rexx">
+      <div class="char-tag">
+        <span class="char-tag-name">Rexx</span>
+        <div class="char-tag-pips">
+          <div class="pip pip-full"></div>
+          <div class="pip pip-half"></div>
+          <div class="pip pip-empty"></div>
+        </div>
+      </div>
+      <div class="char-dot" style="background: radial-gradient(circle at 38% 35%, #c07be0, #9b59b6 55%, #5c2d7a); border-color: rgba(155,89,182,0.4); box-shadow: 0 0 16px rgba(155,89,182,0.5);">R</div>
+    </div>
+
+    <!-- Kai — red, good health -->
+    <div class="character char-kai">
+      <div class="char-tag">
+        <span class="char-tag-name">Kai</span>
+        <div class="char-tag-pips">
+          <div class="pip pip-full"></div>
+          <div class="pip pip-full"></div>
+          <div class="pip pip-half"></div>
+        </div>
+      </div>
+      <div class="char-dot" style="background: radial-gradient(circle at 38% 35%, #e05050, #c0392b 55%, #7a1a1a); border-color: rgba(192,57,43,0.4); box-shadow: 0 0 16px rgba(192,57,43,0.5);">K</div>
+    </div>
+
+  </div><!-- /game-canvas -->
+
+
+  <!-- ============================================================
+       TOP STRIP
+       ============================================================ -->
+  <div id="top-strip">
+
+    <div id="wordmark">Party Delve</div>
+
+    <div id="player-chips">
+
+      <!-- Cyby -->
+      <div class="player-chip">
+        <div class="chip-dot" style="background: #4a90d9; box-shadow: 0 0 6px rgba(74,144,217,0.7);"></div>
+        <span class="chip-name">Cyby</span>
+        <div class="chip-pips">
+          <div class="chip-pip chip-pip-full"></div>
+          <div class="chip-pip chip-pip-full"></div>
+          <div class="chip-pip chip-pip-full"></div>
+          <div class="chip-pip chip-pip-full"></div>
+          <div class="chip-pip chip-pip-full"></div>
+        </div>
+      </div>
+
+      <!-- Mira -->
+      <div class="player-chip">
+        <div class="chip-dot" style="background: #5aad5a; box-shadow: 0 0 6px rgba(90,173,90,0.7);"></div>
+        <span class="chip-name">Mira</span>
+        <div class="chip-pips">
+          <div class="chip-pip chip-pip-full"></div>
+          <div class="chip-pip chip-pip-full"></div>
+          <div class="chip-pip chip-pip-full"></div>
+          <div class="chip-pip chip-pip-full"></div>
+          <div class="chip-pip chip-pip-full"></div>
+        </div>
+      </div>
+
+      <!-- Dani — spirit/downed state -->
+      <div class="player-chip chip-dani">
+        <div class="chip-dot" style="background: #c07d35; box-shadow: 0 0 6px rgba(125,45,255,0.7);"></div>
+        <span class="chip-name" style="color: #a89ec0;">Dani</span>
+        <span class="chip-ghost">👻</span>
+      </div>
+
+      <!-- Rexx -->
+      <div class="player-chip">
+        <div class="chip-dot" style="background: #9b59b6; box-shadow: 0 0 6px rgba(155,89,182,0.7);"></div>
+        <span class="chip-name">Rexx</span>
+        <div class="chip-pips">
+          <div class="chip-pip chip-pip-full"></div>
+          <div class="chip-pip chip-pip-full"></div>
+          <div class="chip-pip chip-pip-half"></div>
+          <div class="chip-pip chip-pip-empty"></div>
+          <div class="chip-pip chip-pip-empty"></div>
+        </div>
+      </div>
+
+      <!-- Kai -->
+      <div class="player-chip">
+        <div class="chip-dot" style="background: #c0392b; box-shadow: 0 0 6px rgba(192,57,43,0.7);"></div>
+        <span class="chip-name">Kai</span>
+        <div class="chip-pips">
+          <div class="chip-pip chip-pip-full"></div>
+          <div class="chip-pip chip-pip-full"></div>
+          <div class="chip-pip chip-pip-full"></div>
+          <div class="chip-pip chip-pip-half"></div>
+          <div class="chip-pip chip-pip-empty"></div>
+        </div>
+      </div>
+
+    </div><!-- /player-chips -->
+
+  </div><!-- /top-strip -->
+
+
+  <!-- ============================================================
+       TOP-LEFT CORNER — Level / Biome
+       ============================================================ -->
+  <div id="level-label">Level 2 &middot; Grassland Plains</div>
+
+
+  <!-- ============================================================
+       TOP-RIGHT CORNER — Objective
+       ============================================================ -->
+  <div id="objective-label">
+    <span class="obj-keyword">CLEAR</span> &middot; 4 enemies remain
+  </div>
+
+
+  <!-- ============================================================
+       BOTTOM-CENTER — Revive Timer
+       ============================================================ -->
+  <div id="revive-timer">
+    <div id="revive-label">
+      <span id="revive-player-name">Dani</span>
+      <div class="revive-bullet"></div>
+      <span id="revive-time">40s</span>
+    </div>
+    <div id="revive-progress-track">
+      <div id="revive-progress-fill"></div>
+    </div>
+  </div>
+
+</div><!-- /scale-root -->
+
+</body>
+</html>

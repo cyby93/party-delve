@@ -1,0 +1,761 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Party Delve — Join Flow Wireframe</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Uncial+Antiqua&family=Lora:ital,wght@0,400;0,600;0,700;1,400&display=swap');
+
+    /* ── Design Tokens ── */
+    :root {
+      --bg-base:        #0f0e10;
+      --bg-surface:     #181620;
+      --bg-subtle:      #22202e;
+      --border:         #36334a;
+      --text-primary:   #d8d0e8;
+      --text-secondary: #a89ec0;
+      --spirit-blue:    #6ea8d8;
+      --spirit-hover:   #88c0ee;
+      --warm-amber:     #c07d35;
+      --corruption:     #7d2dff;
+
+      --player-blue:    #6ea8d8;
+      --player-green:   #5fba8a;
+      --player-amber:   #c07d35;
+      --player-purple:  #7d2dff;
+    }
+
+    /* ── Reset & Base ── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0a0908;
+      font-family: 'Lora', Georgia, serif;
+      color: var(--text-primary);
+      padding: 48px 32px 80px;
+      min-height: 100vh;
+    }
+
+    /* ── Section labels ── */
+    .section-label {
+      font-family: 'Lora', Georgia, serif;
+      color: var(--text-secondary);
+      font-size: 13px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      margin-bottom: 20px;
+      padding-left: 4px;
+    }
+
+    .section-wrapper {
+      margin-bottom: 64px;
+    }
+
+    /* ═══════════════════════════════════════════
+       SECTION 1 — HOST LOBBY SCREEN
+    ═══════════════════════════════════════════ */
+
+    .host-frame {
+      width: 960px;
+      height: 540px;
+      background: var(--bg-base);
+      border-radius: 8px;
+      position: relative;
+      overflow: hidden;
+      box-shadow:
+        0 0 0 1px var(--border),
+        0 0 40px 0 rgba(110, 168, 216, 0.12),
+        0 8px 64px 0 rgba(0, 0, 0, 0.7);
+    }
+
+    /* Subtle isometric grid background */
+    .host-frame::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background-image:
+        repeating-linear-gradient(
+          45deg,
+          transparent,
+          transparent 39px,
+          #131210 39px,
+          #131210 40px
+        ),
+        repeating-linear-gradient(
+          -45deg,
+          transparent,
+          transparent 39px,
+          #131210 39px,
+          #131210 40px
+        );
+      opacity: 0.55;
+      pointer-events: none;
+    }
+
+    /* Radial vignette over grid */
+    .host-frame::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse 80% 70% at 50% 50%, transparent 30%, rgba(15, 14, 16, 0.72) 100%);
+      pointer-events: none;
+    }
+
+    .host-content {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      height: 100%;
+      padding: 32px 40px 28px;
+    }
+
+    /* Title area */
+    .host-title {
+      font-family: 'Uncial Antiqua', cursive;
+      font-size: 48px;
+      color: var(--text-primary);
+      text-shadow:
+        0 0 20px rgba(110, 168, 216, 0.55),
+        0 0 60px rgba(110, 168, 216, 0.2);
+      letter-spacing: 0.04em;
+      line-height: 1.1;
+    }
+
+    .host-session-code {
+      font-family: 'Lora', Georgia, serif;
+      font-weight: 700;
+      font-size: 15px;
+      color: var(--text-secondary);
+      letter-spacing: 0.35em;
+      margin-top: 4px;
+      text-transform: uppercase;
+    }
+
+    /* QR placeholder */
+    .qr-block {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin-top: 18px;
+    }
+
+    .qr-box {
+      width: 148px;
+      height: 148px;
+      background: var(--bg-surface);
+      border: 2px solid var(--border);
+      border-radius: 4px;
+      display: grid;
+      grid-template-columns: repeat(8, 1fr);
+      grid-template-rows: repeat(8, 1fr);
+      gap: 2px;
+      padding: 10px;
+    }
+
+    .qr-cell {
+      border-radius: 1px;
+    }
+
+    .qr-dark { background: var(--text-primary); }
+    .qr-light { background: var(--bg-surface); }
+
+    .qr-caption {
+      margin-top: 10px;
+      font-size: 11px;
+      color: var(--text-secondary);
+      letter-spacing: 0.03em;
+    }
+
+    /* Player slots */
+    .player-slots-row {
+      display: flex;
+      gap: 10px;
+      margin-top: auto;
+      align-items: center;
+    }
+
+    .slot {
+      height: 40px;
+      border-radius: 20px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 12px;
+      font-size: 12px;
+    }
+
+    .slot-filled {
+      background: var(--bg-surface);
+      min-width: 96px;
+    }
+
+    .slot-filled .slot-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .slot-filled .slot-name {
+      font-family: 'Lora', Georgia, serif;
+      font-weight: 600;
+      font-size: 12px;
+      color: var(--text-primary);
+    }
+
+    .slot-kick {
+      font-size: 9px;
+      color: var(--border);
+      margin-left: 2px;
+      cursor: pointer;
+      letter-spacing: 0.03em;
+    }
+
+    /* Colored left border: implemented via box-shadow on left */
+    .slot-blue   { box-shadow: inset 3px 0 0 0 var(--player-blue); }
+    .slot-green  { box-shadow: inset 3px 0 0 0 var(--player-green); }
+    .slot-amber  { box-shadow: inset 3px 0 0 0 var(--player-amber); }
+    .slot-purple { box-shadow: inset 3px 0 0 0 var(--player-purple); }
+
+    .slot-empty {
+      background: var(--bg-surface);
+      border: 1.5px dashed var(--border);
+      min-width: 90px;
+      justify-content: center;
+    }
+
+    .slot-empty .slot-waiting {
+      font-family: 'Lora', Georgia, serif;
+      font-style: italic;
+      font-size: 11px;
+      color: var(--border);
+    }
+
+    /* Start game button */
+    .host-footer {
+      position: absolute;
+      bottom: 28px;
+      right: 40px;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 6px;
+      z-index: 2;
+    }
+
+    .btn-start {
+      background: var(--spirit-blue);
+      color: var(--bg-base);
+      font-family: 'Uncial Antiqua', cursive;
+      font-size: 18px;
+      border: none;
+      border-radius: 28px;
+      padding: 12px 28px;
+      cursor: pointer;
+      letter-spacing: 0.04em;
+      box-shadow: 0 0 16px rgba(110, 168, 216, 0.35);
+    }
+
+    .btn-start-sub {
+      font-family: 'Lora', Georgia, serif;
+      font-size: 11px;
+      color: var(--text-secondary);
+    }
+
+    /* ═══════════════════════════════════════════
+       PHONE FRAMES (shared)
+    ═══════════════════════════════════════════ */
+
+    .phones-row {
+      display: flex;
+      gap: 40px;
+      align-items: flex-start;
+    }
+
+    .phone-wrapper {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .phone-frame {
+      width: 390px;
+      height: 844px;
+      background: var(--bg-base);
+      border-radius: 36px;
+      border: 1.5px solid var(--border);
+      overflow: hidden;
+      position: relative;
+      box-shadow:
+        0 0 0 6px #0d0c0f,
+        0 0 0 8px #1e1c28,
+        0 12px 60px rgba(0,0,0,0.7);
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Notch/status bar */
+    .phone-notch {
+      width: 100%;
+      height: 44px;
+      background: var(--bg-base);
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+    }
+
+    .notch-pill {
+      width: 120px;
+      height: 28px;
+      background: #0a0908;
+      border-radius: 20px;
+    }
+
+    .phone-body {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      padding: 16px 28px 36px;
+      overflow: hidden;
+    }
+
+    /* ═══════════════════════════════════════════
+       PHONE SCREEN 1 — AUTH CHOICE
+    ═══════════════════════════════════════════ */
+
+    .auth-top {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding-top: 32px;
+      margin-bottom: 48px;
+    }
+
+    .phone-wordmark {
+      font-family: 'Uncial Antiqua', cursive;
+      font-size: 24px;
+      color: var(--text-primary);
+      text-shadow: 0 0 12px rgba(110, 168, 216, 0.4);
+      letter-spacing: 0.04em;
+    }
+
+    .phone-session-tag {
+      font-family: 'Lora', Georgia, serif;
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-top: 6px;
+      letter-spacing: 0.04em;
+    }
+
+    .phone-divider {
+      width: 100%;
+      height: 1px;
+      background: var(--border);
+      opacity: 0.5;
+      margin: 32px 0;
+    }
+
+    .auth-middle {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .auth-heading {
+      font-family: 'Lora', Georgia, serif;
+      font-size: 11px;
+      letter-spacing: 0.16em;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+
+    /* Buttons */
+    .btn-primary-phone {
+      width: 100%;
+      padding: 18px 0;
+      background: var(--spirit-blue);
+      color: var(--bg-base);
+      font-family: 'Lora', Georgia, serif;
+      font-weight: 700;
+      font-size: 16px;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      letter-spacing: 0.02em;
+    }
+
+    .btn-secondary-phone {
+      width: 100%;
+      padding: 17px 0;
+      background: var(--bg-surface);
+      color: var(--spirit-blue);
+      font-family: 'Lora', Georgia, serif;
+      font-weight: 600;
+      font-size: 16px;
+      border: 1px solid var(--spirit-blue);
+      border-radius: 12px;
+      cursor: pointer;
+      letter-spacing: 0.02em;
+    }
+
+    .btn-tertiary-phone {
+      width: 100%;
+      padding: 17px 0;
+      background: var(--bg-surface);
+      color: var(--text-secondary);
+      font-family: 'Lora', Georgia, serif;
+      font-weight: 400;
+      font-size: 16px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      cursor: pointer;
+      letter-spacing: 0.02em;
+    }
+
+    .auth-disclaimer {
+      font-family: 'Lora', Georgia, serif;
+      font-size: 11px;
+      color: var(--border);
+      text-align: center;
+      line-height: 1.55;
+      margin-top: 20px;
+    }
+
+    .auth-footer {
+      margin-top: auto;
+      text-align: center;
+    }
+
+    .auth-link {
+      font-family: 'Lora', Georgia, serif;
+      font-size: 11px;
+      color: var(--text-secondary);
+      text-decoration: underline;
+      text-underline-offset: 3px;
+      cursor: pointer;
+      opacity: 0.7;
+    }
+
+    /* ═══════════════════════════════════════════
+       PHONE SCREEN 2 — SESSION CODE ENTRY
+    ═══════════════════════════════════════════ */
+
+    .join-top {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding-top: 28px;
+      margin-bottom: 36px;
+    }
+
+    .join-heading {
+      font-family: 'Uncial Antiqua', cursive;
+      font-size: 22px;
+      color: var(--text-primary);
+      letter-spacing: 0.04em;
+    }
+
+    .field-label {
+      font-family: 'Lora', Georgia, serif;
+      font-size: 10px;
+      font-weight: 700;
+      font-variant: small-caps;
+      letter-spacing: 0.22em;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+
+    .field-group {
+      margin-bottom: 24px;
+    }
+
+    .input-code {
+      width: 100%;
+      background: var(--bg-surface);
+      border: 2px solid var(--spirit-blue);
+      border-radius: 10px;
+      padding: 16px 0;
+      text-align: center;
+      font-family: 'Lora', Georgia, serif;
+      font-weight: 700;
+      font-size: 28px;
+      color: var(--text-primary);
+      letter-spacing: 0.12em;
+      box-shadow: 0 0 12px rgba(110, 168, 216, 0.2), inset 0 0 16px rgba(110, 168, 216, 0.04);
+      display: block;
+    }
+
+    .field-hint {
+      font-family: 'Lora', Georgia, serif;
+      font-size: 11px;
+      color: var(--text-secondary);
+      margin-top: 7px;
+      letter-spacing: 0.01em;
+    }
+
+    .input-name {
+      width: 100%;
+      background: var(--bg-surface);
+      border: 1.5px solid var(--border);
+      border-radius: 10px;
+      padding: 16px 16px;
+      font-family: 'Lora', Georgia, serif;
+      font-size: 16px;
+      color: var(--border);
+      letter-spacing: 0.01em;
+      display: block;
+    }
+
+    /* Player preview */
+    .join-preview {
+      margin-top: 8px;
+      margin-bottom: 24px;
+    }
+
+    .join-preview-label {
+      font-family: 'Lora', Georgia, serif;
+      font-size: 11px;
+      color: var(--text-secondary);
+      margin-bottom: 10px;
+    }
+
+    .join-preview-dots {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+    }
+
+    .dot-blue   { background: var(--player-blue); }
+    .dot-green  { background: var(--player-green); }
+    .dot-amber  { background: var(--player-amber); }
+    .dot-purple { background: var(--player-purple); }
+
+    .dot-others {
+      font-family: 'Lora', Georgia, serif;
+      font-size: 11px;
+      color: var(--text-secondary);
+      margin-left: 4px;
+    }
+
+    .btn-join {
+      width: 100%;
+      height: 56px;
+      background: var(--spirit-blue);
+      color: var(--bg-base);
+      font-family: 'Lora', Georgia, serif;
+      font-weight: 700;
+      font-size: 18px;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      letter-spacing: 0.04em;
+      box-shadow: 0 0 16px rgba(110, 168, 216, 0.3);
+      margin-top: auto;
+    }
+
+    .join-body {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      padding: 16px 28px 36px;
+      overflow: hidden;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ═══════════════════════════════════════════════
+       SECTION 1 — HOST LOBBY SCREEN
+  ═══════════════════════════════════════════════ -->
+  <div class="section-wrapper">
+    <p class="section-label">Host — Lobby Screen</p>
+
+    <div class="host-frame">
+      <div class="host-content">
+
+        <!-- Title -->
+        <div style="text-align:center;">
+          <div class="host-title">Party Delve</div>
+          <div class="host-session-code">WOLF-7</div>
+        </div>
+
+        <!-- QR code block -->
+        <div class="qr-block">
+          <div class="qr-box">
+            <!-- Row 1 -->
+            <div class="qr-cell qr-dark"></div><div class="qr-cell qr-dark"></div><div class="qr-cell qr-dark"></div><div class="qr-cell qr-light"></div><div class="qr-cell qr-dark"></div><div class="qr-cell qr-light"></div><div class="qr-cell qr-dark"></div><div class="qr-cell qr-dark"></div>
+            <!-- Row 2 -->
+            <div class="qr-cell qr-dark"></div><div class="qr-cell qr-light"></div><div class="qr-cell qr-dark"></div><div class="qr-cell qr-dark"></div><div class="qr-cell qr-light"></div><div class="qr-cell qr-dark"></div><div class="qr-cell qr-light"></div><div class="qr-cell qr-dark"></div>
+            <!-- Row 3 -->
+            <div class="qr-cell qr-dark"></div><div class="qr-cell qr-dark"></div><div class="qr-cell qr-light"></div><div class="qr-cell qr-dark"></div><div class="qr-cell qr-dark"></div><div class="qr-cell qr-light"></div><div class="qr-cell qr-dark"></div><div class="qr-cell qr-dark"></div>
+            <!-- Row 4 -->
+            <div class="qr-cell qr-light"></div><div class="qr-cell qr-dark"></div><div class="qr-cell qr-light"></div><div class="qr-cell qr-dark"></div><div class="qr-cell qr-light"></div><div class="qr-cell qr-dark"></div><div class="qr-cell qr-light"></div><div class="qr-cell qr-dark"></div>
+            <!-- Row 5 -->
+            <div class="qr-cell qr-dark"></div><div class="qr-cell qr-light"></div><div class="qr-cell qr-dark"></div><div class="qr-cell qr-light"></div><div class="qr-cell qr-dark"></div><div class="qr-cell qr-dark"></div><div class="qr-cell qr-dark"></div><div class="qr-cell qr-light"></div>
+            <!-- Row 6 -->
+            <div class="qr-cell qr-dark"></div><div class="qr-cell qr-dark"></div><div class="qr-cell qr-light"></div><div class="qr-cell qr-dark"></div><div class="qr-cell qr-light"></div><div class="qr-cell qr-dark"></div><div class="qr-cell qr-light"></div><div class="qr-cell qr-dark"></div>
+            <!-- Row 7 -->
+            <div class="qr-cell qr-light"></div><div class="qr-cell qr-dark"></div><div class="qr-cell qr-dark"></div><div class="qr-cell qr-light"></div><div class="qr-cell qr-dark"></div><div class="qr-cell qr-light"></div><div class="qr-cell qr-dark"></div><div class="qr-cell qr-dark"></div>
+            <!-- Row 8 -->
+            <div class="qr-cell qr-dark"></div><div class="qr-cell qr-light"></div><div class="qr-cell qr-dark"></div><div class="qr-cell qr-dark"></div><div class="qr-cell qr-light"></div><div class="qr-cell qr-dark"></div><div class="qr-cell qr-dark"></div><div class="qr-cell qr-light"></div>
+          </div>
+          <div class="qr-caption">Scan with your phone or enter <strong style="color:var(--text-primary);letter-spacing:0.08em;">WOLF-7</strong></div>
+        </div>
+
+        <!-- Player slots -->
+        <div class="player-slots-row">
+          <!-- Filled slots -->
+          <div class="slot slot-filled slot-blue">
+            <div class="slot-dot" style="background:var(--player-blue);"></div>
+            <span class="slot-name">Cyby</span>
+            <span class="slot-kick">✕ kick</span>
+          </div>
+          <div class="slot slot-filled slot-green">
+            <div class="slot-dot" style="background:var(--player-green);"></div>
+            <span class="slot-name">Mira</span>
+            <span class="slot-kick">✕ kick</span>
+          </div>
+          <div class="slot slot-filled slot-amber">
+            <div class="slot-dot" style="background:var(--player-amber);"></div>
+            <span class="slot-name">Dani</span>
+            <span class="slot-kick">✕ kick</span>
+          </div>
+          <div class="slot slot-filled slot-purple">
+            <div class="slot-dot" style="background:var(--player-purple);"></div>
+            <span class="slot-name">Rexx</span>
+            <span class="slot-kick">✕ kick</span>
+          </div>
+          <!-- Empty slots -->
+          <div class="slot slot-empty"><span class="slot-waiting">Waiting...</span></div>
+          <div class="slot slot-empty"><span class="slot-waiting">Waiting...</span></div>
+          <div class="slot slot-empty"><span class="slot-waiting">Waiting...</span></div>
+          <div class="slot slot-empty"><span class="slot-waiting">Waiting...</span></div>
+        </div>
+
+      </div>
+
+      <!-- Start game button — outside flow, absolute positioned -->
+      <div class="host-footer">
+        <button class="btn-start">Start Game</button>
+        <span class="btn-start-sub">4 players ready</span>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ═══════════════════════════════════════════════
+       SECTIONS 2 & 3 — PHONE SCREENS (side by side)
+  ═══════════════════════════════════════════════ -->
+  <div class="phones-row">
+
+    <!-- PHONE SCREEN 1 — AUTH CHOICE -->
+    <div class="phone-wrapper">
+      <p class="section-label">Phone — Step 1: Choose how to play</p>
+
+      <div class="phone-frame">
+        <!-- Notch -->
+        <div class="phone-notch">
+          <div class="notch-pill"></div>
+        </div>
+
+        <div class="phone-body">
+
+          <!-- Top: wordmark + session confirm -->
+          <div class="auth-top">
+            <div class="phone-wordmark">Party Delve</div>
+            <div class="phone-session-tag">Session WOLF-7</div>
+          </div>
+
+          <!-- Auth heading -->
+          <div class="auth-heading">How do you want to play?</div>
+
+          <!-- Three buttons -->
+          <div class="auth-middle">
+            <button class="btn-primary-phone">Continue as Guest</button>
+            <button class="btn-secondary-phone">Sign In</button>
+            <button class="btn-tertiary-phone">Sign Up</button>
+          </div>
+
+          <!-- Disclaimer -->
+          <div class="auth-disclaimer">
+            Guests have full access to all classes.<br>Sign in to save your progress.
+          </div>
+
+          <div class="phone-divider"></div>
+
+          <!-- Footer link -->
+          <div class="auth-footer">
+            <span class="auth-link">Already have the code?</span>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+
+    <!-- PHONE SCREEN 2 — SESSION CODE ENTRY -->
+    <div class="phone-wrapper">
+      <p class="section-label">Phone — Step 2: Enter session</p>
+
+      <div class="phone-frame">
+        <!-- Notch -->
+        <div class="phone-notch">
+          <div class="notch-pill"></div>
+        </div>
+
+        <div class="join-body">
+
+          <!-- Top heading -->
+          <div class="join-top">
+            <div class="join-heading">Join Session</div>
+          </div>
+
+          <!-- Session code field -->
+          <div class="field-group">
+            <div class="field-label">Session Code</div>
+            <div class="input-code">WOLF-7</div>
+            <div class="field-hint">Pre-filled from your scan. Tap Join to enter.</div>
+          </div>
+
+          <!-- Player name field -->
+          <div class="field-group">
+            <div class="field-label">Your Name</div>
+            <div class="input-name">Enter your name...</div>
+          </div>
+
+          <!-- Player list preview -->
+          <div class="join-preview">
+            <div class="join-preview-label">In session:</div>
+            <div class="join-preview-dots">
+              <div class="dot dot-blue"></div>
+              <div class="dot dot-green"></div>
+              <div class="dot dot-amber"></div>
+              <div class="dot dot-purple"></div>
+              <span class="dot-others">and 0 others</span>
+            </div>
+          </div>
+
+          <!-- Join button -->
+          <button class="btn-join">Join Game</button>
+
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+</body>
+</html>

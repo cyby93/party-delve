@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Party Delve — Primal &amp; Fractured</title>
+<style>
+  /*
+   * DIRECTION: Primal & Fractured
+   * Register: High-contrast, epic, battle-forward. Corruption bleeds at the edges.
+   *
+   * COLOR TOKENS:
+   * --bg-void:          #0d0d0f  (near-black void — oppressive)
+   * --bg-surface:       #131318  (lifted surface — dark panel)
+   * --bg-card:          #18181f  (card layer)
+   * --accent-corrupt:   #7d2dff  (sickly corruption purple — danger/highlight)
+   * --accent-corrupt-b: #39ff14  (acid green — secondary corruption, use sparingly)
+   * --accent-gold:      #f0b429  (warm player gold)
+   * --accent-gold-dim:  #a87820  (dimmer gold)
+   * --text-white:       #ffffff  (primary text — pure white)
+   * --text-mid:         #b0b0c0  (secondary text — cool grey)
+   * --text-muted:       #50505a  (muted/disabled)
+   * --border-void:      #2a2a35  (subtle border)
+   * --border-corrupt:   #7d2dff  (corruption border)
+   * --slot-empty:       #0f0f14  (empty slot background)
+   * --btn-disabled:     #1a1a22  (disabled button)
+   * --corrupt-glow:     rgba(125,45,255,0.25) (corruption glow)
+   * --gold-glow:        rgba(240,180,41,0.2)  (player gold glow)
+  */
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background-color: #0d0d0f;
+    color: #ffffff;
+    font-family: 'Arial Narrow', Arial, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 24px 16px;
+    /* Corruption bleed from corners */
+    background-image:
+      radial-gradient(ellipse 300px 200px at 0% 0%, rgba(125,45,255,0.18) 0%, transparent 70%),
+      radial-gradient(ellipse 300px 200px at 100% 100%, rgba(57,255,20,0.1) 0%, transparent 70%),
+      radial-gradient(ellipse 200px 300px at 100% 0%, rgba(125,45,255,0.10) 0%, transparent 70%);
+  }
+
+  /* ---- Corruption crack line decoration ---- */
+  .corruption-bar-top {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, transparent 0%, #7d2dff 30%, #39ff14 55%, #7d2dff 80%, transparent 100%);
+    opacity: 0.8;
+  }
+  .corruption-bar-bottom {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, transparent 0%, #39ff14 20%, #7d2dff 50%, #39ff14 80%, transparent 100%);
+    opacity: 0.5;
+  }
+
+  /* ---- Rationale Panel ---- */
+  .rationale {
+    background: #131318;
+    border: 1px solid #2a2a35;
+    border-left: 3px solid #7d2dff;
+    padding: 12px 16px;
+    max-width: 820px;
+    width: 100%;
+    margin-bottom: 20px;
+  }
+  .rationale-label {
+    font-size: 9px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: #7d2dff;
+    margin-bottom: 5px;
+  }
+  .rationale p {
+    font-size: 12px;
+    line-height: 1.55;
+    color: #b0b0c0;
+    font-style: italic;
+  }
+
+  /* ---- Lobby wrapper ---- */
+  .lobby {
+    background: #131318;
+    border: 1px solid #2a2a35;
+    border-top: 2px solid #7d2dff;
+    max-width: 820px;
+    width: 100%;
+    padding: 0;
+    box-shadow:
+      0 0 0 1px #0d0d0f,
+      0 0 40px rgba(125,45,255,0.15),
+      0 0 80px rgba(125,45,255,0.07);
+  }
+
+  /* ---- Header bar ---- */
+  .header-bar {
+    background: #18181f;
+    border-bottom: 1px solid #2a2a35;
+    padding: 20px 32px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .title-block {
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+  }
+  .title {
+    font-size: 42px;
+    font-weight: 900;
+    letter-spacing: -0.02em;
+    text-transform: uppercase;
+    color: #ffffff;
+    line-height: 1;
+    font-family: Impact, 'Arial Narrow', Arial, sans-serif;
+  }
+  .title span {
+    color: #7d2dff;
+    text-shadow: 0 0 20px rgba(125,45,255,0.8), 0 0 40px rgba(125,45,255,0.4);
+  }
+  .title-sub {
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    color: #50505a;
+    text-transform: uppercase;
+    align-self: center;
+  }
+
+  .session-block {
+    text-align: right;
+  }
+  .session-label {
+    font-size: 9px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: #50505a;
+    margin-bottom: 4px;
+  }
+  .session-code {
+    font-size: 28px;
+    font-weight: 900;
+    color: #f0b429;
+    letter-spacing: 0.15em;
+    font-family: 'Courier New', monospace;
+    text-shadow: 0 0 12px rgba(240,180,41,0.5);
+  }
+
+  /* ---- Main content ---- */
+  .main-content {
+    display: grid;
+    grid-template-columns: 180px 1fr;
+    gap: 0;
+  }
+
+  /* ---- QR Panel ---- */
+  .qr-panel {
+    border-right: 1px solid #2a2a35;
+    padding: 24px 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    background: #0f0f14;
+  }
+  .qr-label {
+    font-size: 9px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: #50505a;
+    align-self: flex-start;
+  }
+  .qr-box {
+    width: 130px;
+    height: 130px;
+    background: #f0f0f0;
+    border: 2px solid #7d2dff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #0d0d0f;
+    font-size: 11px;
+    font-family: 'Courier New', monospace;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    box-shadow: 0 0 16px rgba(125,45,255,0.4);
+  }
+  .qr-instruction {
+    font-size: 10px;
+    color: #50505a;
+    text-align: center;
+    line-height: 1.6;
+    letter-spacing: 0.04em;
+  }
+  .qr-instruction strong {
+    color: #f0b429;
+  }
+
+  /* ---- Players Panel ---- */
+  .players-panel {
+    padding: 20px 24px;
+  }
+  .panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #2a2a35;
+  }
+  .panel-label {
+    font-size: 9px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: #50505a;
+  }
+  .panel-count {
+    font-size: 12px;
+    font-weight: 700;
+    color: #f0b429;
+    letter-spacing: 0.1em;
+    font-family: 'Courier New', monospace;
+  }
+
+  .player-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .player-row {
+    display: grid;
+    grid-template-columns: 28px 1fr 80px 60px;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    background: #18181f;
+    border: 1px solid #2a2a35;
+    border-left: 3px solid transparent;
+  }
+  .player-row.joined {
+    border-left-color: #f0b429;
+    background: #1a1a20;
+  }
+  .player-row.waiting {
+    border-left-color: #2a2a35;
+    background: #0f0f14;
+    border-style: dashed;
+  }
+
+  .slot-num {
+    font-size: 11px;
+    font-weight: 700;
+    color: #50505a;
+    font-family: 'Courier New', monospace;
+    text-align: center;
+  }
+  .player-row.joined .slot-num {
+    color: #f0b429;
+  }
+
+  .player-name {
+    font-size: 20px;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #ffffff;
+    font-family: Impact, 'Arial Narrow', Arial, sans-serif;
+    line-height: 1;
+  }
+  .player-row.waiting .player-name {
+    font-size: 13px;
+    font-weight: 400;
+    font-family: Arial, sans-serif;
+    color: #50505a;
+    text-transform: none;
+    letter-spacing: 0.08em;
+    font-style: italic;
+  }
+
+  .player-archetype {
+    font-size: 10px;
+    color: #50505a;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+  }
+  .player-row.joined .player-archetype {
+    color: #7d2dff;
+  }
+
+  .player-status {
+    font-size: 11px;
+    font-weight: 700;
+    text-align: right;
+    font-family: 'Courier New', monospace;
+    letter-spacing: 0.08em;
+    color: #39ff14;
+    text-shadow: 0 0 8px rgba(57,255,20,0.6);
+  }
+  .player-row.waiting .player-status {
+    color: #2a2a35;
+  }
+
+  /* ---- Footer bar ---- */
+  .footer-bar {
+    border-top: 1px solid #2a2a35;
+    padding: 16px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: #0f0f14;
+  }
+  .begin-hint {
+    font-size: 11px;
+    color: #50505a;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+  }
+  .begin-hint span {
+    color: #7d2dff;
+  }
+
+  .begin-btn {
+    padding: 12px 40px;
+    font-size: 16px;
+    font-family: Impact, 'Arial Narrow', Arial, sans-serif;
+    font-weight: 900;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    border: 1px solid #2a2a35;
+    background: #1a1a22;
+    color: #50505a;
+    cursor: not-allowed;
+  }
+</style>
+</head>
+<body>
+
+<div class="corruption-bar-top"></div>
+<div class="corruption-bar-bottom"></div>
+
+<!-- Rationale Panel -->
+<div class="rationale">
+  <div class="rationale-label">Direction 2 of 4 — Primal &amp; Fractured</div>
+  <p>This direction foregrounds the corruption threat: void-black with corruption purple bleeding in from the edges, acid green as a second danger signal, and player gold as the only warmth on screen. Condensed Impact-weight type and grid-tight layout read like a war briefing — the hub isn't cosy, it's a staging area, and every moment spent here is borrowed from the descent.</p>
+</div>
+
+<!-- Lobby -->
+<div class="lobby">
+  <!-- Header Bar -->
+  <div class="header-bar">
+    <div class="title-block">
+      <div class="title">PARTY <span>DELVE</span></div>
+      <div class="title-sub">Ancestral Co-op · Local</div>
+    </div>
+    <div class="session-block">
+      <div class="session-label">Session Code</div>
+      <div class="session-code">WOLF-7</div>
+    </div>
+  </div>
+
+  <!-- Main Content -->
+  <div class="main-content">
+    <!-- QR Panel -->
+    <div class="qr-panel">
+      <div class="qr-label">Join via phone</div>
+      <div class="qr-box">[ QR CODE ]</div>
+      <div class="qr-instruction">
+        Scan the code or enter<br>
+        <strong>WOLF-7</strong><br>
+        on your phone
+      </div>
+    </div>
+
+    <!-- Players Panel -->
+    <div class="players-panel">
+      <div class="panel-header">
+        <div class="panel-label">Assembled Warriors</div>
+        <div class="panel-count">03 / 04</div>
+      </div>
+
+      <div class="player-rows">
+        <div class="player-row joined">
+          <div class="slot-num">01</div>
+          <div class="player-name">Cyby</div>
+          <div class="player-archetype">Warrior</div>
+          <div class="player-status">READY</div>
+        </div>
+
+        <div class="player-row joined">
+          <div class="slot-num">02</div>
+          <div class="player-name">Mira</div>
+          <div class="player-archetype">Shaman</div>
+          <div class="player-status">READY</div>
+        </div>
+
+        <div class="player-row joined">
+          <div class="slot-num">03</div>
+          <div class="player-name">Dani</div>
+          <div class="player-archetype">Scout</div>
+          <div class="player-status">READY</div>
+        </div>
+
+        <div class="player-row waiting">
+          <div class="slot-num">04</div>
+          <div class="player-name">Waiting...</div>
+          <div class="player-archetype">—</div>
+          <div class="player-status">—</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer Bar -->
+  <div class="footer-bar">
+    <div class="begin-hint">Waiting for slot <span>04</span> — 1 warrior short</div>
+    <button class="begin-btn" disabled>BEGIN RUN</button>
+  </div>
+</div>
+
+</body>
+</html>

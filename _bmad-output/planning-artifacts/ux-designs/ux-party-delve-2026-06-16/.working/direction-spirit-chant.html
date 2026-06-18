@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Party Delve — Spirit Chant</title>
+<style>
+  /*
+   * DIRECTION: Spirit Chant
+   * Register: Mystical, ceremonial, ethereal. Ancestral communion. Spirits are present.
+   *
+   * COLOR TOKENS:
+   * --bg-deep:         #121a12  (dark desaturated green-brown — forest floor night)
+   * --bg-surface:      #182018  (lifted surface — moss dark)
+   * --bg-card:         #1d261d  (card — forest shadow)
+   * --accent-spirit:   #a8c8d4  (soft spirit-glow blue-white — spirit presence)
+   * --accent-spirit-b: #cce8ee  (lighter spirit shimmer)
+   * --accent-amber:    #d4882a  (warm ancestral amber)
+   * --accent-amber-b:  #e8a040  (lighter amber glow)
+   * --text-sage:       #d4e8d4  (pale sage — primary text)
+   * --text-sage-mid:   #8aab8a  (mid sage — secondary text)
+   * --text-muted:      #4a6050  (muted sage — disabled/tertiary)
+   * --border-moss:     #2a3d2a  (subtle moss border)
+   * --border-spirit:   #a8c8d4  (spirit accent border)
+   * --slot-empty:      #0f160f  (empty slot void)
+   * --btn-disabled:    #1f2b1f  (disabled button)
+   * --spirit-glow:     rgba(168,200,212,0.15)  (spirit aura glow)
+   * --amber-glow:      rgba(212,136,42,0.2)   (amber ancestral glow)
+  */
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background-color: #121a12;
+    color: #d4e8d4;
+    font-family: Palatino, 'Palatino Linotype', Georgia, serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 16px;
+    background-image:
+      radial-gradient(ellipse 500px 400px at 50% 0%, rgba(168,200,212,0.06) 0%, transparent 70%),
+      radial-gradient(ellipse 300px 400px at 20% 100%, rgba(212,136,42,0.06) 0%, transparent 60%);
+  }
+
+  /* ---- Rationale Panel ---- */
+  .rationale {
+    background: rgba(29,38,29,0.7);
+    border: 1px solid #2a3d2a;
+    border-left: 3px solid #a8c8d4;
+    padding: 14px 20px;
+    max-width: 760px;
+    width: 100%;
+    margin-bottom: 40px;
+    border-radius: 2px;
+  }
+  .rationale-label {
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: #a8c8d4;
+    margin-bottom: 6px;
+    font-family: 'Courier New', monospace;
+  }
+  .rationale p {
+    font-size: 13px;
+    line-height: 1.7;
+    color: #8aab8a;
+    font-style: italic;
+  }
+
+  /* ---- Outer container ---- */
+  .ceremony {
+    max-width: 760px;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  /* ---- Title area ---- */
+  .title-area {
+    text-align: center;
+    margin-bottom: 48px;
+  }
+  .spirit-line {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 18px;
+    margin-bottom: 12px;
+  }
+  .spirit-mark {
+    width: 48px;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, #a8c8d4);
+    opacity: 0.5;
+  }
+  .spirit-mark.right {
+    background: linear-gradient(90deg, #a8c8d4, transparent);
+  }
+  .spirit-glyph {
+    font-size: 14px;
+    color: #a8c8d4;
+    letter-spacing: 0.3em;
+    opacity: 0.7;
+  }
+  .title {
+    font-size: 56px;
+    font-weight: 300;
+    color: #d4e8d4;
+    letter-spacing: 0.08em;
+    line-height: 1;
+    text-shadow: 0 0 60px rgba(168,200,212,0.3), 0 0 120px rgba(168,200,212,0.15);
+  }
+  .title em {
+    font-style: italic;
+    color: #a8c8d4;
+  }
+  .subtitle {
+    font-size: 13px;
+    color: #4a6050;
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    margin-top: 10px;
+  }
+
+  /* ---- Session invocation ---- */
+  .invocation {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-bottom: 44px;
+    gap: 6px;
+  }
+  .invocation-label {
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: #4a6050;
+  }
+  .invocation-code {
+    font-size: 32px;
+    font-weight: 300;
+    letter-spacing: 0.4em;
+    color: #d4882a;
+    text-shadow: 0 0 20px rgba(212,136,42,0.4), 0 0 40px rgba(212,136,42,0.2);
+  }
+
+  /* ---- Main ritual layout ---- */
+  .ritual-row {
+    display: flex;
+    gap: 52px;
+    align-items: flex-start;
+  }
+
+  /* ---- QR (Oracle side) ---- */
+  .oracle-side {
+    flex: 0 0 180px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+  }
+  .oracle-label {
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: #4a6050;
+    text-align: center;
+  }
+  .qr-frame {
+    position: relative;
+    width: 150px;
+    height: 150px;
+  }
+  /* Corner spirit markers */
+  .qr-frame::before, .qr-frame::after {
+    content: '';
+    position: absolute;
+    width: 14px;
+    height: 14px;
+    border-color: #a8c8d4;
+    border-style: solid;
+    opacity: 0.7;
+  }
+  .qr-frame::before { top: -2px; left: -2px; border-width: 2px 0 0 2px; }
+  .qr-frame::after  { bottom: -2px; right: -2px; border-width: 0 2px 2px 0; }
+  .qr-inner {
+    width: 100%;
+    height: 100%;
+    background: #d4e8d4;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #121a12;
+    font-size: 12px;
+    font-family: 'Courier New', monospace;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    border: 1px solid rgba(168,200,212,0.3);
+  }
+  /* Additional pseudo-corners via box-shadow trick on inner */
+  .qr-inner-wrap {
+    position: relative;
+    width: 150px;
+    height: 150px;
+  }
+  .corner {
+    position: absolute;
+    width: 14px;
+    height: 14px;
+    border-color: #a8c8d4;
+    border-style: solid;
+    opacity: 0.7;
+  }
+  .corner.tl { top: -3px; left: -3px; border-width: 2px 0 0 2px; }
+  .corner.tr { top: -3px; right: -3px; border-width: 2px 2px 0 0; }
+  .corner.bl { bottom: -3px; left: -3px; border-width: 0 0 2px 2px; }
+  .corner.br { bottom: -3px; right: -3px; border-width: 0 2px 2px 0; }
+
+  .oracle-instruction {
+    font-size: 12px;
+    color: #4a6050;
+    text-align: center;
+    line-height: 1.7;
+    font-style: italic;
+  }
+  .oracle-instruction strong {
+    color: #d4882a;
+    font-style: normal;
+  }
+
+  /* ---- Gathering side (players) ---- */
+  .gathering-side {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+  .gathering-label {
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: #4a6050;
+    margin-bottom: 18px;
+    text-align: center;
+  }
+
+  .spirit-divider {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 10px 0;
+  }
+  .spirit-divider-line {
+    flex: 1;
+    height: 1px;
+    background: #2a3d2a;
+  }
+  .spirit-divider-dot {
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: #4a6050;
+  }
+
+  .soul-entry {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    padding: 14px 0;
+  }
+  .soul-entry.waiting {
+    opacity: 0.45;
+  }
+
+  .soul-sigil {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    border: 1px solid #2a3d2a;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    color: #a8c8d4;
+    font-weight: 300;
+    flex-shrink: 0;
+    background: rgba(168,200,212,0.06);
+    box-shadow: 0 0 14px rgba(168,200,212,0.12);
+  }
+  .soul-entry.waiting .soul-sigil {
+    color: #4a6050;
+    background: transparent;
+    box-shadow: none;
+    border-style: dashed;
+  }
+
+  .soul-info {
+    flex: 1;
+  }
+  .soul-name {
+    font-size: 22px;
+    font-weight: 300;
+    color: #d4e8d4;
+    letter-spacing: 0.06em;
+    line-height: 1;
+  }
+  .soul-entry.waiting .soul-name {
+    font-size: 15px;
+    color: #4a6050;
+    font-style: italic;
+    letter-spacing: 0.1em;
+  }
+  .soul-role {
+    font-size: 11px;
+    color: #4a6050;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    margin-top: 3px;
+  }
+  .soul-entry.present .soul-role {
+    color: #8aab8a;
+  }
+
+  .soul-presence {
+    font-size: 18px;
+    color: #a8c8d4;
+    opacity: 0.7;
+  }
+  .soul-entry.waiting .soul-presence {
+    color: #2a3d2a;
+    font-size: 14px;
+  }
+
+  /* ---- Bottom section ---- */
+  .bottom-section {
+    margin-top: 48px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+  }
+  .waiting-chant {
+    font-size: 13px;
+    color: #4a6050;
+    letter-spacing: 0.12em;
+    font-style: italic;
+    text-align: center;
+  }
+  .waiting-chant em {
+    color: #8aab8a;
+    font-style: normal;
+  }
+  .begin-btn {
+    padding: 14px 64px;
+    font-size: 15px;
+    font-family: Palatino, 'Palatino Linotype', Georgia, serif;
+    font-weight: 300;
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    border: 1px solid #2a3d2a;
+    background: #1f2b1f;
+    color: #4a6050;
+    cursor: not-allowed;
+    border-radius: 2px;
+  }
+</style>
+</head>
+<body>
+
+<!-- Rationale Panel -->
+<div class="rationale">
+  <div class="rationale-label">Direction 3 of 4 — Spirit Chant</div>
+  <p>This direction treats the lobby as a ritual gathering, not a game menu. Pale spirit-blue glows quietly against deep forest-dark green; amber marks ancestral warmth. Light-weight serif type and extreme letter-spacing give each name the weight of an invocation. The screen breathes — empty space is not waste but reverence, as if the ancestors are watching the circle form.</p>
+</div>
+
+<!-- Ceremony -->
+<div class="ceremony">
+  <!-- Title -->
+  <div class="title-area">
+    <div class="spirit-line">
+      <div class="spirit-mark"></div>
+      <div class="spirit-glyph">⋯ ✦ ⋯</div>
+      <div class="spirit-mark right"></div>
+    </div>
+    <div class="title">Party <em>Delve</em></div>
+    <div class="subtitle">The Gathering · Ancestral Co-op</div>
+  </div>
+
+  <!-- Session Code -->
+  <div class="invocation">
+    <div class="invocation-label">This session's call-sign</div>
+    <div class="invocation-code">W O L F - 7</div>
+  </div>
+
+  <!-- Ritual Row -->
+  <div class="ritual-row">
+    <!-- Oracle / QR -->
+    <div class="oracle-side">
+      <div class="oracle-label">The way in</div>
+      <div class="qr-inner-wrap">
+        <div class="corner tl"></div>
+        <div class="corner tr"></div>
+        <div class="corner bl"></div>
+        <div class="corner br"></div>
+        <div class="qr-inner">[ QR CODE ]</div>
+      </div>
+      <div class="oracle-instruction">
+        Scan the code or enter<br>
+        <strong>WOLF-7</strong><br>
+        on your phone
+      </div>
+    </div>
+
+    <!-- Gathering / Players -->
+    <div class="gathering-side">
+      <div class="gathering-label">Those who have answered — 3 of 4</div>
+
+      <div class="soul-entry present">
+        <div class="soul-sigil">C</div>
+        <div class="soul-info">
+          <div class="soul-name">Cyby</div>
+          <div class="soul-role">Ancestral Warrior</div>
+        </div>
+        <div class="soul-presence">✦</div>
+      </div>
+
+      <div class="spirit-divider">
+        <div class="spirit-divider-line"></div>
+        <div class="spirit-divider-dot"></div>
+        <div class="spirit-divider-line"></div>
+      </div>
+
+      <div class="soul-entry present">
+        <div class="soul-sigil">M</div>
+        <div class="soul-info">
+          <div class="soul-name">Mira</div>
+          <div class="soul-role">Spirit Caller</div>
+        </div>
+        <div class="soul-presence">✦</div>
+      </div>
+
+      <div class="spirit-divider">
+        <div class="spirit-divider-line"></div>
+        <div class="spirit-divider-dot"></div>
+        <div class="spirit-divider-line"></div>
+      </div>
+
+      <div class="soul-entry present">
+        <div class="soul-sigil">D</div>
+        <div class="soul-info">
+          <div class="soul-name">Dani</div>
+          <div class="soul-role">Shadow Walker</div>
+        </div>
+        <div class="soul-presence">✦</div>
+      </div>
+
+      <div class="spirit-divider">
+        <div class="spirit-divider-line"></div>
+        <div class="spirit-divider-dot"></div>
+        <div class="spirit-divider-line"></div>
+      </div>
+
+      <div class="soul-entry waiting">
+        <div class="soul-sigil">○</div>
+        <div class="soul-info">
+          <div class="soul-name">Waiting...</div>
+          <div class="soul-role">The fourth has not yet come</div>
+        </div>
+        <div class="soul-presence">○</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bottom -->
+  <div class="bottom-section">
+    <div class="waiting-chant">The circle is not yet complete — <em>one more soul</em> is called to join</div>
+    <button class="begin-btn" disabled>Begin Run</button>
+  </div>
+</div>
+
+</body>
+</html>

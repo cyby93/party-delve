@@ -138,7 +138,7 @@ After each dungeon level is completed, one new Spirit Bond is assigned to a rand
 
 **Mobile Controller Layout:**
 - Left half of screen: single analog joystick (movement)
-- Right half of screen: 4 ability slots — class-specific layout, not standardized across classes
+- Right half of screen: 4 ability slots — fixed 2×2 grid, standardized across all classes, only cell contents differ per class
 
 **Ability input types (three types, any mix per class):**
 - **Joystick-AutoFire** — hold and aim; ability fires continuously in the aimed direction (e.g., bow volley, lightning stream)
@@ -384,7 +384,7 @@ Corrupted enemies and environments show dark void fractures spreading across the
 
 **Mobile controllers:** iOS and Android. Each player joins via QR code scan or session code. The mobile client is a controller UI only — no game state rendered on phone beyond ability cooldowns and player status.
 
-**Join flow:** Guest option or account sign-in → QR scan or manual session code → immediate entry into hub.
+**Join flow:** Superseded by the confirmed phone and host flows in `_bmad-output/planning-artifacts/ux-designs/ux-party-delve-2026-06-16/EXPERIENCE.md` (§Key Flows — see "Rosa joins the session" and host lobby journey). That document is the authoritative source for join flow UX.
 
 ### Asset Requirements
 

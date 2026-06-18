@@ -1,0 +1,1155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Party Delve — Color Palette Explorations</title>
+<style>
+  /* ============================================================
+     SYSTEM FONTS + RESET
+  ============================================================ */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background: #0d0b0a;
+    color: #e0d4c0;
+    padding: 48px 24px;
+    line-height: 1.5;
+  }
+  h1 {
+    font-size: 1.75rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #f0e4cc;
+    margin-bottom: 6px;
+  }
+  .page-subtitle {
+    font-size: 0.875rem;
+    color: #8a7e6e;
+    margin-bottom: 48px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  /* ============================================================
+     LAYOUT
+  ============================================================ */
+  .variations-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 20px;
+    align-items: start;
+  }
+
+  .variation {
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid rgba(255,255,255,0.06);
+  }
+
+  .variation-header {
+    padding: 18px 16px 14px;
+  }
+  .variation-name {
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+  .variation-register {
+    font-size: 0.72rem;
+    line-height: 1.4;
+    opacity: 0.7;
+  }
+
+  /* ============================================================
+     TOKEN CHIPS
+  ============================================================ */
+  .tokens {
+    padding: 12px 12px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .token-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .token-swatch {
+    width: 28px;
+    height: 28px;
+    border-radius: 5px;
+    flex-shrink: 0;
+    border: 1px solid rgba(255,255,255,0.08);
+  }
+  .token-info {
+    display: flex;
+    flex-direction: column;
+  }
+  .token-name {
+    font-size: 0.62rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    opacity: 0.55;
+    text-transform: uppercase;
+  }
+  .token-hex {
+    font-size: 0.7rem;
+    font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace;
+    opacity: 0.9;
+  }
+
+  /* ============================================================
+     UI SNIPPET — Spirit Bond Card
+  ============================================================ */
+  .snippet-wrap {
+    padding: 12px;
+  }
+  .snippet-label {
+    font-size: 0.6rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    opacity: 0.4;
+    margin-bottom: 8px;
+    padding-left: 2px;
+  }
+
+  /* ============================================================
+     CORRUPTION ROW (fixed, shared)
+  ============================================================ */
+  .corruption-section {
+    margin-top: 48px;
+    padding: 28px 28px 24px;
+    background: #111010;
+    border-radius: 12px;
+    border: 1px solid rgba(255,255,255,0.05);
+  }
+  .corruption-title {
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #8a7e6e;
+    margin-bottom: 18px;
+  }
+  .corruption-swatches {
+    display: flex;
+    gap: 24px;
+    flex-wrap: wrap;
+  }
+  .corruption-chip {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .corruption-swatch {
+    width: 44px;
+    height: 44px;
+    border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.1);
+  }
+  .corruption-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .corruption-name {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #c8bfb0;
+  }
+  .corruption-hex {
+    font-size: 0.7rem;
+    font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace;
+    color: #8a7e6e;
+  }
+  .corruption-use {
+    font-size: 0.65rem;
+    color: #6b6158;
+  }
+
+  /* ============================================================
+     VARIATION 1 — DEEP EARTH
+     bg-base:           #0e0b09
+     bg-surface:        #1a1511
+     bg-subtle:         #231c16
+     border:            #2e2520
+     text-primary:      #d8ccba
+     text-secondary:    #7a6e60
+     accent-spirit:     #3a4f6e  (barely present, very dim blue)
+     accent-warm:       #6b4e22  (muted ember, almost buried)
+     accent-corruption: #7d2dff
+     accent-purify:     #1a3c5e  (very muted, near-invisible)
+     interactive:       #2d3d52  (desaturated dark blue-brown)
+     interactive-hover: #3d5070
+  ============================================================ */
+  .v1 {
+    background: #0e0b09;
+    color: #d8ccba;
+  }
+  .v1 .variation-header {
+    background: #0e0b09;
+    border-bottom: 1px solid #2e2520;
+  }
+  .v1 .variation-name { color: #d8ccba; }
+  .v1 .tokens { background: #1a1511; }
+
+  /* Spirit Bond Card — V1 */
+  .bond-card-v1 {
+    background: #1a1511;
+    border: 1px solid #2e2520;
+    border-radius: 8px;
+    padding: 14px;
+  }
+  .bond-card-v1 .bond-eyebrow {
+    font-size: 0.58rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #3a4f6e;
+    margin-bottom: 6px;
+    font-weight: 600;
+  }
+  .bond-card-v1 .bond-title {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: #d8ccba;
+    margin-bottom: 8px;
+  }
+  .bond-card-v1 .bond-body {
+    font-size: 0.72rem;
+    color: #7a6e60;
+    line-height: 1.5;
+    margin-bottom: 12px;
+  }
+  .bond-card-v1 .bond-btn {
+    display: inline-block;
+    background: #2d3d52;
+    color: #a8bdd4;
+    border: 1px solid #3a4f6e;
+    border-radius: 5px;
+    padding: 6px 16px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    cursor: pointer;
+  }
+  .bond-card-v1 .bond-btn:hover {
+    background: #3d5070;
+  }
+
+  /* ============================================================
+     VARIATION 2 — EMBER EARTH
+     bg-base:           #140f09
+     bg-surface:        #1e1610
+     bg-subtle:         #2a1f14
+     border:            #3d2e1e
+     text-primary:      #e0cba8
+     text-secondary:    #8c7254
+     accent-spirit:     #4a6899  (spirit present but not leading)
+     accent-warm:       #c4761e  (ochre/amber firelight, structural)
+     accent-corruption: #7d2dff
+     accent-purify:     #5090c8  (clear but not dominant)
+     interactive:       #c4761e  (warm amber CTA)
+     interactive-hover: #d98c2a
+  ============================================================ */
+  .v2 {
+    background: #140f09;
+    color: #e0cba8;
+  }
+  .v2 .variation-header {
+    background: #140f09;
+    border-bottom: 1px solid #3d2e1e;
+  }
+  .v2 .variation-name { color: #e0cba8; }
+  .v2 .tokens { background: #1e1610; }
+
+  .bond-card-v2 {
+    background: #1e1610;
+    border: 1px solid #3d2e1e;
+    border-radius: 8px;
+    padding: 14px;
+  }
+  .bond-card-v2 .bond-eyebrow {
+    font-size: 0.58rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #c4761e;
+    margin-bottom: 6px;
+    font-weight: 600;
+  }
+  .bond-card-v2 .bond-title {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: #e0cba8;
+    margin-bottom: 8px;
+  }
+  .bond-card-v2 .bond-body {
+    font-size: 0.72rem;
+    color: #8c7254;
+    line-height: 1.5;
+    margin-bottom: 12px;
+  }
+  .bond-card-v2 .bond-btn {
+    display: inline-block;
+    background: #c4761e;
+    color: #f8edd8;
+    border: none;
+    border-radius: 5px;
+    padding: 6px 16px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    cursor: pointer;
+  }
+  .bond-card-v2 .bond-btn:hover {
+    background: #d98c2a;
+  }
+
+  /* ============================================================
+     VARIATION 3 — TWILIGHT EARTH
+     bg-base:           #12100e
+     bg-surface:        #1c1a17
+     bg-subtle:         #27231e
+     border:            #3a3430
+     text-primary:      #ddd0bc
+     text-secondary:    #8c8070
+     accent-spirit:     #5a8fbf  (spirit-glow blue, clearly present)
+     accent-warm:       #b86e28  (amber, equal partner)
+     accent-corruption: #7d2dff
+     accent-purify:     #7abce0  (cool purify shimmer)
+     interactive:       #4d7ea8  (spirit blue as CTA)
+     interactive-hover: #5a8fbf
+  ============================================================ */
+  .v3 {
+    background: #12100e;
+    color: #ddd0bc;
+  }
+  .v3 .variation-header {
+    background: #12100e;
+    border-bottom: 1px solid #3a3430;
+  }
+  .v3 .variation-name { color: #ddd0bc; }
+  .v3 .tokens { background: #1c1a17; }
+
+  .bond-card-v3 {
+    background: #1c1a17;
+    border: 1px solid #3a3430;
+    border-radius: 8px;
+    padding: 14px;
+    position: relative;
+  }
+  .bond-card-v3::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, #5a8fbf 0%, #7abce0 50%, transparent 100%);
+    border-radius: 8px 8px 0 0;
+    opacity: 0.7;
+  }
+  .bond-card-v3 .bond-eyebrow {
+    font-size: 0.58rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #5a8fbf;
+    margin-bottom: 6px;
+    font-weight: 600;
+  }
+  .bond-card-v3 .bond-title {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: #ddd0bc;
+    margin-bottom: 8px;
+  }
+  .bond-card-v3 .bond-body {
+    font-size: 0.72rem;
+    color: #8c8070;
+    line-height: 1.5;
+    margin-bottom: 12px;
+  }
+  .bond-card-v3 .bond-btn {
+    display: inline-block;
+    background: #4d7ea8;
+    color: #ddeeff;
+    border: none;
+    border-radius: 5px;
+    padding: 6px 16px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    cursor: pointer;
+  }
+  .bond-card-v3 .bond-btn:hover {
+    background: #5a8fbf;
+  }
+
+  /* ============================================================
+     VARIATION 4 — SPIRIT GROUND
+     bg-base:           #0f0e10
+     bg-surface:        #181620
+     bg-subtle:         #22202e
+     border:            #36334a
+     text-primary:      #d8d0e8
+     text-secondary:    #7a7490
+     accent-spirit:     #6ea8d8  (spirit glow leads — bright, visible)
+     accent-warm:       #c07d35  (amber still present, secondary)
+     accent-corruption: #7d2dff
+     accent-purify:     #90d8f0  (ice-blue purify shimmer)
+     interactive:       #6ea8d8  (spirit blue, prominent)
+     interactive-hover: #88c0ee
+  ============================================================ */
+  .v4 {
+    background: #0f0e10;
+    color: #d8d0e8;
+  }
+  .v4 .variation-header {
+    background: #0f0e10;
+    border-bottom: 1px solid #36334a;
+  }
+  .v4 .variation-name { color: #d8d0e8; }
+  .v4 .tokens { background: #181620; }
+
+  .bond-card-v4 {
+    background: #181620;
+    border: 1px solid #36334a;
+    border-radius: 8px;
+    padding: 14px;
+    box-shadow: 0 0 20px rgba(110, 168, 216, 0.08);
+  }
+  .bond-card-v4 .bond-eyebrow {
+    font-size: 0.58rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #6ea8d8;
+    margin-bottom: 6px;
+    font-weight: 600;
+  }
+  .bond-card-v4 .bond-title {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: #d8d0e8;
+    margin-bottom: 8px;
+  }
+  .bond-card-v4 .bond-body {
+    font-size: 0.72rem;
+    color: #7a7490;
+    line-height: 1.5;
+    margin-bottom: 12px;
+  }
+  .bond-card-v4 .bond-btn {
+    display: inline-block;
+    background: #6ea8d8;
+    color: #0f0e10;
+    border: none;
+    border-radius: 5px;
+    padding: 6px 16px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    cursor: pointer;
+  }
+  .bond-card-v4 .bond-btn:hover {
+    background: #88c0ee;
+  }
+
+  /* ============================================================
+     VARIATION 5 — SACRED GROUND
+     bg-base:           #0a0f0d
+     bg-surface:        #131a16
+     bg-subtle:         #1c2720
+     border:            #2e4038
+     text-primary:      #cce8d8
+     text-secondary:    #6a9478
+     accent-spirit:     #5cb8e8  (rich spirit blue — leading)
+     accent-warm:       #d4920a  (deep amber/gold — equally prominent)
+     accent-corruption: #7d2dff
+     accent-purify:     #a0eedd  (aqua-mint purify)
+     interactive:       #2e7a58  (forest green CTA, earthy but alive)
+     interactive-hover: #3da070
+  ============================================================ */
+  .v5 {
+    background: #0a0f0d;
+    color: #cce8d8;
+  }
+  .v5 .variation-header {
+    background: #0a0f0d;
+    border-bottom: 1px solid #2e4038;
+  }
+  .v5 .variation-name { color: #cce8d8; }
+  .v5 .tokens { background: #131a16; }
+
+  .bond-card-v5 {
+    background: #131a16;
+    border: 1px solid #2e4038;
+    border-radius: 8px;
+    padding: 14px;
+    position: relative;
+  }
+  .bond-card-v5::after {
+    content: '';
+    position: absolute;
+    inset: -1px;
+    border-radius: 9px;
+    border: 1px solid rgba(92, 184, 232, 0.25);
+    pointer-events: none;
+  }
+  .bond-card-v5 .bond-eyebrow {
+    font-size: 0.58rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #5cb8e8;
+    margin-bottom: 6px;
+    font-weight: 600;
+  }
+  .bond-card-v5 .bond-title {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: #cce8d8;
+    margin-bottom: 8px;
+  }
+  .bond-card-v5 .bond-body {
+    font-size: 0.72rem;
+    color: #6a9478;
+    line-height: 1.5;
+    margin-bottom: 12px;
+  }
+  .bond-card-v5 .bond-btn {
+    display: inline-block;
+    background: #2e7a58;
+    color: #b8f0d4;
+    border: 1px solid #3da070;
+    border-radius: 5px;
+    padding: 6px 16px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    cursor: pointer;
+  }
+  .bond-card-v5 .bond-btn:hover {
+    background: #3da070;
+  }
+
+  /* ============================================================
+     TOKEN TEXT COLORS (per variation, for readability on each bg)
+  ============================================================ */
+  .v1 .token-name  { color: #7a6e60; }
+  .v1 .token-hex   { color: #d8ccba; }
+  .v2 .token-name  { color: #8c7254; }
+  .v2 .token-hex   { color: #e0cba8; }
+  .v3 .token-name  { color: #8c8070; }
+  .v3 .token-hex   { color: #ddd0bc; }
+  .v4 .token-name  { color: #7a7490; }
+  .v4 .token-hex   { color: #d8d0e8; }
+  .v5 .token-name  { color: #6a9478; }
+  .v5 .token-hex   { color: #cce8d8; }
+
+  .snippet-label { color: #6b6158; }
+
+</style>
+</head>
+<body>
+
+<h1>Party Delve — Color Palette Explorations</h1>
+<p class="page-subtitle">Raw Earth base · Spirit Chant accent · 5 variations · 2026-06-16</p>
+
+<div class="variations-grid">
+
+  <!-- ===== VARIATION 1: DEEP EARTH ===== -->
+  <div class="variation v1">
+    <div class="variation-header">
+      <div class="variation-name">1 — Deep Earth</div>
+      <div class="variation-register">Void-black soil. Spirit barely breathes. Maximum dread.</div>
+    </div>
+
+    <div class="tokens">
+      <div class="token-row">
+        <div class="token-swatch" style="background:#0e0b09;"></div>
+        <div class="token-info">
+          <span class="token-name">bg-base</span>
+          <span class="token-hex">#0e0b09</span>
+        </div>
+      </div>
+      <div class="token-row">
+        <div class="token-swatch" style="background:#1a1511;"></div>
+        <div class="token-info">
+          <span class="token-name">bg-surface</span>
+          <span class="token-hex">#1a1511</span>
+        </div>
+      </div>
+      <div class="token-row">
+        <div class="token-swatch" style="background:#231c16;"></div>
+        <div class="token-info">
+          <span class="token-name">bg-subtle</span>
+          <span class="token-hex">#231c16</span>
+        </div>
+      </div>
+      <div class="token-row">
+        <div class="token-swatch" style="background:#2e2520;"></div>
+        <div class="token-info">
+          <span class="token-name">border</span>
+          <span class="token-hex">#2e2520</span>
+        </div>
+      </div>
+      <div class="token-row">
+        <div class="token-swatch" style="background:#d8ccba;"></div>
+        <div class="token-info">
+          <span class="token-name">text-primary</span>
+          <span class="token-hex">#d8ccba</span>
+        </div>
+      </div>
+      <div class="token-row">
+        <div class="token-swatch" style="background:#7a6e60;"></div>
+        <div class="token-info">
+          <span class="token-name">text-secondary</span>
+          <span class="token-hex">#7a6e60</span>
+        </div>
+      </div>
+      <div class="token-row">
+        <div class="token-swatch" style="background:#3a4f6e;"></div>
+        <div class="token-info">
+          <span class="token-name">accent-spirit</span>
+          <span class="token-hex">#3a4f6e</span>
+        </div>
+      </div>
+      <div class="token-row">
+        <div class="token-swatch" style="background:#6b4e22;"></div>
+        <div class="token-info">
+          <span class="token-name">accent-warm</span>
+          <span class="token-hex">#6b4e22</span>
+        </div>
+      </div>
+      <div class="token-row">
+        <div class="token-swatch" style="background:#7d2dff;"></div>
+        <div class="token-info">
+          <span class="token-name">accent-corruption</span>
+          <span class="token-hex">#7d2dff</span>
+        </div>
+      </div>
+      <div class="token-row">
+        <div class="token-swatch" style="background:#1a3c5e;"></div>
+        <div class="token-info">
+          <span class="token-name">accent-purify</span>
+          <span class="token-hex">#1a3c5e</span>
+        </div>
+      </div>
+      <div class="token-row">
+        <div class="token-swatch" style="background:#2d3d52;"></div>
+        <div class="token-info">
+          <span class="token-name">interactive</span>
+          <span class="token-hex">#2d3d52</span>
+        </div>
+      </div>
+      <div class="token-row">
+        <div class="token-swatch" style="background:#3d5070;"></div>
+        <div class="token-info">
+          <span class="token-name">interactive-hover</span>
+          <span class="token-hex">#3d5070</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="snippet-wrap" style="background:#0e0b09;">
+      <div class="snippet-label">Spirit Bond Card</div>
+      <div class="bond-card-v1">
+        <div class="bond-eyebrow">Spirit Bond</div>
+        <div class="bond-title">Proximity Tether</div>
+        <div class="bond-body">A proximity bond links you to Dani. Stay close. Or don't — see what happens.</div>
+        <div class="bond-btn">Accept</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== VARIATION 2: EMBER EARTH ===== -->
+  <div class="variation v2">
+    <div class="variation-header">
+      <div class="variation-name">2 — Ember Earth</div>
+      <div class="variation-register">Firelight cracks the dark. Ochre leads. Spirit watches from the shadow.</div>
+    </div>
+
+    <div class="tokens">
+      <div class="token-row">
+        <div class="token-swatch" style="background:#140f09;"></div>
+        <div class="token-info">
+          <span class="token-name">bg-base</span>
+          <span class="token-hex">#140f09</span>
+        </div>
+      </div>
+      <div class="token-row">
+        <div class="token-swatch" style="background:#1e1610;"></div>
+        <div class="token-info">
+          <span class="token-name">bg-surface</span>
+          <span class="token-hex">#1e1610</span>
+        </div>
+      </div>
+      <div class="token-row">
+        <div class="token-swatch" style="background:#2a1f14;"></div>
+        <div class="token-info">
+          <span class="token-name">bg-subtle</span>
+          <span class="token-hex">#2a1f14</span>
+        </div>
+      </div>
+      <div class="token-row">
+        <div class="token-swatch" style="background:#3d2e1e;"></div>
+        <div class="token-info">
+          <span class="token-name">border</span>
+          <span class="token-hex">#3d2e1e</span>
+        </div>
+      </div>
+      <div class="token-row">
+        <div class="token-swatch" style="background:#e0cba8;"></div>
+        <div class="token-info">
+          <span class="token-name">text-primary</span>
+          <span class="token-hex">#e0cba8</span>
+        </div>
+      </div>
+      <div class="token-row">
+        <div class="token-swatch" style="background:#8c7254;"></div>
+        <div class="token-info">
+          <span class="token-name">text-secondary</span>
+          <span class="token-hex">#8c7254</span>
+        </div>
+      </div>
+      <div class="token-row">
+        <div class="token-swatch" style="background:#4a6899;"></div>
+        <div class="token-info">
+          <span class="token-name">accent-spirit</span>
+          <span class="token-hex">#4a6899</span>
+        </div>
+      </div>
+      <div class="token-row">
+        <div class="token-swatch" style="background:#c4761e;"></div>
+        <div class="token-info">
+          <span class="token-name">accent-warm</span>
+          <span class="token-hex">#c4761e</span>
+        </div>
+      </div>
+      <div class="token-row">
+        <div class="token-swatch" style="background:#7d2dff;"></div>
+        <div class="token-info">
+          <span class="token-name">accent-corruption</span>
+          <span class="token-hex">#7d2dff</span>
+        </div>
+      </div>
+      <div class="token-row">
+        <div class="token-swatch" style="background:#5090c8;"></div>
+        <div class="token-info">
+          <span class="token-name">accent-purify</span>
+          <span class="token-hex">#5090c8</span>
+        </div>
+      </div>
+      <div class="token-row">
+        <div class="token-swatch" style="background:#c4761e;"></div>
+        <div class="token-info">
+          <span class="token-name">interactive</span>
+          <span class="token-hex">#c4761e</span>
+        </div>
+      </div>
+      <div class="token-row">
+        <div class="token-swatch" style="background:#d98c2a;"></div>
+        <div class="token-info">
+          <span class="token-name">interactive-hover</span>
+          <span class="token-hex">#d98c2a</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="snippet-wrap" style="background:#140f09;">
+      <div class="snippet-label">Spirit Bond Card</div>
+      <div class="bond-card-v2">
+        <div class="bond-eyebrow">Spirit Bond</div>
+        <div class="bond-title">Proximity Tether</div>
+        <div class="bond-body">A proximity bond links you to Dani. Stay close. Or don't — see what happens.</div>
+        <div class="bond-btn">Accept</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== VARIATION 3: TWILIGHT EARTH ===== -->
+  <div class="variation v3">
+    <div class="variation-header">
+      <div class="variation-name">3 — Twilight Earth</div>
+      <div class="variation-register">Dusk balance. Earth and spirit meet as equals. Neither dominates.</div>
+    </div>
+
+    <div class="tokens">
+      <div class="token-row">
+        <div class="token-swatch" style="background:#12100e;"></div>
+        <div class="token-info">
+          <span class="token-name">bg-base</span>
+          <span class="token-hex">#12100e</span>
+        </div>
+      </div>
+      <div class="token-row">
+        <div class="token-swatch" style="background:#1c1a17;"></div>
+        <div class="token-info">
+          <span class="token-name">bg-surface</span>
+          <span class="token-hex">#1c1a17</span>
+        </div>
+      </div>
+      <div class="token-row">
+        <div class="token-swatch" style="background:#27231e;"></div>
+        <div class="token-info">
+          <span class="token-name">bg-subtle</span>
+          <span class="token-hex">#27231e</span>
+        </div>
+      </div>
+      <div class="token-row">
+        <div class="token-swatch" style="background:#3a3430;"></div>
+        <div class="token-info">
+          <span class="token-name">border</span>
+          <span class="token-hex">#3a3430</span>
+        </div>
+      </div>
+      <div class="token-row">
+        <div class="token-swatch" style="background:#ddd0bc;"></div>
+        <div class="token-info">
+          <span class="token-name">text-primary</span>
+          <span class="token-hex">#ddd0bc</span>
+        </div>
+      </div>
+      <div class="token-row">
+        <div class="token-swatch" style="background:#8c8070;"></div>
+        <div class="token-info">
+          <span class="token-name">text-secondary</span>
+          <span class="token-hex">#8c8070</span>
+        </div>
+      </div>
+      <div class="token-row">
+        <div class="token-swatch" style="background:#5a8fbf;"></div>
+        <div class="token-info">
+          <span class="token-name">accent-spirit</span>
+          <span class="token-hex">#5a8fbf</span>
+        </div>
+      </div>
+      <div class="token-row">
+        <div class="token-swatch" style="background:#b86e28;"></div>
+        <div class="token-info">
+          <span class="token-name">accent-warm</span>
+          <span class="token-hex">#b86e28</span>
+        </div>
+      </div>
+      <div class="token-row">
+        <div class="token-swatch" style="background:#7d2dff;"></div>
+        <div class="token-info">
+          <span class="token-name">accent-corruption</span>
+          <span class="token-hex">#7d2dff</span>
+        </div>
+      </div>
+      <div class="token-row">
+        <div class="token-swatch" style="background:#7abce0;"></div>
+        <div class="token-info">
+          <span class="token-name">accent-purify</span>
+          <span class="token-hex">#7abce0</span>
+        </div>
+      </div>
+      <div class="token-row">
+        <div class="token-swatch" style="background:#4d7ea8;"></div>
+        <div class="token-info">
+          <span class="token-name">interactive</span>
+          <span class="token-hex">#4d7ea8</span>
+        </div>
+      </div>
+      <div class="token-row">
+        <div class="token-swatch" style="background:#5a8fbf;"></div>
+        <div class="token-info">
+          <span class="token-name">interactive-hover</span>
+          <span class="token-hex">#5a8fbf</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="snippet-wrap" style="background:#12100e;">
+      <div class="snippet-label">Spirit Bond Card</div>
+      <div class="bond-card-v3">
+        <div class="bond-eyebrow">Spirit Bond</div>
+        <div class="bond-title">Proximity Tether</div>
+        <div class="bond-body">A proximity bond links you to Dani. Stay close. Or don't — see what happens.</div>
+        <div class="bond-btn">Accept</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== VARIATION 4: SPIRIT GROUND ===== -->
+  <div class="variation v4">
+    <div class="variation-header">
+      <div class="variation-name">4 — Spirit Ground</div>
+      <div class="variation-register">Spirit leads. Earth is the vessel. Blue-white glow charges every surface.</div>
+    </div>
+
+    <div class="tokens">
+      <div class="token-row">
+        <div class="token-swatch" style="background:#0f0e10;"></div>
+        <div class="token-info">
+          <span class="token-name">bg-base</span>
+          <span class="token-hex">#0f0e10</span>
+        </div>
+      </div>
+      <div class="token-row">
+        <div class="token-swatch" style="background:#181620;"></div>
+        <div class="token-info">
+          <span class="token-name">bg-surface</span>
+          <span class="token-hex">#181620</span>
+        </div>
+      </div>
+      <div class="token-row">
+        <div class="token-swatch" style="background:#22202e;"></div>
+        <div class="token-info">
+          <span class="token-name">bg-subtle</span>
+          <span class="token-hex">#22202e</span>
+        </div>
+      </div>
+      <div class="token-row">
+        <div class="token-swatch" style="background:#36334a;"></div>
+        <div class="token-info">
+          <span class="token-name">border</span>
+          <span class="token-hex">#36334a</span>
+        </div>
+      </div>
+      <div class="token-row">
+        <div class="token-swatch" style="background:#d8d0e8;"></div>
+        <div class="token-info">
+          <span class="token-name">text-primary</span>
+          <span class="token-hex">#d8d0e8</span>
+        </div>
+      </div>
+      <div class="token-row">
+        <div class="token-swatch" style="background:#7a7490;"></div>
+        <div class="token-info">
+          <span class="token-name">text-secondary</span>
+          <span class="token-hex">#7a7490</span>
+        </div>
+      </div>
+      <div class="token-row">
+        <div class="token-swatch" style="background:#6ea8d8;"></div>
+        <div class="token-info">
+          <span class="token-name">accent-spirit</span>
+          <span class="token-hex">#6ea8d8</span>
+        </div>
+      </div>
+      <div class="token-row">
+        <div class="token-swatch" style="background:#c07d35;"></div>
+        <div class="token-info">
+          <span class="token-name">accent-warm</span>
+          <span class="token-hex">#c07d35</span>
+        </div>
+      </div>
+      <div class="token-row">
+        <div class="token-swatch" style="background:#7d2dff;"></div>
+        <div class="token-info">
+          <span class="token-name">accent-corruption</span>
+          <span class="token-hex">#7d2dff</span>
+        </div>
+      </div>
+      <div class="token-row">
+        <div class="token-swatch" style="background:#90d8f0;"></div>
+        <div class="token-info">
+          <span class="token-name">accent-purify</span>
+          <span class="token-hex">#90d8f0</span>
+        </div>
+      </div>
+      <div class="token-row">
+        <div class="token-swatch" style="background:#6ea8d8;"></div>
+        <div class="token-info">
+          <span class="token-name">interactive</span>
+          <span class="token-hex">#6ea8d8</span>
+        </div>
+      </div>
+      <div class="token-row">
+        <div class="token-swatch" style="background:#88c0ee;"></div>
+        <div class="token-info">
+          <span class="token-name">interactive-hover</span>
+          <span class="token-hex">#88c0ee</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="snippet-wrap" style="background:#0f0e10;">
+      <div class="snippet-label">Spirit Bond Card</div>
+      <div class="bond-card-v4">
+        <div class="bond-eyebrow">Spirit Bond</div>
+        <div class="bond-title">Proximity Tether</div>
+        <div class="bond-body">A proximity bond links you to Dani. Stay close. Or don't — see what happens.</div>
+        <div class="bond-btn">Accept</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== VARIATION 5: SACRED GROUND ===== -->
+  <div class="variation v5">
+    <div class="variation-header">
+      <div class="variation-name">5 — Sacred Ground</div>
+      <div class="variation-register">Ancient forest dark. Spirit and gold burn together in the deep green black.</div>
+    </div>
+
+    <div class="tokens">
+      <div class="token-row">
+        <div class="token-swatch" style="background:#0a0f0d;"></div>
+        <div class="token-info">
+          <span class="token-name">bg-base</span>
+          <span class="token-hex">#0a0f0d</span>
+        </div>
+      </div>
+      <div class="token-row">
+        <div class="token-swatch" style="background:#131a16;"></div>
+        <div class="token-info">
+          <span class="token-name">bg-surface</span>
+          <span class="token-hex">#131a16</span>
+        </div>
+      </div>
+      <div class="token-row">
+        <div class="token-swatch" style="background:#1c2720;"></div>
+        <div class="token-info">
+          <span class="token-name">bg-subtle</span>
+          <span class="token-hex">#1c2720</span>
+        </div>
+      </div>
+      <div class="token-row">
+        <div class="token-swatch" style="background:#2e4038;"></div>
+        <div class="token-info">
+          <span class="token-name">border</span>
+          <span class="token-hex">#2e4038</span>
+        </div>
+      </div>
+      <div class="token-row">
+        <div class="token-swatch" style="background:#cce8d8;"></div>
+        <div class="token-info">
+          <span class="token-name">text-primary</span>
+          <span class="token-hex">#cce8d8</span>
+        </div>
+      </div>
+      <div class="token-row">
+        <div class="token-swatch" style="background:#6a9478;"></div>
+        <div class="token-info">
+          <span class="token-name">text-secondary</span>
+          <span class="token-hex">#6a9478</span>
+        </div>
+      </div>
+      <div class="token-row">
+        <div class="token-swatch" style="background:#5cb8e8;"></div>
+        <div class="token-info">
+          <span class="token-name">accent-spirit</span>
+          <span class="token-hex">#5cb8e8</span>
+        </div>
+      </div>
+      <div class="token-row">
+        <div class="token-swatch" style="background:#d4920a;"></div>
+        <div class="token-info">
+          <span class="token-name">accent-warm</span>
+          <span class="token-hex">#d4920a</span>
+        </div>
+      </div>
+      <div class="token-row">
+        <div class="token-swatch" style="background:#7d2dff;"></div>
+        <div class="token-info">
+          <span class="token-name">accent-corruption</span>
+          <span class="token-hex">#7d2dff</span>
+        </div>
+      </div>
+      <div class="token-row">
+        <div class="token-swatch" style="background:#a0eedd;"></div>
+        <div class="token-info">
+          <span class="token-name">accent-purify</span>
+          <span class="token-hex">#a0eedd</span>
+        </div>
+      </div>
+      <div class="token-row">
+        <div class="token-swatch" style="background:#2e7a58;"></div>
+        <div class="token-info">
+          <span class="token-name">interactive</span>
+          <span class="token-hex">#2e7a58</span>
+        </div>
+      </div>
+      <div class="token-row">
+        <div class="token-swatch" style="background:#3da070;"></div>
+        <div class="token-info">
+          <span class="token-name">interactive-hover</span>
+          <span class="token-hex">#3da070</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="snippet-wrap" style="background:#0a0f0d;">
+      <div class="snippet-label">Spirit Bond Card</div>
+      <div class="bond-card-v5">
+        <div class="bond-eyebrow">Spirit Bond</div>
+        <div class="bond-title">Proximity Tether</div>
+        <div class="bond-body">A proximity bond links you to Dani. Stay close. Or don't — see what happens.</div>
+        <div class="bond-btn">Accept</div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- end .variations-grid -->
+
+<!-- ===== CORRUPTION ROW (fixed, shared across all variations) ===== -->
+<div class="corruption-section">
+  <div class="corruption-title">Corruption Colors — Fixed across all variations</div>
+  <div class="corruption-swatches">
+
+    <div class="corruption-chip">
+      <div class="corruption-swatch" style="background:#7d2dff;"></div>
+      <div class="corruption-meta">
+        <span class="corruption-name">Sickly Purple</span>
+        <span class="corruption-hex">#7d2dff</span>
+        <span class="corruption-use">Primary corruption glow · enemy health bars · corrupted UI elements</span>
+      </div>
+    </div>
+
+    <div class="corruption-chip">
+      <div class="corruption-swatch" style="background:#6b1fd4;"></div>
+      <div class="corruption-meta">
+        <span class="corruption-name">Deep Corruption</span>
+        <span class="corruption-hex">#6b1fd4</span>
+        <span class="corruption-use">Deep corruption variant · boss aura · ambient dark VFX</span>
+      </div>
+    </div>
+
+    <div class="corruption-chip">
+      <div class="corruption-swatch" style="background:#39ff14;"></div>
+      <div class="corruption-meta">
+        <span class="corruption-name">Acid Green</span>
+        <span class="corruption-hex">#39ff14</span>
+        <span class="corruption-use">Secondary corruption glow · poison indicators · blight zones</span>
+      </div>
+    </div>
+
+    <div class="corruption-chip">
+      <div class="corruption-swatch" style="background:#2dd40a;"></div>
+      <div class="corruption-meta">
+        <span class="corruption-name">Acid Green (Alt)</span>
+        <span class="corruption-hex">#2dd40a</span>
+        <span class="corruption-use">Deeper acid variant · environmental hazards · corrupted terrain</span>
+      </div>
+    </div>
+
+    <div class="corruption-chip">
+      <div class="corruption-swatch" style="background:#c0392b;"></div>
+      <div class="corruption-meta">
+        <span class="corruption-name">Blood Red</span>
+        <span class="corruption-hex">#c0392b</span>
+        <span class="corruption-use">Injury · danger · critical health · damage flash</span>
+      </div>
+    </div>
+
+    <div class="corruption-chip">
+      <div class="corruption-swatch" style="background:#a93226;"></div>
+      <div class="corruption-meta">
+        <span class="corruption-name">Deep Blood</span>
+        <span class="corruption-hex">#a93226</span>
+        <span class="corruption-use">Death state · lethal threshold · deep wound indicators</span>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+</body>
+</html>

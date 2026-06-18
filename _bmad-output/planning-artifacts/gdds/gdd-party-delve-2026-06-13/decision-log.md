@@ -79,4 +79,13 @@ GDD facilitative session complete. All major sections authored. Open items docum
 
 ---
 
+## Corrections — 2026-06-18
+
+| # | Decision | Detail | Source |
+|---|---|---|---|
+| C1 | Ability slot layout | CORRECTED: fixed 2×2 grid, standardized across all classes — only cell contents differ per class (prior text said "class-specific layout, not standardized") | UX session |
+| C2 | Join flow authority | SUPERSEDED: §Platform-Specific Details join flow text replaced by reference to `EXPERIENCE.md` (ux-party-delve-2026-06-16), which is now the authoritative source for phone and host join flow UX | UX session |
+
+---
+
 *Entries added as decisions are made during facilitative session.*

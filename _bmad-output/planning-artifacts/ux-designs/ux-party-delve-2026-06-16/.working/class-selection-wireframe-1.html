@@ -1,0 +1,778 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Party Delve — Class Selection Flow</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Uncial+Antiqua&family=Lora:ital,wght@0,400;0,700;1,400&display=swap');
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: #0a0908;
+  font-family: 'Lora', serif;
+  padding: 48px 40px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+}
+
+.page-title {
+  font-family: 'Uncial Antiqua', serif;
+  color: #d8d0e8;
+  font-size: 22px;
+  margin-bottom: 48px;
+  letter-spacing: 0.04em;
+}
+
+.frame-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  margin-bottom: 56px;
+}
+
+.frame-label {
+  font-family: 'Lora', serif;
+  color: #a89ec0;
+  font-size: 13px;
+  margin-bottom: 12px;
+  letter-spacing: 0.03em;
+}
+
+.phone-frame {
+  width: 844px;
+  height: 390px;
+  background: #1a1820;
+  border-radius: 20px;
+  box-shadow:
+    0 8px 40px rgba(0,0,0,0.7),
+    0 2px 8px rgba(0,0,0,0.5),
+    inset 0 1px 0 rgba(255,255,255,0.04);
+  overflow: hidden;
+  position: relative;
+}
+
+
+/* ============================================================
+   FRAME 1 — Hub controller view
+   ============================================================ */
+
+#frame1 {
+  display: flex;
+  flex-direction: column;
+}
+
+/* HP bar — 6px top strip */
+.hp-bar-strip {
+  width: 100%;
+  height: 6px;
+  background: #36334a;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 10;
+}
+.hp-bar-fill {
+  height: 100%;
+  background: #c07d35;
+  width: 100%;
+}
+
+/* Controller body */
+.controller-body {
+  flex: 1;
+  display: flex;
+  position: relative;
+}
+
+/* Joystick zone — left 38% */
+.joystick-zone {
+  width: 320px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.joystick-ring {
+  width: 180px;
+  height: 180px;
+  border-radius: 50%;
+  border: 2px solid rgba(54,51,74,0.5);
+  background: rgba(54,51,74,0.18);
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.joystick-inner-hint {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(54,51,74,0.35);
+  background: rgba(54,51,74,0.12);
+}
+
+/* Divider */
+.zone-divider {
+  width: 1px;
+  background: #36334a;
+  align-self: stretch;
+  margin: 12px 0;
+  opacity: 0.6;
+}
+
+/* Skill grid zone — right 62% */
+.skill-grid-zone {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.hub-mode-label {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  font-family: 'Lora', serif;
+  font-size: 9px;
+  color: #36334a;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.skill-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 12px;
+  width: 280px;
+  height: 220px;
+}
+
+.skill-cell {
+  background: #181620;
+  border: 1px solid #36334a;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Lora', serif;
+  font-size: 18px;
+  color: #36334a;
+}
+
+/* Interact button — slides in from top, centered */
+.interact-btn {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 200px;
+  height: 44px;
+  background: #181620;
+  border: 1.5px solid #6ea8d8;
+  border-radius: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  box-shadow: 0 4px 16px rgba(110,168,216,0.3);
+  z-index: 20;
+}
+
+.interact-icon {
+  font-size: 16px;
+  color: #6ea8d8;
+  line-height: 1;
+}
+
+.interact-text {
+  font-family: 'Lora', serif;
+  font-weight: 700;
+  font-size: 14px;
+  color: #6ea8d8;
+  letter-spacing: 0.02em;
+}
+
+/* POI proximity hint text */
+.poi-hint {
+  position: absolute;
+  bottom: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: 'Lora', serif;
+  font-size: 9px;
+  color: #36334a;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+  opacity: 0.7;
+}
+
+
+/* ============================================================
+   FRAME 2 — Class selection (browsing)
+   ============================================================ */
+
+#frame2 {
+  background: #0f0e10;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Top bar */
+.class-sel-topbar {
+  height: 32px;
+  background: #181620;
+  border-bottom: 1px solid #36334a;
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.topbar-back {
+  font-family: 'Lora', serif;
+  font-size: 12px;
+  color: #a89ec0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.topbar-title {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: 'Uncial Antiqua', serif;
+  font-size: 15px;
+  color: #d8d0e8;
+  white-space: nowrap;
+  letter-spacing: 0.02em;
+}
+
+.topbar-right {
+  margin-left: auto;
+  font-family: 'Lora', serif;
+  font-size: 11px;
+  color: #a89ec0;
+}
+
+/* Card scroll area */
+.card-scroll-area {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  padding: 10px 16px 0 16px;
+  gap: 12px;
+  overflow: hidden;
+  position: relative;
+}
+
+/* Clip mask to suggest scrollability */
+.card-scroll-area::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 60px;
+  background: linear-gradient(to right, transparent, #0f0e10);
+  pointer-events: none;
+  z-index: 5;
+}
+
+.class-card {
+  width: 200px;
+  height: 262px;
+  background: #181620;
+  border: 1px solid #36334a;
+  border-radius: 12px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+}
+
+/* Partial card visible (Spiritcaller clipped) */
+.class-card.partial {
+  /* Will be naturally clipped by overflow:hidden on parent */
+}
+
+.card-icon-area {
+  height: 80px;
+  background: #0f0e10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.card-icon-area svg {
+  opacity: 0.85;
+}
+
+.card-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 10px 10px 8px;
+  gap: 4px;
+}
+
+.card-class-name {
+  font-family: 'Uncial Antiqua', serif;
+  font-size: 15px;
+  color: #d8d0e8;
+  text-align: center;
+  letter-spacing: 0.02em;
+  line-height: 1.2;
+}
+
+.card-role {
+  font-family: 'Lora', serif;
+  font-size: 11px;
+  color: #a89ec0;
+  text-align: center;
+}
+
+.card-flavour {
+  font-family: 'Lora', serif;
+  font-style: italic;
+  font-size: 10px;
+  color: #a89ec0;
+  text-align: center;
+  line-height: 1.4;
+  margin-top: 2px;
+  opacity: 0.8;
+}
+
+.card-footer {
+  padding: 0 10px 10px;
+  display: flex;
+  justify-content: center;
+}
+
+.select-btn {
+  padding: 5px 20px;
+  border-radius: 14px;
+  background: #36334a;
+  color: #a89ec0;
+  font-family: 'Lora', serif;
+  font-size: 11px;
+  border: none;
+  cursor: pointer;
+  letter-spacing: 0.02em;
+}
+
+/* Scroll indicator */
+.scroll-indicator {
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  flex-shrink: 0;
+  padding-bottom: 4px;
+}
+
+.scroll-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #36334a;
+}
+.scroll-dot.active {
+  width: 14px;
+  border-radius: 3px;
+  background: #6ea8d8;
+}
+
+
+/* ============================================================
+   FRAME 3 — Class selected + ability briefing
+   ============================================================ */
+
+#frame3 {
+  background: #0f0e10;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Selected card highlight */
+.class-card.selected {
+  border: 2px solid #6ea8d8;
+  box-shadow: 0 0 12px rgba(110,168,216,0.18);
+}
+
+.class-card.selected .card-icon-area {
+  background: #22202e;
+}
+
+.select-btn.selected-state {
+  background: #6ea8d8;
+  color: #0f0e10;
+  font-weight: 700;
+}
+
+/* Ability briefing panel */
+.ability-briefing-panel {
+  height: 118px;
+  background: #181620;
+  border-top: 1px solid #36334a;
+  flex-shrink: 0;
+  padding: 8px 16px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.ability-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ability-panel-title {
+  font-family: 'Lora', serif;
+  font-weight: 700;
+  font-size: 11px;
+  color: #a89ec0;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.ability-panel-close {
+  font-family: 'Lora', serif;
+  font-size: 10px;
+  color: #36334a;
+  cursor: pointer;
+  letter-spacing: 0.02em;
+}
+
+.ability-chips-row {
+  display: flex;
+  gap: 8px;
+  flex: 1;
+  align-items: stretch;
+}
+
+.ability-chip {
+  flex: 1;
+  background: #22202e;
+  border-radius: 7px;
+  padding: 6px 8px 7px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.ability-chip-name {
+  font-family: 'Lora', serif;
+  font-size: 10px;
+  color: #d8d0e8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.2;
+}
+
+.ability-chip-type {
+  display: inline-block;
+  background: #36334a;
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-family: 'Lora', serif;
+  font-size: 8px;
+  color: #a89ec0;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  width: fit-content;
+}
+
+.ability-learn-hint {
+  font-family: 'Lora', serif;
+  font-size: 10px;
+  color: #a89ec0;
+  opacity: 0.65;
+  text-align: center;
+}
+</style>
+</head>
+<body>
+
+<div class="page-title">Party Delve — Class Selection Flow</div>
+
+
+<!-- ============================================================
+     FRAME 1 — Hub controller view with Interact button
+     ============================================================ -->
+<div class="frame-wrapper">
+  <div class="frame-label">Hub — near class selection POI</div>
+  <div class="phone-frame" id="frame1">
+
+    <!-- HP bar -->
+    <div class="hp-bar-strip">
+      <div class="hp-bar-fill"></div>
+    </div>
+
+    <!-- Controller body -->
+    <div class="controller-body">
+
+      <!-- Joystick zone -->
+      <div class="joystick-zone">
+        <div class="joystick-ring">
+          <div class="joystick-inner-hint"></div>
+        </div>
+      </div>
+
+      <!-- Divider -->
+      <div class="zone-divider"></div>
+
+      <!-- Skill grid zone -->
+      <div class="skill-grid-zone">
+        <div class="hub-mode-label">Hub Mode</div>
+        <div class="skill-grid">
+          <div class="skill-cell">—</div>
+          <div class="skill-cell">—</div>
+          <div class="skill-cell">—</div>
+          <div class="skill-cell">—</div>
+        </div>
+      </div>
+
+      <!-- Interact button — centered horizontally, top -->
+      <div class="interact-btn">
+        <span class="interact-icon">☞</span>
+        <span class="interact-text">Interact</span>
+      </div>
+
+      <!-- POI hint -->
+      <div class="poi-hint">Class Selection Shrine · nearby</div>
+
+    </div><!-- /controller-body -->
+  </div><!-- /phone-frame -->
+</div>
+
+
+<!-- ============================================================
+     FRAME 2 — Class selection (browsing)
+     ============================================================ -->
+<div class="frame-wrapper">
+  <div class="frame-label">Class Selection — browsing</div>
+  <div class="phone-frame" id="frame2">
+
+    <!-- Top bar -->
+    <div class="class-sel-topbar">
+      <div class="topbar-back">← Back</div>
+      <div class="topbar-title">Choose Your Class</div>
+      <div class="topbar-right">—</div>
+    </div>
+
+    <!-- Card scroll area -->
+    <div class="card-scroll-area">
+
+      <!-- Card 1: Stonehide -->
+      <div class="class-card">
+        <div class="card-icon-area">
+          <svg width="54" height="54" viewBox="0 0 54 54" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <polygon points="27,6 50,46 4,46" stroke="#6ea8d8" stroke-width="2" fill="none" stroke-linejoin="round"/>
+            <polygon points="27,16 42,40 12,40" stroke="#6ea8d8" stroke-width="1" fill="rgba(110,168,216,0.07)" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <div class="card-body">
+          <div class="card-class-name">Stonehide</div>
+          <div class="card-role">Tank · Frontline Anchor</div>
+          <div class="card-flavour">Called from the mountain clans, where endurance is prayer.</div>
+        </div>
+        <div class="card-footer">
+          <button class="select-btn">Select</button>
+        </div>
+      </div>
+
+      <!-- Card 2: Sunwarden -->
+      <div class="class-card">
+        <div class="card-icon-area">
+          <svg width="54" height="54" viewBox="0 0 54 54" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="27" cy="27" r="18" stroke="#6ea8d8" stroke-width="2" fill="none"/>
+            <circle cx="27" cy="27" r="9" stroke="#6ea8d8" stroke-width="1" fill="rgba(110,168,216,0.07)"/>
+            <!-- Sun rays -->
+            <line x1="27" y1="4" x2="27" y2="8" stroke="#6ea8d8" stroke-width="1.5" stroke-linecap="round"/>
+            <line x1="27" y1="46" x2="27" y2="50" stroke="#6ea8d8" stroke-width="1.5" stroke-linecap="round"/>
+            <line x1="4" y1="27" x2="8" y2="27" stroke="#6ea8d8" stroke-width="1.5" stroke-linecap="round"/>
+            <line x1="46" y1="27" x2="50" y2="27" stroke="#6ea8d8" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <div class="card-body">
+          <div class="card-class-name">Sunwarden</div>
+          <div class="card-role">Support · Light &amp; Renewal</div>
+          <div class="card-flavour">Keepers of the ember faith — those who hold the line so others may live.</div>
+        </div>
+        <div class="card-footer">
+          <button class="select-btn">Select</button>
+        </div>
+      </div>
+
+      <!-- Card 3: Spiritcaller (partially clipped) -->
+      <div class="class-card partial">
+        <div class="card-icon-area">
+          <svg width="54" height="54" viewBox="0 0 54 54" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <!-- Diamond -->
+            <polygon points="27,6 48,27 27,48 6,27" stroke="#6ea8d8" stroke-width="2" fill="none" stroke-linejoin="round"/>
+            <polygon points="27,14 40,27 27,40 14,27" stroke="#6ea8d8" stroke-width="1" fill="rgba(110,168,216,0.07)" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <div class="card-body">
+          <div class="card-class-name">Spiritcaller</div>
+          <div class="card-role">Caster · Rift &amp; Summon</div>
+          <div class="card-flavour">Their voice opens doors between worlds. What answers is not always tame.</div>
+        </div>
+        <div class="card-footer">
+          <button class="select-btn">Select</button>
+        </div>
+      </div>
+
+      <!-- Invisible 4th card spacer to show clip -->
+      <div style="width:200px;height:262px;flex-shrink:0;"></div>
+
+    </div><!-- /card-scroll-area -->
+
+    <!-- Scroll indicator -->
+    <div class="scroll-indicator">
+      <div class="scroll-dot active"></div>
+      <div class="scroll-dot"></div>
+      <div class="scroll-dot"></div>
+      <div class="scroll-dot"></div>
+    </div>
+
+  </div><!-- /phone-frame -->
+</div>
+
+
+<!-- ============================================================
+     FRAME 3 — Class selected + ability briefing open
+     ============================================================ -->
+<div class="frame-wrapper">
+  <div class="frame-label">Class Selected — ability briefing open</div>
+  <div class="phone-frame" id="frame3">
+
+    <!-- Top bar -->
+    <div class="class-sel-topbar">
+      <div class="topbar-back">← Back</div>
+      <div class="topbar-title">Choose Your Class</div>
+      <div class="topbar-right" style="color:#6ea8d8;">Stonehide ✓</div>
+    </div>
+
+    <!-- Card scroll area (same 3 cards, Stonehide selected) -->
+    <div class="card-scroll-area" style="padding-bottom:0;">
+
+      <!-- Card 1: Stonehide — SELECTED -->
+      <div class="class-card selected">
+        <div class="card-icon-area">
+          <svg width="54" height="54" viewBox="0 0 54 54" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <polygon points="27,6 50,46 4,46" stroke="#6ea8d8" stroke-width="2" fill="none" stroke-linejoin="round"/>
+            <polygon points="27,16 42,40 12,40" stroke="#6ea8d8" stroke-width="1" fill="rgba(110,168,216,0.12)" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <div class="card-body">
+          <div class="card-class-name">Stonehide</div>
+          <div class="card-role">Tank · Frontline Anchor</div>
+          <div class="card-flavour">Called from the mountain clans, where endurance is prayer.</div>
+        </div>
+        <div class="card-footer">
+          <button class="select-btn selected-state">Selected ✓</button>
+        </div>
+      </div>
+
+      <!-- Card 2: Sunwarden -->
+      <div class="class-card">
+        <div class="card-icon-area">
+          <svg width="54" height="54" viewBox="0 0 54 54" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="27" cy="27" r="18" stroke="#6ea8d8" stroke-width="2" fill="none"/>
+            <circle cx="27" cy="27" r="9" stroke="#6ea8d8" stroke-width="1" fill="rgba(110,168,216,0.07)"/>
+            <line x1="27" y1="4" x2="27" y2="8" stroke="#6ea8d8" stroke-width="1.5" stroke-linecap="round"/>
+            <line x1="27" y1="46" x2="27" y2="50" stroke="#6ea8d8" stroke-width="1.5" stroke-linecap="round"/>
+            <line x1="4" y1="27" x2="8" y2="27" stroke="#6ea8d8" stroke-width="1.5" stroke-linecap="round"/>
+            <line x1="46" y1="27" x2="50" y2="27" stroke="#6ea8d8" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <div class="card-body">
+          <div class="card-class-name">Sunwarden</div>
+          <div class="card-role">Support · Light &amp; Renewal</div>
+          <div class="card-flavour">Keepers of the ember faith — those who hold the line so others may live.</div>
+        </div>
+        <div class="card-footer">
+          <button class="select-btn">Select</button>
+        </div>
+      </div>
+
+      <!-- Card 3: Spiritcaller (partially clipped) -->
+      <div class="class-card partial">
+        <div class="card-icon-area">
+          <svg width="54" height="54" viewBox="0 0 54 54" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <polygon points="27,6 48,27 27,48 6,27" stroke="#6ea8d8" stroke-width="2" fill="none" stroke-linejoin="round"/>
+            <polygon points="27,14 40,27 27,40 14,27" stroke="#6ea8d8" stroke-width="1" fill="rgba(110,168,216,0.07)" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <div class="card-body">
+          <div class="card-class-name">Spiritcaller</div>
+          <div class="card-role">Caster · Rift &amp; Summon</div>
+          <div class="card-flavour">Their voice opens doors between worlds. What answers is not always tame.</div>
+        </div>
+        <div class="card-footer">
+          <button class="select-btn">Select</button>
+        </div>
+      </div>
+
+      <div style="width:200px;height:262px;flex-shrink:0;"></div>
+
+    </div><!-- /card-scroll-area -->
+
+    <!-- Ability briefing panel -->
+    <div class="ability-briefing-panel">
+      <div class="ability-panel-header">
+        <div class="ability-panel-title">Abilities</div>
+        <div class="ability-panel-close">✕ close</div>
+      </div>
+
+      <div class="ability-chips-row">
+        <!-- Stone Wall -->
+        <div class="ability-chip">
+          <div class="ability-chip-name">Stone Wall</div>
+          <div class="ability-chip-type">TAP</div>
+        </div>
+        <!-- Tremor Stomp -->
+        <div class="ability-chip">
+          <div class="ability-chip-name">Tremor Stomp</div>
+          <div class="ability-chip-type">RELEASE</div>
+        </div>
+        <!-- Iron Skin -->
+        <div class="ability-chip">
+          <div class="ability-chip-name">Iron Skin</div>
+          <div class="ability-chip-type">TAP</div>
+        </div>
+        <!-- Avalanche -->
+        <div class="ability-chip">
+          <div class="ability-chip-name">Avalanche</div>
+          <div class="ability-chip-type">AUTO</div>
+        </div>
+      </div>
+
+      <div class="ability-learn-hint">Tap any ability to learn more</div>
+    </div>
+
+  </div><!-- /phone-frame -->
+</div>
+
+
+</body>
+</html>

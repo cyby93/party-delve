@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Party Delve — Typography Specimen</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700;900&family=Crimson+Pro:ital,wght@0,400;0,600;1,400&family=Uncial+Antiqua&family=Lora:ital,wght@0,400;0,600;1,400&family=Rye&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=Arvo:ital,wght@0,400;0,700;1,400&display=swap');
+
+/* ─── Reset ─────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* ─── Page ───────────────────────────────────────────────────── */
+body {
+  background-color: #0f0e10;
+  color: #d8d0e8;
+  font-size: 16px;
+  line-height: 1.5;
+  padding: 48px 32px 80px;
+  min-height: 100vh;
+}
+
+/* ─── Page header ────────────────────────────────────────────── */
+.page-header {
+  text-align: center;
+  margin-bottom: 64px;
+}
+
+.page-header__eyebrow {
+  font-family: 'Arvo', serif;
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: #a89ec0;
+  margin-bottom: 10px;
+}
+
+.page-header__title {
+  font-family: 'Cinzel', serif;
+  font-size: 15px;
+  font-weight: 400;
+  letter-spacing: 0.12em;
+  color: #6ea8d8;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+.page-header__sub {
+  font-family: 'Crimson Pro', serif;
+  font-size: 13px;
+  font-style: italic;
+  color: #a89ec0;
+  opacity: 0.75;
+}
+
+/* ─── Grid ───────────────────────────────────────────────────── */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 3px;
+  max-width: 1280px;
+  margin: 0 auto;
+}
+
+/* ─── Panel ──────────────────────────────────────────────────── */
+.panel {
+  background-color: #181620;
+  padding: 48px 44px 52px;
+  position: relative;
+  overflow: hidden;
+}
+
+/* subtle corner mark */
+.panel::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0;
+  width: 32px; height: 32px;
+  border-top: 2px solid #6ea8d8;
+  border-left: 2px solid #6ea8d8;
+  opacity: 0.35;
+}
+.panel::after {
+  content: '';
+  position: absolute;
+  bottom: 0; right: 0;
+  width: 32px; height: 32px;
+  border-bottom: 2px solid #6ea8d8;
+  border-right: 2px solid #6ea8d8;
+  opacity: 0.35;
+}
+
+/* panel header */
+.panel__direction-tag {
+  font-family: 'Arvo', serif;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+  color: #6ea8d8;
+  margin-bottom: 6px;
+}
+
+.panel__direction-name {
+  font-family: 'Arvo', serif;
+  font-size: 18px;
+  font-weight: 700;
+  color: #d8d0e8;
+  margin-bottom: 4px;
+}
+
+.panel__direction-desc {
+  font-family: 'Arvo', serif;
+  font-size: 12px;
+  font-weight: 400;
+  font-style: italic;
+  color: #a89ec0;
+  margin-bottom: 36px;
+  line-height: 1.4;
+}
+
+/* divider between header and specimens */
+.panel__rule {
+  width: 48px;
+  height: 1px;
+  background: #6ea8d8;
+  opacity: 0.3;
+  margin: 0 0 36px;
+}
+
+/* ─── Specimen rows ──────────────────────────────────────────── */
+.specimen {
+  margin-bottom: 32px;
+}
+.specimen:last-of-type {
+  margin-bottom: 0;
+}
+
+.specimen__label {
+  font-family: 'Arvo', serif;
+  font-size: 9px;
+  font-weight: 400;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: #6ea8d8;
+  opacity: 0.55;
+  margin-bottom: 7px;
+}
+
+/* ─── Font credit ────────────────────────────────────────────── */
+.panel__fonts {
+  margin-top: 40px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(108, 168, 216, 0.12);
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.font-chip {
+  font-family: 'Arvo', serif;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: #a89ec0;
+  opacity: 0.65;
+}
+
+.font-chip strong {
+  color: #6ea8d8;
+  font-weight: 700;
+}
+
+/* ─── CTA button shared ──────────────────────────────────────── */
+.btn {
+  display: inline-block;
+  background-color: #6ea8d8;
+  color: #0f0e10;
+  padding: 11px 30px 10px;
+  letter-spacing: 0.08em;
+  cursor: default;
+  border: none;
+  line-height: 1;
+}
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   PANEL A — CARVED STONE
+   Display: Cinzel · Body: Crimson Pro
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+.panel-a .s-game-title {
+  font-family: 'Cinzel', serif;
+  font-size: 62px;
+  font-weight: 900;
+  color: #d8d0e8;
+  letter-spacing: 0.06em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.panel-a .s-class-name {
+  font-family: 'Cinzel', serif;
+  font-size: 30px;
+  font-weight: 700;
+  color: #6ea8d8;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.panel-a .s-class-subtitle {
+  font-family: 'Cinzel', serif;
+  font-size: 11px;
+  font-weight: 400;
+  color: #a89ec0;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+}
+
+.panel-a .s-bond-text {
+  font-family: 'Crimson Pro', serif;
+  font-size: 18px;
+  font-weight: 400;
+  font-style: italic;
+  color: #d8d0e8;
+  line-height: 1.65;
+  max-width: 420px;
+}
+
+.panel-a .s-cta .btn {
+  font-family: 'Cinzel', serif;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.panel-a .s-section-label {
+  font-family: 'Crimson Pro', serif;
+  font-size: 11px;
+  font-weight: 600;
+  color: #a89ec0;
+  letter-spacing: 0.35em;
+  text-transform: uppercase;
+}
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   PANEL B — RITUAL HAND
+   Display: Uncial Antiqua · Body: Lora
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+.panel-b .s-game-title {
+  font-family: 'Uncial Antiqua', serif;
+  font-size: 58px;
+  font-weight: 400;
+  color: #d8d0e8;
+  letter-spacing: 0.03em;
+  line-height: 1.05;
+}
+
+.panel-b .s-class-name {
+  font-family: 'Uncial Antiqua', serif;
+  font-size: 28px;
+  font-weight: 400;
+  color: #6ea8d8;
+  letter-spacing: 0.05em;
+}
+
+.panel-b .s-class-subtitle {
+  font-family: 'Lora', serif;
+  font-size: 12px;
+  font-weight: 400;
+  font-style: italic;
+  color: #a89ec0;
+  letter-spacing: 0.12em;
+}
+
+.panel-b .s-bond-text {
+  font-family: 'Lora', serif;
+  font-size: 16px;
+  font-weight: 400;
+  color: #d8d0e8;
+  line-height: 1.7;
+  max-width: 420px;
+}
+
+.panel-b .s-cta .btn {
+  font-family: 'Uncial Antiqua', serif;
+  font-size: 15px;
+  font-weight: 400;
+  letter-spacing: 0.06em;
+}
+
+.panel-b .s-section-label {
+  font-family: 'Lora', serif;
+  font-size: 10px;
+  font-weight: 600;
+  color: #a89ec0;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+}
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   PANEL C — WOODBLOCK STRIKE
+   Display: Rye · Body: Source Serif 4
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+.panel-c .s-game-title {
+  font-family: 'Rye', serif;
+  font-size: 60px;
+  font-weight: 400;
+  color: #d8d0e8;
+  letter-spacing: 0.04em;
+  line-height: 0.95;
+}
+
+.panel-c .s-class-name {
+  font-family: 'Rye', serif;
+  font-size: 30px;
+  font-weight: 400;
+  color: #6ea8d8;
+  letter-spacing: 0.06em;
+}
+
+.panel-c .s-class-subtitle {
+  font-family: 'Source Serif 4', serif;
+  font-size: 12px;
+  font-weight: 400;
+  color: #a89ec0;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+}
+
+.panel-c .s-bond-text {
+  font-family: 'Source Serif 4', serif;
+  font-size: 16px;
+  font-weight: 400;
+  color: #d8d0e8;
+  line-height: 1.68;
+  max-width: 420px;
+}
+
+.panel-c .s-cta .btn {
+  font-family: 'Rye', serif;
+  font-size: 14px;
+  font-weight: 400;
+  letter-spacing: 0.1em;
+  padding: 13px 32px 10px;
+}
+
+.panel-c .s-section-label {
+  font-family: 'Source Serif 4', serif;
+  font-size: 10px;
+  font-weight: 600;
+  color: #a89ec0;
+  letter-spacing: 0.38em;
+  text-transform: uppercase;
+}
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   PANEL D — TRIBAL SLAB
+   Display: Arvo 700 · Body: Arvo 400
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+.panel-d .s-game-title {
+  font-family: 'Arvo', serif;
+  font-size: 64px;
+  font-weight: 700;
+  color: #d8d0e8;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.panel-d .s-class-name {
+  font-family: 'Arvo', serif;
+  font-size: 30px;
+  font-weight: 700;
+  color: #6ea8d8;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.panel-d .s-class-subtitle {
+  font-family: 'Arvo', serif;
+  font-size: 11px;
+  font-weight: 400;
+  font-style: italic;
+  color: #a89ec0;
+  letter-spacing: 0.08em;
+}
+
+.panel-d .s-bond-text {
+  font-family: 'Arvo', serif;
+  font-size: 15px;
+  font-weight: 400;
+  color: #d8d0e8;
+  line-height: 1.72;
+  max-width: 420px;
+}
+
+.panel-d .s-cta .btn {
+  font-family: 'Arvo', serif;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+
+.panel-d .s-section-label {
+  font-family: 'Arvo', serif;
+  font-size: 10px;
+  font-weight: 400;
+  color: #a89ec0;
+  letter-spacing: 0.4em;
+  text-transform: uppercase;
+}
+
+/* ─── Warm amber accent used for the amber-tinted amber variants ─ */
+.accent-amber { color: #c07d35; }
+
+</style>
+</head>
+<body>
+
+<!-- ════════════════ PAGE HEADER ════════════════ -->
+<header class="page-header">
+  <p class="page-header__eyebrow">Typography Specimen · Spirit Ground Palette</p>
+  <h1 class="page-header__title">Party Delve — 4 Type Directions</h1>
+  <p class="page-header__sub">Each panel renders the same six specimens. Assess personality, legibility, and tone fit.</p>
+</header>
+
+<!-- ════════════════ PANEL GRID ════════════════ -->
+<div class="grid">
+
+  <!-- ══════ PANEL A — CARVED STONE ══════ -->
+  <div class="panel panel-a">
+    <p class="panel__direction-tag">Direction A</p>
+    <h2 class="panel__direction-name">Carved Stone</h2>
+    <p class="panel__direction-desc">High-contrast serif, inscribed in rock or worn into wood. Ancient. Noble. Every line is deliberate.</p>
+    <div class="panel__rule"></div>
+
+    <!-- 1. Game title -->
+    <div class="specimen">
+      <p class="specimen__label">1 · Game Title</p>
+      <div class="s-game-title">Party Delve</div>
+    </div>
+
+    <!-- 2. Class name -->
+    <div class="specimen">
+      <p class="specimen__label">2 · Class Name</p>
+      <div class="s-class-name">Souldrinker</div>
+    </div>
+
+    <!-- 3. Class subtitle -->
+    <div class="specimen">
+      <p class="specimen__label">3 · Class Subtitle</p>
+      <div class="s-class-subtitle">Ritual predator &middot; Bloodrite Covenant</div>
+    </div>
+
+    <!-- 4. Bond text -->
+    <div class="specimen">
+      <p class="specimen__label">4 · Spirit Bond Card Text</p>
+      <p class="s-bond-text">&ldquo;A proximity bond links you to Dani. Stay close. Or don&rsquo;t — see what happens.&rdquo;</p>
+    </div>
+
+    <!-- 5. CTA -->
+    <div class="specimen s-cta">
+      <p class="specimen__label">5 · CTA Button</p>
+      <button class="btn">Begin Run</button>
+    </div>
+
+    <!-- 6. Section label -->
+    <div class="specimen">
+      <p class="specimen__label">6 · Section Label</p>
+      <div class="s-section-label">Spirit Bond Active</div>
+    </div>
+
+    <div class="panel__fonts">
+      <span class="font-chip"><strong>Display</strong> Cinzel 700–900</span>
+      <span class="font-chip"><strong>Body</strong> Crimson Pro 400 italic</span>
+    </div>
+  </div>
+
+  <!-- ══════ PANEL B — RITUAL HAND ══════ -->
+  <div class="panel panel-b">
+    <p class="panel__direction-tag">Direction B</p>
+    <h2 class="panel__direction-name">Ritual Hand</h2>
+    <p class="panel__direction-desc">Ceremony script — not casual, but made by a human hand, not a machine. Organic weight, sacred intent.</p>
+    <div class="panel__rule"></div>
+
+    <div class="specimen">
+      <p class="specimen__label">1 · Game Title</p>
+      <div class="s-game-title">Party Delve</div>
+    </div>
+
+    <div class="specimen">
+      <p class="specimen__label">2 · Class Name</p>
+      <div class="s-class-name">Souldrinker</div>
+    </div>
+
+    <div class="specimen">
+      <p class="specimen__label">3 · Class Subtitle</p>
+      <div class="s-class-subtitle">Ritual predator &middot; Bloodrite Covenant</div>
+    </div>
+
+    <div class="specimen">
+      <p class="specimen__label">4 · Spirit Bond Card Text</p>
+      <p class="s-bond-text">&ldquo;A proximity bond links you to Dani. Stay close. Or don&rsquo;t — see what happens.&rdquo;</p>
+    </div>
+
+    <div class="specimen s-cta">
+      <p class="specimen__label">5 · CTA Button</p>
+      <button class="btn">Begin Run</button>
+    </div>
+
+    <div class="specimen">
+      <p class="specimen__label">6 · Section Label</p>
+      <div class="s-section-label">Spirit Bond Active</div>
+    </div>
+
+    <div class="panel__fonts">
+      <span class="font-chip"><strong>Display</strong> Uncial Antiqua 400</span>
+      <span class="font-chip"><strong>Body</strong> Lora 400 italic</span>
+    </div>
+  </div>
+
+  <!-- ══════ PANEL C — WOODBLOCK STRIKE ══════ -->
+  <div class="panel panel-c">
+    <p class="panel__direction-tag">Direction C</p>
+    <h2 class="panel__direction-name">Woodblock Strike</h2>
+    <p class="panel__direction-desc">Bold, condensed, woodblock-print power. Demands attention. Epic and primal. The title card of a battle.</p>
+    <div class="panel__rule"></div>
+
+    <div class="specimen">
+      <p class="specimen__label">1 · Game Title</p>
+      <div class="s-game-title">Party Delve</div>
+    </div>
+
+    <div class="specimen">
+      <p class="specimen__label">2 · Class Name</p>
+      <div class="s-class-name">Souldrinker</div>
+    </div>
+
+    <div class="specimen">
+      <p class="specimen__label">3 · Class Subtitle</p>
+      <div class="s-class-subtitle">Ritual predator &middot; Bloodrite Covenant</div>
+    </div>
+
+    <div class="specimen">
+      <p class="specimen__label">4 · Spirit Bond Card Text</p>
+      <p class="s-bond-text">&ldquo;A proximity bond links you to Dani. Stay close. Or don&rsquo;t — see what happens.&rdquo;</p>
+    </div>
+
+    <div class="specimen s-cta">
+      <p class="specimen__label">5 · CTA Button</p>
+      <button class="btn">Begin Run</button>
+    </div>
+
+    <div class="specimen">
+      <p class="specimen__label">6 · Section Label</p>
+      <div class="s-section-label">Spirit Bond Active</div>
+    </div>
+
+    <div class="panel__fonts">
+      <span class="font-chip"><strong>Display</strong> Rye 400</span>
+      <span class="font-chip"><strong>Body</strong> Source Serif 4 400</span>
+    </div>
+  </div>
+
+  <!-- ══════ PANEL D — TRIBAL SLAB ══════ -->
+  <div class="panel panel-d">
+    <p class="panel__direction-tag">Direction D</p>
+    <h2 class="panel__direction-name">Tribal Slab</h2>
+    <p class="panel__direction-desc">Robust slab serif with character. Handmade but highly legible. Straddles craft and function. Grounded, not precious.</p>
+    <div class="panel__rule"></div>
+
+    <div class="specimen">
+      <p class="specimen__label">1 · Game Title</p>
+      <div class="s-game-title">Party Delve</div>
+    </div>
+
+    <div class="specimen">
+      <p class="specimen__label">2 · Class Name</p>
+      <div class="s-class-name">Souldrinker</div>
+    </div>
+
+    <div class="specimen">
+      <p class="specimen__label">3 · Class Subtitle</p>
+      <div class="s-class-subtitle">Ritual predator &middot; Bloodrite Covenant</div>
+    </div>
+
+    <div class="specimen">
+      <p class="specimen__label">4 · Spirit Bond Card Text</p>
+      <p class="s-bond-text">&ldquo;A proximity bond links you to Dani. Stay close. Or don&rsquo;t — see what happens.&rdquo;</p>
+    </div>
+
+    <div class="specimen s-cta">
+      <p class="specimen__label">5 · CTA Button</p>
+      <button class="btn">Begin Run</button>
+    </div>
+
+    <div class="specimen">
+      <p class="specimen__label">6 · Section Label</p>
+      <div class="s-section-label">Spirit Bond Active</div>
+    </div>
+
+    <div class="panel__fonts">
+      <span class="font-chip"><strong>Display</strong> Arvo 700</span>
+      <span class="font-chip"><strong>Body</strong> Arvo 400</span>
+    </div>
+  </div>
+
+</div><!-- /grid -->
+
+</body>
+</html>

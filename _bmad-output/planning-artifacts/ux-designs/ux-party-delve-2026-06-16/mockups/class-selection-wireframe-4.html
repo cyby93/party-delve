@@ -1,0 +1,817 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Party Delve — Class Selection Wireframe v4</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Uncial+Antiqua&family=Lora:ital,wght@0,400;0,700;1,400&display=swap');
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: #0a0908;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 40px 24px;
+  gap: 40px;
+  min-height: 100vh;
+  font-family: 'Lora', Georgia, serif;
+}
+
+.frame-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.frame-label {
+  font-family: 'Lora', Georgia, serif;
+  font-size: 11px;
+  color: #a89ec0;
+  letter-spacing: 0.04em;
+  padding-left: 4px;
+}
+
+.frame {
+  width: 844px;
+  height: 390px;
+  background: #0f0e10;
+  border-radius: 20px;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.7), 0 2px 8px rgba(0,0,0,0.5);
+  position: relative;
+  overflow: hidden;
+}
+
+/* ─────────────────────────────────────────────
+   FRAME 1 — Hub controller
+───────────────────────────────────────────── */
+
+.f1-hp-bar {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 6px;
+  background: #36334a;
+  z-index: 10;
+}
+.f1-hp-bar::after {
+  content: '';
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  background: #c07d35;
+}
+
+/* Left joystick zone */
+.f1-joystick-zone {
+  position: absolute;
+  top: 6px; left: 0;
+  width: 320px; height: 384px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.f1-joystick-ring {
+  width: 160px;
+  height: 160px;
+  border-radius: 50%;
+  border: 2px solid rgba(54, 51, 74, 0.30);
+  background: rgba(54, 51, 74, 0.10);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.f1-joystick-thumb {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: rgba(54, 51, 74, 0.28);
+  border: 1.5px solid rgba(54, 51, 74, 0.40);
+}
+
+/* Right action cells */
+.f1-action-zone {
+  position: absolute;
+  top: 6px; right: 0;
+  width: 524px; height: 384px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+}
+
+.f1-hub-label {
+  font-family: 'Lora', Georgia, serif;
+  font-size: 9px;
+  color: #36334a;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-bottom: 12px;
+}
+
+.f1-cell-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.f1-cell {
+  width: 108px;
+  height: 108px;
+  background: #181620;
+  border: 1px solid #36334a;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.f1-cell-dash {
+  font-family: 'Lora', Georgia, serif;
+  font-size: 18px;
+  color: rgba(54, 51, 74, 0.6);
+}
+
+/* Interact button */
+.f1-interact-btn {
+  position: absolute;
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 200px;
+  height: 44px;
+  background: #181620;
+  border: 1.5px solid #6ea8d8;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 16px rgba(110, 168, 216, 0.30);
+  z-index: 20;
+}
+
+.f1-interact-btn span {
+  font-family: 'Lora', Georgia, serif;
+  font-size: 14px;
+  font-weight: 700;
+  color: #6ea8d8;
+  letter-spacing: 0.03em;
+}
+
+/* Proximity hint */
+.f1-hint {
+  position: absolute;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: 'Lora', Georgia, serif;
+  font-size: 9px;
+  color: #36334a;
+  white-space: nowrap;
+  letter-spacing: 0.06em;
+  z-index: 20;
+}
+
+/* Divider */
+.f1-divider {
+  position: absolute;
+  top: 6px;
+  left: 320px;
+  width: 1px;
+  height: 384px;
+  background: linear-gradient(to bottom, transparent 0%, #36334a 20%, #36334a 80%, transparent 100%);
+  opacity: 0.4;
+}
+
+/* ─────────────────────────────────────────────
+   FRAME 2 — Class selection browsing
+───────────────────────────────────────────── */
+
+/* Top bar */
+.f2-topbar {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 32px;
+  background: #181620;
+  border-bottom: 1px solid #36334a;
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  z-index: 10;
+}
+
+.f2-back {
+  font-family: 'Lora', Georgia, serif;
+  font-size: 12px;
+  color: #a89ec0;
+}
+
+.f2-title {
+  font-family: 'Uncial Antiqua', cursive;
+  font-size: 16px;
+  color: #d8d0e8;
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+/* Card area */
+.f2-card-area {
+  position: absolute;
+  top: 32px; left: 0; right: 0; bottom: 0;
+  display: flex;
+  align-items: center;
+  padding: 20px 24px;
+  gap: 14px;
+  overflow: hidden;
+}
+
+/* Right fade */
+.f2-fade {
+  position: absolute;
+  top: 32px; right: 0; bottom: 0;
+  width: 80px;
+  background: linear-gradient(to right, transparent 0%, #0f0e10 100%);
+  z-index: 5;
+  pointer-events: none;
+}
+
+.f2-card {
+  width: 190px;
+  min-width: 190px;
+  height: 240px;
+  background: #181620;
+  border: 1px solid #36334a;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0 0 16px 0;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.f2-card-icon-area {
+  width: 100%;
+  height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-bottom: 1px solid #36334a;
+  margin-bottom: 12px;
+}
+
+.f2-card-name {
+  font-family: 'Uncial Antiqua', cursive;
+  font-size: 14px;
+  color: #d8d0e8;
+  text-align: center;
+  margin-bottom: 4px;
+}
+
+.f2-card-role {
+  font-family: 'Lora', Georgia, serif;
+  font-size: 10px;
+  color: #a89ec0;
+  text-align: center;
+  margin-bottom: 8px;
+}
+
+.f2-card-flavor {
+  font-family: 'Lora', Georgia, serif;
+  font-style: italic;
+  font-size: 9px;
+  color: #a89ec0;
+  text-align: center;
+  line-height: 1.5;
+  padding: 0 12px;
+}
+
+/* Partially clipped card */
+.f2-card-clip {
+  width: 90px;
+  min-width: 90px;
+  height: 240px;
+  background: #181620;
+  border: 1px solid #36334a;
+  border-radius: 8px;
+  overflow: hidden;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0;
+}
+
+.f2-card-clip .f2-card-icon-area {
+  width: 190px;
+}
+
+/* Scroll dots */
+.f2-scroll-dots {
+  position: absolute;
+  bottom: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 6px;
+  z-index: 10;
+}
+
+.f2-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #36334a;
+}
+
+.f2-dot.active {
+  background: #6ea8d8;
+}
+
+/* ─────────────────────────────────────────────
+   FRAME 3 — Card selected + ability panel
+───────────────────────────────────────────── */
+
+.f3-topbar {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 32px;
+  background: #181620;
+  border-bottom: 1px solid #36334a;
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  z-index: 10;
+}
+
+.f3-back {
+  font-family: 'Lora', Georgia, serif;
+  font-size: 12px;
+  color: #a89ec0;
+}
+
+.f3-title {
+  font-family: 'Uncial Antiqua', cursive;
+  font-size: 16px;
+  color: #d8d0e8;
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+.f3-confirmed {
+  font-family: 'Lora', Georgia, serif;
+  font-size: 11px;
+  color: #6ea8d8;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+/* Card area compressed */
+.f3-card-area {
+  position: absolute;
+  top: 32px; left: 0; right: 0;
+  height: 228px;
+  display: flex;
+  align-items: center;
+  padding: 12px 24px;
+  gap: 14px;
+  overflow: hidden;
+}
+
+.f3-fade {
+  position: absolute;
+  top: 32px; right: 0;
+  width: 80px;
+  height: 228px;
+  background: linear-gradient(to right, transparent 0%, #0f0e10 100%);
+  z-index: 5;
+  pointer-events: none;
+}
+
+.f3-card {
+  width: 190px;
+  min-width: 190px;
+  height: 190px;
+  background: #181620;
+  border: 1px solid #36334a;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0 0 12px 0;
+  flex-shrink: 0;
+  overflow: hidden;
+  opacity: 0.5;
+}
+
+.f3-card.selected {
+  border: 2px solid #6ea8d8;
+  box-shadow: 0 0 12px rgba(110, 168, 216, 0.25);
+  opacity: 1;
+}
+
+.f3-card-icon-area {
+  width: 100%;
+  height: 66px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-bottom: 1px solid #36334a;
+  margin-bottom: 10px;
+}
+
+.f3-card.selected .f3-card-icon-area {
+  background: #22202e;
+  border-bottom: 1px solid #36334a;
+}
+
+.f3-card-name {
+  font-family: 'Uncial Antiqua', cursive;
+  font-size: 13px;
+  color: #d8d0e8;
+  text-align: center;
+  margin-bottom: 3px;
+}
+
+.f3-card-role {
+  font-family: 'Lora', Georgia, serif;
+  font-size: 9px;
+  color: #a89ec0;
+  text-align: center;
+  margin-bottom: 6px;
+}
+
+.f3-card-flavor {
+  font-family: 'Lora', Georgia, serif;
+  font-style: italic;
+  font-size: 8px;
+  color: #a89ec0;
+  text-align: center;
+  line-height: 1.5;
+  padding: 0 10px;
+}
+
+/* Ability briefing panel */
+.f3-ability-panel {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 130px;
+  background: #181620;
+  border-top: 1px solid #36334a;
+  display: flex;
+  z-index: 10;
+}
+
+/* Left section: ~80% width, abilities in 1 row × 4 columns */
+.f3-panel-left {
+  flex: 0 0 80%;
+  padding: 12px 14px 10px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.f3-ability-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  flex: 1;
+}
+
+.f3-chip {
+  background: #22202e;
+  border-radius: 4px;
+  padding: 6px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.f3-chip-name {
+  font-family: 'Lora', Georgia, serif;
+  font-weight: 700;
+  font-size: 10px;
+  color: #d8d0e8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.f3-chip-badge {
+  display: inline-block;
+  font-family: 'Lora', Georgia, serif;
+  font-size: 8px;
+  color: #a89ec0;
+  background: #36334a;
+  border-radius: 4px;
+  padding: 1px 5px;
+  align-self: flex-start;
+}
+
+.f3-panel-hint {
+  font-family: 'Lora', Georgia, serif;
+  font-size: 9px;
+  color: #a89ec0;
+  padding-top: 2px;
+}
+
+/* Right section: ~20% width */
+.f3-panel-right {
+  flex: 0 0 20%;
+  border-left: 1px solid #36334a;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 10px;
+  gap: 6px;
+}
+
+.f3-pick-btn {
+  width: 100%;
+  height: 48px;
+  background: #6ea8d8;
+  border: none;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.f3-pick-btn span {
+  font-family: 'Lora', Georgia, serif;
+  font-weight: 700;
+  font-size: 11px;
+  color: #0f0e10;
+  letter-spacing: 0.02em;
+  text-align: center;
+  line-height: 1.3;
+}
+
+.f3-pick-sub {
+  font-family: 'Lora', Georgia, serif;
+  font-size: 9px;
+  color: #a89ec0;
+  text-align: center;
+}
+
+/* ─────────────────────────────────────────────
+   SVG Icons
+───────────────────────────────────────────── */
+svg { display: block; }
+
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════
+     FRAME 1 — Hub controller
+════════════════════════════════════════════ -->
+<div class="frame-wrapper">
+  <div class="frame-label">Hub — near class selection POI</div>
+  <div class="frame">
+    <!-- HP bar -->
+    <div class="f1-hp-bar"></div>
+
+    <!-- Interact button -->
+    <div class="f1-interact-btn">
+      <span>✦ Interact</span>
+    </div>
+
+    <!-- Left joystick zone -->
+    <div class="f1-joystick-zone">
+      <div class="f1-joystick-ring">
+        <div class="f1-joystick-thumb"></div>
+      </div>
+    </div>
+
+    <!-- Divider -->
+    <div class="f1-divider"></div>
+
+    <!-- Right action zone -->
+    <div class="f1-action-zone">
+      <div class="f1-hub-label">Hub Mode</div>
+      <div class="f1-cell-grid">
+        <div class="f1-cell"><span class="f1-cell-dash">—</span></div>
+        <div class="f1-cell"><span class="f1-cell-dash">—</span></div>
+        <div class="f1-cell"><span class="f1-cell-dash">—</span></div>
+        <div class="f1-cell"><span class="f1-cell-dash">—</span></div>
+      </div>
+    </div>
+
+    <!-- Proximity hint -->
+    <div class="f1-hint">Class Selection Shrine · nearby</div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     FRAME 2 — Class selection browsing
+════════════════════════════════════════════ -->
+<div class="frame-wrapper">
+  <div class="frame-label">Class Selection — browsing (no selection yet)</div>
+  <div class="frame">
+    <!-- Top bar -->
+    <div class="f2-topbar">
+      <span class="f2-back">← Back</span>
+      <span class="f2-title">Choose Your Class</span>
+    </div>
+
+    <!-- Right fade -->
+    <div class="f2-fade"></div>
+
+    <!-- Card area -->
+    <div class="f2-card-area">
+
+      <!-- Stonehide -->
+      <div class="f2-card">
+        <div class="f2-card-icon-area">
+          <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+            <polygon points="24,6 44,40 4,40" stroke="#36334a" stroke-width="2" fill="none" stroke-linejoin="round"/>
+            <polygon points="24,14 36,36 12,36" stroke="#36334a" stroke-width="1.2" fill="none" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <div class="f2-card-name">Stonehide</div>
+        <div class="f2-card-role">Tank · Frontline Anchor</div>
+        <div class="f2-card-flavor">Called from the mountain clans, where endurance is prayer.</div>
+      </div>
+
+      <!-- Sunwarden -->
+      <div class="f2-card">
+        <div class="f2-card-icon-area">
+          <svg width="52" height="52" viewBox="0 0 52 52" fill="none">
+            <circle cx="26" cy="26" r="12" stroke="#36334a" stroke-width="2" fill="none"/>
+            <!-- rays -->
+            <line x1="26" y1="4" x2="26" y2="10" stroke="#36334a" stroke-width="1.5" stroke-linecap="round"/>
+            <line x1="26" y1="42" x2="26" y2="48" stroke="#36334a" stroke-width="1.5" stroke-linecap="round"/>
+            <line x1="4" y1="26" x2="10" y2="26" stroke="#36334a" stroke-width="1.5" stroke-linecap="round"/>
+            <line x1="42" y1="26" x2="48" y2="26" stroke="#36334a" stroke-width="1.5" stroke-linecap="round"/>
+            <line x1="10.1" y1="10.1" x2="14.3" y2="14.3" stroke="#36334a" stroke-width="1.5" stroke-linecap="round"/>
+            <line x1="37.7" y1="37.7" x2="41.9" y2="41.9" stroke="#36334a" stroke-width="1.5" stroke-linecap="round"/>
+            <line x1="41.9" y1="10.1" x2="37.7" y2="14.3" stroke="#36334a" stroke-width="1.5" stroke-linecap="round"/>
+            <line x1="14.3" y1="37.7" x2="10.1" y2="41.9" stroke="#36334a" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <div class="f2-card-name">Sunwarden</div>
+        <div class="f2-card-role">Support · Light Bringer</div>
+        <div class="f2-card-flavor">Healers who carry warmth like a weapon into the dark below.</div>
+      </div>
+
+      <!-- Ashblade -->
+      <div class="f2-card">
+        <div class="f2-card-icon-area">
+          <svg width="44" height="48" viewBox="0 0 44 48" fill="none">
+            <!-- blade shape -->
+            <path d="M22 4 L38 28 L22 44 L6 28 Z" stroke="#36334a" stroke-width="2" fill="none" stroke-linejoin="round"/>
+            <path d="M22 12 L32 28 L22 38 L12 28 Z" stroke="#36334a" stroke-width="1" fill="none" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <div class="f2-card-name">Ashblade</div>
+        <div class="f2-card-role">Damage · Swift Striker</div>
+        <div class="f2-card-flavor">Born from the char of a burned-down city. Hunts what hunted them.</div>
+      </div>
+
+      <!-- Spiritcaller (clipped) -->
+      <div class="f2-card-clip">
+        <div class="f2-card-icon-area">
+          <svg width="44" height="48" viewBox="0 0 44 48" fill="none">
+            <circle cx="22" cy="24" r="14" stroke="#36334a" stroke-width="1.5" fill="none" stroke-dasharray="4 3"/>
+            <circle cx="22" cy="24" r="5" stroke="#36334a" stroke-width="1.5" fill="none"/>
+            <line x1="22" y1="6" x2="22" y2="18" stroke="#36334a" stroke-width="1" stroke-linecap="round"/>
+            <line x1="22" y1="30" x2="22" y2="42" stroke="#36334a" stroke-width="1" stroke-linecap="round"/>
+          </svg>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Scroll dots -->
+    <div class="f2-scroll-dots">
+      <div class="f2-dot active"></div>
+      <div class="f2-dot"></div>
+      <div class="f2-dot"></div>
+      <div class="f2-dot"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     FRAME 3 — Stonehide selected + ability panel
+════════════════════════════════════════════ -->
+<div class="frame-wrapper">
+  <div class="frame-label">Stonehide selected — ability briefing + finalize</div>
+  <div class="frame">
+    <!-- Top bar -->
+    <div class="f3-topbar">
+      <span class="f3-back">← Back</span>
+      <span class="f3-title">Choose Your Class</span>
+      <span class="f3-confirmed">Stonehide ✓</span>
+    </div>
+
+    <!-- Right fade -->
+    <div class="f3-fade"></div>
+
+    <!-- Card area compressed -->
+    <div class="f3-card-area">
+
+      <!-- Stonehide — SELECTED -->
+      <div class="f3-card selected">
+        <div class="f3-card-icon-area">
+          <svg width="44" height="44" viewBox="0 0 48 48" fill="none">
+            <polygon points="24,6 44,40 4,40" stroke="#6ea8d8" stroke-width="2" fill="none" stroke-linejoin="round"/>
+            <polygon points="24,14 36,36 12,36" stroke="#6ea8d8" stroke-width="1.2" fill="none" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <div class="f3-card-name">Stonehide</div>
+        <div class="f3-card-role">Tank · Frontline Anchor</div>
+        <div class="f3-card-flavor">Called from the mountain clans, where endurance is prayer.</div>
+      </div>
+
+      <!-- Sunwarden — dimmed -->
+      <div class="f3-card">
+        <div class="f3-card-icon-area">
+          <svg width="44" height="44" viewBox="0 0 52 52" fill="none">
+            <circle cx="26" cy="26" r="12" stroke="#36334a" stroke-width="2" fill="none"/>
+            <line x1="26" y1="4" x2="26" y2="10" stroke="#36334a" stroke-width="1.5" stroke-linecap="round"/>
+            <line x1="26" y1="42" x2="26" y2="48" stroke="#36334a" stroke-width="1.5" stroke-linecap="round"/>
+            <line x1="4" y1="26" x2="10" y2="26" stroke="#36334a" stroke-width="1.5" stroke-linecap="round"/>
+            <line x1="42" y1="26" x2="48" y2="26" stroke="#36334a" stroke-width="1.5" stroke-linecap="round"/>
+            <line x1="10.1" y1="10.1" x2="14.3" y2="14.3" stroke="#36334a" stroke-width="1.5" stroke-linecap="round"/>
+            <line x1="37.7" y1="37.7" x2="41.9" y2="41.9" stroke="#36334a" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <div class="f3-card-name">Sunwarden</div>
+        <div class="f3-card-role">Support · Light Bringer</div>
+        <div class="f3-card-flavor">Healers who carry warmth like a weapon into the dark below.</div>
+      </div>
+
+      <!-- Ashblade — dimmed -->
+      <div class="f3-card">
+        <div class="f3-card-icon-area">
+          <svg width="40" height="44" viewBox="0 0 44 48" fill="none">
+            <path d="M22 4 L38 28 L22 44 L6 28 Z" stroke="#36334a" stroke-width="2" fill="none" stroke-linejoin="round"/>
+            <path d="M22 12 L32 28 L22 38 L12 28 Z" stroke="#36334a" stroke-width="1" fill="none" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <div class="f3-card-name">Ashblade</div>
+        <div class="f3-card-role">Damage · Swift Striker</div>
+        <div class="f3-card-flavor">Born from the char of a burned-down city. Hunts what hunted them.</div>
+      </div>
+
+      <!-- Spiritcaller — dimmed, partial clip -->
+      <div class="f3-card" style="min-width:90px; width:90px; overflow:hidden;">
+        <div class="f3-card-icon-area" style="width:190px;">
+          <svg width="44" height="44" viewBox="0 0 44 48" fill="none">
+            <circle cx="22" cy="24" r="14" stroke="#36334a" stroke-width="1.5" fill="none" stroke-dasharray="4 3"/>
+            <circle cx="22" cy="24" r="5" stroke="#36334a" stroke-width="1.5" fill="none"/>
+          </svg>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Ability briefing panel -->
+    <div class="f3-ability-panel">
+      <!-- Left: 80% — 4 ability chips in a single row -->
+      <div class="f3-panel-left">
+        <div class="f3-ability-grid">
+          <div class="f3-chip">
+            <span class="f3-chip-name">Stone Wall</span>
+            <span class="f3-chip-badge">TAP</span>
+          </div>
+          <div class="f3-chip">
+            <span class="f3-chip-name">Tremor Stomp</span>
+            <span class="f3-chip-badge">RELEASE</span>
+          </div>
+          <div class="f3-chip">
+            <span class="f3-chip-name">Iron Skin</span>
+            <span class="f3-chip-badge">TAP</span>
+          </div>
+          <div class="f3-chip">
+            <span class="f3-chip-name">Avalanche</span>
+            <span class="f3-chip-badge">AUTO</span>
+          </div>
+        </div>
+      </div>
+      <!-- Right: 20% — Pick button -->
+      <div class="f3-panel-right">
+        <div class="f3-pick-btn">
+          <span>Pick Selected Class</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Phone Controller — Landscape 2×2</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Uncial+Antiqua&family=Lora:ital,wght@0,400;0,700;1,400;1,700&display=swap');
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: #0a0908;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 40px 20px;
+  gap: 32px;
+}
+
+h1 {
+  font-family: 'Uncial Antiqua', serif;
+  font-size: 22px;
+  color: #d8d0e8;
+  letter-spacing: 0.04em;
+  text-align: center;
+}
+
+.frames-row {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 40px;
+}
+
+.frame-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
+.frame-label {
+  font-family: 'Lora', serif;
+  font-size: 13px;
+  color: #a89ec0;
+  letter-spacing: 0.03em;
+}
+
+/* ─── Phone frame ─────────────────────────────────────────── */
+.phone {
+  width: 844px;
+  height: 390px;
+  background: #0f0e10;
+  border-radius: 20px;
+  box-shadow: 0 0 40px rgba(110, 168, 216, 0.08);
+  overflow: hidden;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ─── HP bar ─────────────────────────────────────────────── */
+.hp-bar-track {
+  width: 100%;
+  height: 6px;
+  background: #36334a;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 10;
+}
+
+.hp-bar-fill {
+  height: 100%;
+  width: 70%;
+  background: #c07d35;
+}
+
+/* ─── Content area below HP bar ──────────────────────────── */
+.content-area {
+  flex: 1;
+  display: flex;
+  flex-direction: row;
+  position: relative;
+  overflow: hidden;
+}
+
+/* ─── Class label ────────────────────────────────────────── */
+.class-label {
+  position: absolute;
+  top: 7px;
+  left: 10px;
+  font-family: 'Lora', serif;
+  font-style: italic;
+  font-size: 10px;
+  color: #36334a;
+  letter-spacing: 0.06em;
+  z-index: 20;
+  pointer-events: none;
+}
+
+/* ─── Left zone (movement) ───────────────────────────────── */
+.left-zone {
+  width: 320px;
+  flex-shrink: 0;
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+}
+
+.move-label {
+  position: absolute;
+  bottom: 10px;
+  left: 12px;
+  font-family: 'Lora', serif;
+  font-size: 10px;
+  color: #36334a;
+  letter-spacing: 0.1em;
+  pointer-events: none;
+}
+
+/* Ghost ring — idle hint */
+.joystick-ghost {
+  position: absolute;
+  width: 110px;
+  height: 110px;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  border: 2px solid rgba(54, 51, 74, 0.3);
+  pointer-events: none;
+}
+
+/* Active joystick outer ring */
+.joystick-outer {
+  position: absolute;
+  width: 110px;
+  height: 110px;
+  border-radius: 50%;
+  border: 2px solid #36334a;
+  pointer-events: none;
+}
+
+/* Active joystick inner dot */
+.joystick-inner {
+  position: absolute;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: #6ea8d8;
+  pointer-events: none;
+}
+
+/* ─── Divider ─────────────────────────────────────────────── */
+.divider {
+  width: 1px;
+  background: #36334a;
+  flex-shrink: 0;
+  align-self: stretch;
+}
+
+/* ─── Right zone (skill grid) ────────────────────────────── */
+.right-zone {
+  flex: 1;
+  height: 100%;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+}
+
+/* Each skill cell */
+.skill-cell {
+  background: #181620;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-bottom: 1px solid #36334a;
+  border-right: 1px solid #36334a;
+}
+
+/* Remove double-borders on edges */
+.skill-cell:nth-child(2),
+.skill-cell:nth-child(4) {
+  border-right: none;
+}
+
+.skill-cell:nth-child(3),
+.skill-cell:nth-child(4) {
+  border-bottom: none;
+}
+
+/* Input type badge */
+.badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: #36334a;
+  color: #a89ec0;
+  font-family: 'Lora', serif;
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  padding: 2px 6px;
+  border-radius: 20px;
+}
+
+/* Skill name */
+.skill-name {
+  font-family: 'Lora', serif;
+  font-style: italic;
+  font-size: 12px;
+  color: #a89ec0;
+  margin-top: 8px;
+  text-align: center;
+  letter-spacing: 0.02em;
+  position: relative;
+  z-index: 1;
+}
+
+/* Skill icon wrapper */
+.skill-icon {
+  position: relative;
+  z-index: 1;
+}
+
+/* ─── Cooldown overlay ────────────────────────────────────── */
+.cooldown-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 14, 16, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  z-index: 5;
+}
+
+.cooldown-ring {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: conic-gradient(
+    #36334a 0deg,
+    #36334a 144deg,
+    #7d2dff 144deg,
+    #7d2dff 360deg
+  );
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.cooldown-ring::after {
+  content: '';
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: rgba(15, 14, 16, 0.85);
+  position: absolute;
+}
+
+.cooldown-text {
+  font-family: 'Lora', serif;
+  font-weight: 700;
+  font-size: 14px;
+  color: #d8d0e8;
+  position: absolute;
+  z-index: 2;
+}
+
+/* ─── Active S2 cell state ───────────────────────────────── */
+.skill-cell.active-s2 {
+  background: #22202e;
+}
+
+.skill-cell.active-s2 .skill-icon svg {
+  opacity: 0.25;
+  stroke: #36334a;
+}
+
+.skill-cell.active-s2 .skill-name {
+  color: #36334a;
+}
+
+/* Floating joystick inside skill cell */
+.skill-joystick-outer {
+  position: absolute;
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  border: 2px solid #6ea8d8;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.skill-joystick-inner {
+  position: absolute;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #6ea8d8;
+  pointer-events: none;
+  z-index: 11;
+}
+</style>
+</head>
+<body>
+
+<h1>Phone Controller — Landscape 2×2</h1>
+
+<div class="frames-row">
+
+  <!-- ════════════════════════════════════════════════════ -->
+  <!-- FRAME 1 — IDLE STATE                                -->
+  <!-- ════════════════════════════════════════════════════ -->
+  <div class="frame-wrapper">
+    <div class="frame-label">Idle</div>
+    <div class="phone">
+
+      <!-- HP bar -->
+      <div class="hp-bar-track"><div class="hp-bar-fill"></div></div>
+
+      <!-- Content -->
+      <div class="content-area">
+
+        <!-- Class label -->
+        <div class="class-label">Souldrinker</div>
+
+        <!-- Left zone — movement -->
+        <div class="left-zone">
+          <span class="move-label">MOVE</span>
+          <!-- Ghost ring -->
+          <div class="joystick-ghost"></div>
+        </div>
+
+        <!-- Divider -->
+        <div class="divider"></div>
+
+        <!-- Right zone — skill grid -->
+        <div class="right-zone">
+
+          <!-- S1 Soul Drain — TL — AUTO -->
+          <div class="skill-cell">
+            <span class="badge">AUTO</span>
+            <div class="skill-icon">
+              <svg width="44" height="44" viewBox="0 0 44 44" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <polygon points="22,5 40,38 4,38" stroke="#6ea8d8" stroke-width="1.8" stroke-linejoin="round"/>
+              </svg>
+            </div>
+            <div class="skill-name">Soul Drain</div>
+          </div>
+
+          <!-- S2 Blood Surge — TR — RELEASE — on cooldown -->
+          <div class="skill-cell">
+            <span class="badge">RELEASE</span>
+            <div class="skill-icon">
+              <svg width="44" height="44" viewBox="0 0 44 44" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="22" cy="22" r="18" stroke="#6ea8d8" stroke-width="1.8"/>
+              </svg>
+            </div>
+            <div class="skill-name">Blood Surge</div>
+
+            <!-- Cooldown overlay -->
+            <div class="cooldown-overlay">
+              <div class="cooldown-ring">
+                <span class="cooldown-text">3s</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- S3 Ritual Offering — BL — TAP -->
+          <div class="skill-cell">
+            <span class="badge">TAP</span>
+            <div class="skill-icon">
+              <svg width="44" height="44" viewBox="0 0 44 44" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <rect x="6" y="6" width="32" height="32" stroke="#6ea8d8" stroke-width="1.8"/>
+              </svg>
+            </div>
+            <div class="skill-name">Ritual Offering</div>
+          </div>
+
+          <!-- S4 Void Step — BR — RELEASE -->
+          <div class="skill-cell">
+            <span class="badge">RELEASE</span>
+            <div class="skill-icon">
+              <svg width="44" height="44" viewBox="0 0 44 44" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <polygon points="22,4 40,22 22,40 4,22" stroke="#6ea8d8" stroke-width="1.8" stroke-linejoin="round"/>
+              </svg>
+            </div>
+            <div class="skill-name">Void Step</div>
+          </div>
+
+        </div><!-- /right-zone -->
+      </div><!-- /content-area -->
+    </div><!-- /phone -->
+  </div><!-- /frame-wrapper -->
+
+
+  <!-- ════════════════════════════════════════════════════ -->
+  <!-- FRAME 2 — ACTIVE STATE (joystick + S2 activated)    -->
+  <!-- ════════════════════════════════════════════════════ -->
+  <div class="frame-wrapper">
+    <div class="frame-label">Active state — S2 aimed</div>
+    <div class="phone">
+
+      <!-- HP bar -->
+      <div class="hp-bar-track"><div class="hp-bar-fill"></div></div>
+
+      <!-- Content -->
+      <div class="content-area">
+
+        <!-- Class label -->
+        <div class="class-label">Souldrinker</div>
+
+        <!-- Left zone — movement ACTIVE -->
+        <div class="left-zone">
+          <span class="move-label">MOVE</span>
+
+          <!-- Active joystick — thumb landed slightly left-up of center -->
+          <!-- outer ring centered on thumb-down point -->
+          <div class="joystick-outer" style="
+            left: 50%;
+            top: 50%;
+            transform: translate(calc(-50% - 18px), calc(-50% - 20px));
+          "></div>
+          <!-- inner dot offset toward up-left indicating direction -->
+          <div class="joystick-inner" style="
+            left: 50%;
+            top: 50%;
+            transform: translate(calc(-50% - 32px), calc(-50% - 36px));
+          "></div>
+        </div>
+
+        <!-- Divider -->
+        <div class="divider"></div>
+
+        <!-- Right zone — skill grid -->
+        <div class="right-zone">
+
+          <!-- S1 Soul Drain — TL — AUTO (unchanged) -->
+          <div class="skill-cell">
+            <span class="badge">AUTO</span>
+            <div class="skill-icon">
+              <svg width="44" height="44" viewBox="0 0 44 44" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <polygon points="22,5 40,38 4,38" stroke="#6ea8d8" stroke-width="1.8" stroke-linejoin="round"/>
+              </svg>
+            </div>
+            <div class="skill-name">Soul Drain</div>
+          </div>
+
+          <!-- S2 Blood Surge — TR — RELEASE — ACTIVE (player touching, aiming) -->
+          <div class="skill-cell active-s2">
+            <span class="badge" style="color:#6ea8d8; background:#1a1830;">RELEASE</span>
+            <!-- Icon dimmed (handled via .active-s2 svg opacity) -->
+            <div class="skill-icon">
+              <svg width="44" height="44" viewBox="0 0 44 44" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="22" cy="22" r="18" stroke="#6ea8d8" stroke-width="1.8"/>
+              </svg>
+            </div>
+            <div class="skill-name">Blood Surge</div>
+
+            <!-- Floating joystick spawned at touch, offset toward top-right for aiming -->
+            <!-- outer ring -->
+            <div class="skill-joystick-outer" style="
+              left: 50%;
+              top: 50%;
+              transform: translate(calc(-50% + 22px), calc(-50% - 18px));
+            "></div>
+            <!-- inner dot pushed further top-right -->
+            <div class="skill-joystick-inner" style="
+              left: 50%;
+              top: 50%;
+              transform: translate(calc(-50% + 40px), calc(-50% - 32px));
+            "></div>
+          </div>
+
+          <!-- S3 Ritual Offering — BL — TAP (unchanged) -->
+          <div class="skill-cell">
+            <span class="badge">TAP</span>
+            <div class="skill-icon">
+              <svg width="44" height="44" viewBox="0 0 44 44" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <rect x="6" y="6" width="32" height="32" stroke="#6ea8d8" stroke-width="1.8"/>
+              </svg>
+            </div>
+            <div class="skill-name">Ritual Offering</div>
+          </div>
+
+          <!-- S4 Void Step — BR — RELEASE (unchanged) -->
+          <div class="skill-cell">
+            <span class="badge">RELEASE</span>
+            <div class="skill-icon">
+              <svg width="44" height="44" viewBox="0 0 44 44" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <polygon points="22,4 40,22 22,40 4,22" stroke="#6ea8d8" stroke-width="1.8" stroke-linejoin="round"/>
+              </svg>
+            </div>
+            <div class="skill-name">Void Step</div>
+          </div>
+
+        </div><!-- /right-zone -->
+      </div><!-- /content-area -->
+    </div><!-- /phone -->
+  </div><!-- /frame-wrapper -->
+
+</div><!-- /frames-row -->
+
+</body>
+</html>

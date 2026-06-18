@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Party Delve — Post-Run Summary</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Uncial+Antiqua&family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&display=swap');
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: #0a0908;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 40px 24px;
+  font-family: 'Lora', serif;
+}
+
+.frames-wrapper {
+  display: flex;
+  gap: 32px;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+.frame-column {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.frame-label {
+  font-family: 'Lora', serif;
+  font-size: 13px;
+  color: #a89ec0;
+  letter-spacing: 0.05em;
+  text-align: center;
+}
+
+/* ─── SHARED FRAME ─── */
+.frame {
+  width: 960px;
+  height: 540px;
+  border-radius: 8px;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  padding: 40px 48px 22px;
+}
+
+/* ─── VICTORY FRAME ─── */
+.frame-victory {
+  background: radial-gradient(ellipse at center, #1a1208 0%, #0f0e10 70%);
+  box-shadow:
+    0 0 0 1px #36334a,
+    0 24px 80px rgba(0, 0, 0, 0.7),
+    inset 0 0 120px rgba(192, 125, 53, 0.04);
+}
+
+/* ─── FAILURE FRAME ─── */
+.frame-failure {
+  background: radial-gradient(ellipse at center, #0d0c12 0%, #0f0e10 70%);
+  box-shadow:
+    0 0 0 1px #36334a,
+    0 24px 80px rgba(0, 0, 0, 0.7),
+    inset 0 0 120px rgba(125, 45, 255, 0.03);
+}
+
+/* ─── TOP SECTION ─── */
+.outcome-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.outcome-title {
+  font-family: 'Uncial Antiqua', cursive;
+  text-align: center;
+  letter-spacing: 0.08em;
+}
+
+.outcome-title--victory {
+  font-size: 52px;
+  color: #6ea8d8;
+  text-shadow:
+    0 0 30px rgba(110, 168, 216, 0.6),
+    0 0 60px rgba(110, 168, 216, 0.25),
+    0 0 2px rgba(110, 168, 216, 0.9);
+}
+
+.outcome-title--failure {
+  font-size: 52px;
+  color: #a89ec0;
+  text-shadow: none;
+}
+
+.outcome-flavour {
+  font-family: 'Lora', serif;
+  font-style: italic;
+  color: #c07d35;
+  text-align: center;
+}
+
+.outcome-flavour--victory {
+  font-size: 18px;
+  color: #c07d35;
+}
+
+.outcome-flavour--failure {
+  font-size: 15px;
+  color: #a89ec0;
+}
+
+/* ─── MIDDLE SECTION ─── */
+.essence-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.essence-label {
+  font-family: 'Lora', serif;
+  font-variant: small-caps;
+  font-size: 11px;
+  color: #a89ec0;
+  letter-spacing: 0.18em;
+  text-align: center;
+}
+
+.essence-value {
+  font-family: 'Uncial Antiqua', cursive;
+  font-size: 36px;
+  text-align: center;
+}
+
+.essence-value--victory {
+  color: #c07d35;
+  text-shadow:
+    0 0 20px rgba(192, 125, 53, 0.55),
+    0 0 40px rgba(192, 125, 53, 0.2);
+}
+
+.essence-value--failure {
+  color: #a89ec0;
+  text-shadow: none;
+}
+
+/* ─── PLAYER CARDS ─── */
+.players-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  flex-shrink: 0;
+}
+
+.player-cards {
+  display: flex;
+  gap: 14px;
+  justify-content: center;
+}
+
+.player-card {
+  width: 180px;
+  min-height: 110px;
+  border-radius: 8px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.player-card--victory {
+  background: #181620;
+  border: 1px solid #36334a;
+}
+
+.player-card--failure {
+  background: #181620;
+  border: 1px solid #36334a;
+}
+
+.player-card--spirit-form {
+  border-color: #7d2dff;
+}
+
+.player-card-header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.player-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.player-name {
+  font-family: 'Lora', serif;
+  font-weight: 700;
+  font-size: 13px;
+  color: #d8d0e8;
+}
+
+.player-class {
+  font-family: 'Lora', serif;
+  font-size: 11px;
+  color: #a89ec0;
+  padding-left: 16px;
+}
+
+.player-stat {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  padding-left: 16px;
+  margin-top: 4px;
+}
+
+.stat-label {
+  font-family: 'Lora', serif;
+  font-size: 11px;
+  color: #a89ec0;
+}
+
+.stat-value {
+  font-family: 'Lora', serif;
+  font-size: 11px;
+  color: #d8d0e8;
+}
+
+.stat-value--zero {
+  color: #6ea8d8;
+}
+
+.stat-value--spirit {
+  font-family: 'Lora', serif;
+  font-size: 10px;
+  color: #7d2dff;
+  font-style: italic;
+}
+
+/* ─── BOTTOM NOTE ─── */
+.bottom-note {
+  font-family: 'Lora', serif;
+  font-size: 10px;
+  color: #36334a;
+  text-align: center;
+  letter-spacing: 0.03em;
+}
+</style>
+</head>
+<body>
+
+<div class="frames-wrapper">
+
+  <!-- ══════════════════════════════════════════
+       FRAME 1 — VICTORY
+       ══════════════════════════════════════════ -->
+  <div class="frame-column">
+    <div class="frame-label">Victory — Territory Purified</div>
+    <div class="frame frame-victory">
+
+      <!-- Top: Outcome -->
+      <div class="outcome-section">
+        <div class="outcome-title outcome-title--victory">PURIFIED</div>
+        <div class="outcome-flavour outcome-flavour--victory">The campfire noticed.</div>
+      </div>
+
+      <!-- Middle: Spirit Essence -->
+      <div class="essence-section">
+        <div class="essence-label">Spirit Essence Earned</div>
+        <div class="essence-value essence-value--victory">2 480</div>
+      </div>
+
+      <!-- Bottom: Player Cards -->
+      <div class="players-section">
+        <div class="player-cards">
+
+          <!-- Cyby — Stonehide — ×1 -->
+          <div class="player-card player-card--victory">
+            <div class="player-card-header">
+              <div class="player-dot" style="background:#6ea8d8;"></div>
+              <div class="player-name">Cyby</div>
+            </div>
+            <div class="player-class">Stonehide</div>
+            <div class="player-stat">
+              <span class="stat-label">Downed</span>
+              <span class="stat-value">×1</span>
+            </div>
+          </div>
+
+          <!-- Mira — Spiritcaller — ×0 -->
+          <div class="player-card player-card--victory">
+            <div class="player-card-header">
+              <div class="player-dot" style="background:#5db87a;"></div>
+              <div class="player-name">Mira</div>
+            </div>
+            <div class="player-class">Spiritcaller</div>
+            <div class="player-stat">
+              <span class="stat-label">Downed</span>
+              <span class="stat-value stat-value--zero">×0</span>
+            </div>
+          </div>
+
+          <!-- Dani — Souldrinker — ×3 -->
+          <div class="player-card player-card--victory">
+            <div class="player-card-header">
+              <div class="player-dot" style="background:#c07d35;"></div>
+              <div class="player-name">Dani</div>
+            </div>
+            <div class="player-class">Souldrinker</div>
+            <div class="player-stat">
+              <span class="stat-label">Downed</span>
+              <span class="stat-value">×3</span>
+            </div>
+          </div>
+
+          <!-- Rexx — Stormcaller — ×2 -->
+          <div class="player-card player-card--victory">
+            <div class="player-card-header">
+              <div class="player-dot" style="background:#9b6fd4;"></div>
+              <div class="player-name">Rexx</div>
+            </div>
+            <div class="player-class">Stormcaller</div>
+            <div class="player-stat">
+              <span class="stat-label">Downed</span>
+              <span class="stat-value">×2</span>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Bottom note -->
+        <div class="bottom-note">Tap 'Return to Camp' on your phone to return to the hub</div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════
+       FRAME 2 — FAILURE
+       ══════════════════════════════════════════ -->
+  <div class="frame-column">
+    <div class="frame-label">Failure — Warriors Fallen</div>
+    <div class="frame frame-failure">
+
+      <!-- Top: Outcome -->
+      <div class="outcome-section">
+        <div class="outcome-title outcome-title--failure">FALLEN</div>
+        <div class="outcome-flavour outcome-flavour--failure">Tonight, the forest was worse than we anticipated.</div>
+      </div>
+
+      <!-- Middle: Spirit Essence -->
+      <div class="essence-section">
+        <div class="essence-label">Spirit Essence Earned</div>
+        <div class="essence-value essence-value--failure">620</div>
+      </div>
+
+      <!-- Bottom: Player Cards -->
+      <div class="players-section">
+        <div class="player-cards">
+
+          <!-- Cyby — Stonehide — ×2 -->
+          <div class="player-card player-card--failure">
+            <div class="player-card-header">
+              <div class="player-dot" style="background:#6ea8d8;"></div>
+              <div class="player-name">Cyby</div>
+            </div>
+            <div class="player-class">Stonehide</div>
+            <div class="player-stat">
+              <span class="stat-label">Downed</span>
+              <span class="stat-value">×2</span>
+            </div>
+          </div>
+
+          <!-- Mira — Spiritcaller — ×1 -->
+          <div class="player-card player-card--failure">
+            <div class="player-card-header">
+              <div class="player-dot" style="background:#5db87a;"></div>
+              <div class="player-name">Mira</div>
+            </div>
+            <div class="player-class">Spiritcaller</div>
+            <div class="player-stat">
+              <span class="stat-label">Downed</span>
+              <span class="stat-value">×1</span>
+            </div>
+          </div>
+
+          <!-- Dani — Souldrinker — Spirit Form -->
+          <div class="player-card player-card--failure player-card--spirit-form">
+            <div class="player-card-header">
+              <div class="player-dot" style="background:#c07d35;opacity:0.5;"></div>
+              <div class="player-name" style="color:#a89ec0;">Dani</div>
+            </div>
+            <div class="player-class">Souldrinker</div>
+            <div class="player-stat">
+              <span class="stat-label">Downed</span>
+              <span class="stat-value stat-value--spirit">Spirit Form</span>
+            </div>
+          </div>
+
+          <!-- Rexx — Stormcaller — ×3 -->
+          <div class="player-card player-card--failure">
+            <div class="player-card-header">
+              <div class="player-dot" style="background:#9b6fd4;"></div>
+              <div class="player-name">Rexx</div>
+            </div>
+            <div class="player-class">Stormcaller</div>
+            <div class="player-stat">
+              <span class="stat-label">Downed</span>
+              <span class="stat-value">×3</span>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Bottom note -->
+        <div class="bottom-note">Tap 'Return to Camp' on your phone to return to the hub</div>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>

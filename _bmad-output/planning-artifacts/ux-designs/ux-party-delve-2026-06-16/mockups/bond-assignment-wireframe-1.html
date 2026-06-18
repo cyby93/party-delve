@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Party Delve — Spirit Bond Assignment Screen</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Uncial+Antiqua&family=Lora:ital,wght@0,400;0,700;1,400&display=swap');
+
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: #0a0908;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 40px 24px;
+      font-family: 'Lora', serif;
+    }
+
+    .frames-row {
+      display: flex;
+      flex-direction: row;
+      gap: 32px;
+      align-items: flex-start;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .frame-group {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .frame-label {
+      font-family: 'Lora', serif;
+      font-size: 13px;
+      color: #a89ec0;
+      letter-spacing: 0.04em;
+    }
+
+    /* ── Phone frame ── */
+    .phone {
+      width: 844px;
+      height: 390px;
+      border-radius: 20px;
+      background-color: #0f0e10;
+      box-shadow:
+        0 8px 48px rgba(0, 0, 0, 0.72),
+        0 2px 8px rgba(0, 0, 0, 0.5);
+      display: flex;
+      flex-direction: row;
+      overflow: hidden;
+      position: relative;
+    }
+
+    /* Fate bond frame ambient border */
+    .phone.fate-bond {
+      outline: 0.5px solid rgba(110, 168, 216, 0.20);
+    }
+
+    /* Proximity bond frame ambient border */
+    .phone.prox-bond {
+      outline: 0.5px solid rgba(192, 125, 53, 0.20);
+    }
+
+    /* ── Left glow zone ── */
+    .glow-zone {
+      flex: 0 0 35%;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      z-index: 1;
+    }
+
+    /* Radial glow column for Fate Bond */
+    .glow-zone.fate::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(
+        ellipse 80% 100% at 30% 50%,
+        rgba(110, 168, 216, 0.15) 0%,
+        transparent 70%
+      );
+      pointer-events: none;
+    }
+
+    /* Radial glow column for Proximity Bond */
+    .glow-zone.prox::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(
+        ellipse 80% 100% at 30% 50%,
+        rgba(192, 125, 53, 0.15) 0%,
+        transparent 70%
+      );
+      pointer-events: none;
+    }
+
+    .bond-swatch {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      position: relative;
+      z-index: 2;
+    }
+
+    .bond-swatch.fate {
+      background-color: #6ea8d8;
+      box-shadow: 0 0 20px #6ea8d8, 0 0 40px rgba(110, 168, 216, 0.4);
+    }
+
+    .bond-swatch.prox {
+      background-color: #c07d35;
+      box-shadow: 0 0 20px #c07d35, 0 0 40px rgba(192, 125, 53, 0.4);
+    }
+
+    .bond-type-label {
+      font-family: 'Uncial Antiqua', cursive;
+      font-size: 11px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      text-align: center;
+      position: relative;
+      z-index: 2;
+    }
+
+    .bond-type-label.fate {
+      color: #6ea8d8;
+    }
+
+    .bond-type-label.prox {
+      color: #c07d35;
+    }
+
+    /* Subtle vertical tether line */
+    .tether-line {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      right: 0;
+      width: 1px;
+      background: linear-gradient(
+        to bottom,
+        transparent 0%,
+        rgba(110, 168, 216, 0.12) 30%,
+        rgba(110, 168, 216, 0.20) 50%,
+        rgba(110, 168, 216, 0.12) 70%,
+        transparent 100%
+      );
+    }
+
+    .tether-line.prox {
+      background: linear-gradient(
+        to bottom,
+        transparent 0%,
+        rgba(192, 125, 53, 0.12) 30%,
+        rgba(192, 125, 53, 0.20) 50%,
+        rgba(192, 125, 53, 0.12) 70%,
+        transparent 100%
+      );
+    }
+
+    /* ── Content zone ── */
+    .content-zone {
+      flex: 0 0 65%;
+      padding: 32px 36px 28px 28px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 18px;
+      position: relative;
+    }
+
+    .bond-partner-line {
+      font-family: 'Lora', serif;
+      font-size: 12px;
+      color: #a89ec0;
+      line-height: 1.5;
+    }
+
+    .bond-partner-line strong {
+      color: #d8d0e8;
+      font-weight: 700;
+    }
+
+    .bond-flavour {
+      font-family: 'Lora', serif;
+      font-style: italic;
+      font-size: 15px;
+      color: #d8d0e8;
+      line-height: 1.65;
+      max-width: 440px;
+    }
+
+    /* Effect chips */
+    .effect-chips {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .effect-chip {
+      background-color: #22202e;
+      border: 1px solid #36334a;
+      border-radius: 6px;
+      padding: 8px 12px;
+      font-family: 'Lora', serif;
+      font-size: 11px;
+      line-height: 1.4;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      width: fit-content;
+    }
+
+    .chip-positive.fate {
+      color: #c07d35;
+    }
+
+    .chip-positive.prox {
+      color: #c07d35;
+    }
+
+    .chip-negative {
+      color: #7d2dff;
+    }
+
+    /* ── Bottom row: button + subtext ── */
+    .bottom-row {
+      position: absolute;
+      bottom: 24px;
+      right: 36px;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 6px;
+    }
+
+    .continue-btn {
+      width: 160px;
+      height: 44px;
+      border-radius: 6px;
+      border: none;
+      font-family: 'Lora', serif;
+      font-weight: 700;
+      font-size: 13px;
+      cursor: pointer;
+      letter-spacing: 0.04em;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .continue-btn.fate {
+      background-color: #6ea8d8;
+      color: #0f0e10;
+    }
+
+    .continue-btn.prox {
+      background-color: #c07d35;
+      color: #0f0e10;
+    }
+
+    .any-player-label {
+      font-family: 'Lora', serif;
+      font-size: 9px;
+      color: #36334a;
+      letter-spacing: 0.03em;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="frames-row">
+
+    <!-- ───────────── FRAME 1: Fate Bond ───────────── -->
+    <div class="frame-group">
+      <span class="frame-label">Bonded player — Fate Bond assigned</span>
+
+      <div class="phone fate-bond">
+
+        <!-- Left glow zone -->
+        <div class="glow-zone fate">
+          <div class="bond-swatch fate"></div>
+          <div class="bond-type-label fate">Fate Bond</div>
+          <div class="tether-line fate"></div>
+        </div>
+
+        <!-- Right content zone -->
+        <div class="content-zone">
+
+          <p class="bond-partner-line">Bound to <strong>Dani</strong></p>
+
+          <p class="bond-flavour">
+            You and Dani are now bound by fate.<br>
+            If they fall, you fall.<br>
+            Maybe warn them.
+          </p>
+
+          <div class="effect-chips">
+            <div class="effect-chip">
+              <span class="chip-positive fate">✦ +20% movement speed while bonded</span>
+            </div>
+            <div class="effect-chip">
+              <span class="chip-negative">✦ If either warrior falls, the other falls instantly</span>
+            </div>
+          </div>
+
+          <!-- Continue button anchored bottom-right -->
+          <div class="bottom-row">
+            <button class="continue-btn fate">Continue</button>
+            <span class="any-player-label">Any player may continue</span>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- ───────────── FRAME 2: Proximity Bond ───────────── -->
+    <div class="frame-group">
+      <span class="frame-label">Bonded player — Proximity Bond assigned</span>
+
+      <div class="phone prox-bond">
+
+        <!-- Left glow zone -->
+        <div class="glow-zone prox">
+          <div class="bond-swatch prox"></div>
+          <div class="bond-type-label prox">Proximity Bond</div>
+          <div class="tether-line prox"></div>
+        </div>
+
+        <!-- Right content zone -->
+        <div class="content-zone">
+
+          <p class="bond-partner-line">Bound to <strong>Cyby</strong></p>
+
+          <p class="bond-flavour">
+            A proximity bond links you to Cyby.<br>
+            Stay close. Or don't —<br>
+            see what happens.
+          </p>
+
+          <div class="effect-chips">
+            <div class="effect-chip">
+              <span class="chip-positive prox">✦ +20% damage when within range of each other</span>
+            </div>
+            <div class="effect-chip">
+              <span class="chip-negative">✦ After 20s in range, you begin to drain each other's health</span>
+            </div>
+          </div>
+
+          <!-- Continue button anchored bottom-right -->
+          <div class="bottom-row">
+            <button class="continue-btn prox">Continue</button>
+            <span class="any-player-label">Any player may continue</span>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+</body>
+</html>
