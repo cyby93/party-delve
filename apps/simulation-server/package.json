@@ -6,12 +6,16 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
+    "start": "node dist/index.js",
     "test": "vitest run"
   },
   "dependencies": {
     "colyseus": "0.17.10",
     "@colyseus/redis-presence": "^0.17.7",
+    "@colyseus/schema": "^4.0.7",
+    "@colyseus/ws-transport": "^0.17.0",
     "pino": "10.3.1",
+    "pino-pretty": "^13.0.0",
     "game-rules": "*",
     "net-protocol": "*",
     "shared-types": "*"

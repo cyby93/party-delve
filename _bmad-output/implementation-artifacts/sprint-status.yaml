@@ -42,7 +42,7 @@
 # Phase2 legacy stories (old Phase-based keys) are tracked below under PHASE 2 STORIES.
 
 generated: 2026-06-22
-last_updated: 2026-06-22 (story 1-1 done)
+last_updated: 2026-06-22 (story 1-2 done)
 project: party-delve
 project_key: NOKEY
 tracking_system: file-system
@@ -56,7 +56,7 @@ development_status:
   # FRs: FR1, FR2, FR3 (guest join), FR27, FR28, FR31, FR32, FR33, FR37, FR38
   epic-1: in-progress
   1-1-monorepo-architecture-clean-slate-and-package-scaffold: done
-  1-2-simulation-server-session-lifecycle-and-30hz-tick-loop: backlog
+  1-2-simulation-server-session-lifecycle-and-30hz-tick-loop: done
   1-3-host-app-main-menu-and-lobby-screen: backlog
   1-4-mobile-app-guest-join-flow: backlog
   1-5-hub-world-bootstrap-and-player-presence: backlog
