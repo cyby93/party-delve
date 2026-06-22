@@ -1,0 +1,18 @@
+{
+  "name": "net-protocol",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsc"
+  },
+  "dependencies": {
+    "shared-types": "*"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0"
+  }
+}

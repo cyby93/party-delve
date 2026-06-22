@@ -1,0 +1,37 @@
+:root {
+  /* Color tokens */
+  --bg-base:           #0f0e10;
+  --bg-surface:        #181620;
+  --bg-subtle:         #22202e;
+  --border:            #36334a;
+  --text-primary:      #d8d0e8;
+  --text-secondary:    #a89ec0;
+  --accent-spirit:     #6ea8d8;
+  --accent-warm:       #c07d35;
+  --accent-corruption: #7d2dff;
+  --accent-purify:     #90d8f0;
+  --interactive:       #6ea8d8;
+  --interactive-hover: #88c0ee;
+  --corruption-acid:   #39ff14;
+  --corruption-blood:  #c0392b;
+
+  /* Typography */
+  --font-display: 'Uncial Antiqua', serif;
+  --font-body: 'Lora', serif;
+  --text-xs:   11px;
+  --text-sm:   13px;
+  --text-base: 16px;
+  --text-md:   20px;
+  --text-lg:   28px;
+  --text-xl:   40px;
+  --text-xxl:  56px;
+
+  /* Spacing */
+  --spacing-1:  8px;
+  --spacing-2: 16px;
+  --spacing-3: 24px;
+  --spacing-4: 32px;
+  --spacing-5: 40px;
+  --spacing-6: 48px;
+  --spacing-8: 64px;
+}

@@ -1,0 +1,22 @@
+{
+  "name": "party-delve",
+  "version": "0.0.1",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "tests"
+  ],
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit -p packages/shared-types/tsconfig.json && tsc --noEmit -p packages/net-protocol/tsconfig.json && tsc --noEmit -p packages/game-rules/tsconfig.json && tsc --noEmit -p packages/telemetry/tsconfig.json && tsc --noEmit -p packages/ui-kit/tsconfig.json && tsc --noEmit -p apps/simulation-server/tsconfig.json && tsc --noEmit -p apps/host-client/tsconfig.json && tsc --noEmit -p apps/mobile-controller/tsconfig.json && tsc --noEmit -p apps/backend-platform/tsconfig.json && tsc --noEmit -p tests/tsconfig.json",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "eslint": "^9.0.0",
+    "typescript": "^5.4.0"
+  }
+}

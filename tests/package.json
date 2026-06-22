@@ -1,0 +1,19 @@
+{
+  "name": "tests",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "test:contract": "vitest run contract",
+    "test:e2e": "vitest run e2e"
+  },
+  "dependencies": {
+    "shared-types": "*",
+    "net-protocol": "*"
+  },
+  "devDependencies": {
+    "vitest": "^2.0.0",
+    "typescript": "^5.4.0"
+  }
+}

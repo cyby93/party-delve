@@ -1,0 +1,31 @@
+export enum PlayerClass {
+  STONEHIDE = 'stonehide',
+  SPIRITCALLER = 'spiritcaller',
+  SOULDRINKER = 'souldrinker',
+  STORMCALLER = 'stormcaller',
+}
+
+export enum SessionColor {
+  RED = 'red',
+  BLUE = 'blue',
+  GREEN = 'green',
+  YELLOW = 'yellow',
+  PURPLE = 'purple',
+  ORANGE = 'orange',
+  PINK = 'pink',
+  TEAL = 'teal',
+}
+
+export interface PlayerState {
+  id: string;
+  class: PlayerClass;
+  x: number;
+  y: number;
+  hp: number;
+  maxHp: number;
+  isFrozen: boolean;
+  isDown: boolean;
+  isSpirit: boolean;
+  sessionColor: SessionColor;
+  downCount: number;
+}

@@ -15,6 +15,10 @@ All Phase 0 gate items must be complete before starting Phase 1:
 
 ---
 
+> **Reset note (2026-06-22):** All Phase 1 scaffold files were deleted as part of the clean-slate policy documented in `_bmad-output/game-architecture.md`. Implementation must restart from scratch, following the finalized tech stack: Colyseus v0.17 (room lifecycle only, no `@Schema`), planck.js v1.5.0, React 18 + Vite (host and mobile), PixiJS v8.18+ (host only), pino v10.3.1, Hono v4.12.26. Tick rate is **30Hz** (`TICK_RATE_HZ = 30` defined in `shared-types`). The architecture document is the authoritative reference: `_bmad-output/game-architecture.md`.
+
+---
+
 ## Tasks
 
 Tasks are listed in dependency order. Do not start a task until its dependencies are complete.
@@ -25,18 +29,16 @@ Tasks are listed in dependency order. Do not start a task until its dependencies
 **Owner:** Protocol Architect
 **Hooks:** Pre-task, Ownership, Contract-change
 **Depends on:** Phase 0 complete; first event contract (P0-6)
-**Inputs:** `docs/specs/networking-spec.md`, `docs/adr/ADR-0001-hybrid-authority.md`
+**Inputs:** `docs/specs/networking-spec.md`, `docs/adr/ADR-0001-hybrid-authority.md`, `_bmad-output/game-architecture.md`
 **Allowed paths:** `packages/shared-types/**`
 **Deliverable:** TypeScript package that compiles and exports core domain types
-**Status:** Done
+**Status:** Todo
 **Acceptance:**
-- [x] Package builds with `pnpm -F shared-types typecheck`
-- [x] Exports at minimum: `PlayerState`, `InputEvent` (union of `MoveInputEvent` | `SkillInputEvent`), `RoomState`, `SessionState`
-- [x] Has `index.ts` barrel export
-- [x] No runtime dependencies — types only
-- [x] `README.md` describes the package purpose in one paragraph
-
-**Note:** Root `pnpm-workspace.yaml` and `package.json` created as minimal scope addition (3 lines each) required to make `pnpm -F` discoverable. P1-6 owns expanding these.
+- [ ] Package builds with `pnpm -F shared-types typecheck`
+- [ ] Exports at minimum: `PlayerState`, `InputEvent` (union of `MoveInputEvent` | `SkillInputEvent`), `RoomState`, `SessionState`, `TICK_RATE_HZ = 30`
+- [ ] Has `index.ts` barrel export
+- [ ] No runtime dependencies — types only
+- [ ] `README.md` describes the package purpose in one paragraph
 
 ---
 
@@ -44,15 +46,15 @@ Tasks are listed in dependency order. Do not start a task until its dependencies
 **Owner:** Protocol Architect
 **Hooks:** Pre-task, Ownership, Contract-change
 **Depends on:** P1-1 (shared-types)
-**Inputs:** `docs/specs/networking-spec.md`, `packages/shared-types/`
+**Inputs:** `docs/specs/networking-spec.md`, `packages/shared-types/`, `_bmad-output/game-architecture.md`
 **Allowed paths:** `packages/net-protocol/**`
-**Deliverable:** TypeScript package that defines message envelope types and event name constants
-**Status:** Done
+**Deliverable:** TypeScript package that defines message envelope types, event name constants, and `serialize()`/`deserialize()` wrappers (JSON for Phase 1, swappable for MessagePack in Phase 5)
+**Status:** Todo
 **Acceptance:**
-- [x] Package builds with `pnpm -F net-protocol typecheck`
-- [x] Exports: `MessageEnvelope`, event name string constants (`EVENT_NAMES`), message type guards
-- [x] Depends on `shared-types` (not the other way around)
-- [x] `README.md` describes the package purpose in one paragraph
+- [ ] Package builds with `pnpm -F net-protocol typecheck`
+- [ ] Exports: `MessageEnvelope`, event name string constants (`EVENT_NAMES`), message type guards, `serialize()`, `deserialize()`
+- [ ] Depends on `shared-types` (not the other way around)
+- [ ] `README.md` describes the package purpose in one paragraph
 
 ---
 
@@ -60,17 +62,18 @@ Tasks are listed in dependency order. Do not start a task until its dependencies
 **Owner:** Simulation Engineer
 **Hooks:** Pre-task, Ownership, Simulation-safety
 **Depends on:** P1-1, P1-2
-**Inputs:** `docs/specs/networking-spec.md`, `docs/adr/ADR-0001-hybrid-authority.md`, `packages/shared-types/`, `packages/net-protocol/`
+**Inputs:** `docs/specs/networking-spec.md`, `docs/adr/ADR-0001-hybrid-authority.md`, `packages/shared-types/`, `packages/net-protocol/`, `_bmad-output/game-architecture.md`
 **Allowed paths:** `apps/simulation-server/**`, `packages/game-rules/**`
-**Deliverable:** Runnable Node.js server with empty tick loop and WebSocket listener
-**Status:** Done
+**Deliverable:** Runnable Node.js 22 server using Colyseus v0.17 (room lifecycle only, no `@Schema`) with a 30Hz tick loop
+**Status:** Todo
 **Acceptance:**
-- [x] `pnpm -F simulation-server start` starts without errors
-- [x] WebSocket server binds to a configurable port (default 8081)
-- [x] Tick loop runs at 20Hz and logs tick count (can be a no-op loop)
-- [x] Imports and uses types from `shared-types`
-- [x] `pnpm -F simulation-server typecheck` passes
-- [x] At least one unit test exists (even a trivial sanity test)
+- [ ] `pnpm -F simulation-server start` starts without errors
+- [ ] Colyseus room binds WebSocket on a configurable port (default 8081)
+- [ ] Tick loop runs at 30Hz (`TICK_RATE_HZ` from `shared-types`) and logs tick count (no-op loop is fine)
+- [ ] Colyseus `@Schema` is NOT used — all state flows through typed events from `net-protocol`
+- [ ] Imports and uses types from `shared-types`
+- [ ] `pnpm -F simulation-server typecheck` passes
+- [ ] At least one unit test exists (even a trivial sanity test)
 
 ---
 
@@ -78,16 +81,17 @@ Tasks are listed in dependency order. Do not start a task until its dependencies
 **Owner:** Host Experience Engineer
 **Hooks:** Pre-task, Ownership, Client-UX
 **Depends on:** P1-1
-**Inputs:** `docs/specs/host-ux-spec.md`, `docs/adr/ADR-0001-hybrid-authority.md`, `packages/shared-types/`
+**Inputs:** `docs/specs/host-ux-spec.md`, `docs/adr/ADR-0001-hybrid-authority.md`, `packages/shared-types/`, `_bmad-output/game-architecture.md`
 **Allowed paths:** `apps/host-client/**`, `packages/ui-kit/**` (host parts only)
-**Deliverable:** Runnable browser app that renders a blank canvas and connects to simulation-server
-**Status:** Done
+**Deliverable:** Runnable React 18 + Vite browser app with a PixiJS v8 canvas that connects to simulation-server
+**Status:** Todo
 **Acceptance:**
-- [x] `pnpm -F host-client dev` starts and serves at `localhost:3000`
-- [x] Blank canvas or placeholder screen renders without errors
-- [x] Imports types from `shared-types`
-- [x] Attempts WebSocket connection to simulation-server (connection failure is handled gracefully — shows "offline" state)
-- [x] `pnpm -F host-client typecheck` passes
+- [ ] `pnpm -F host-client dev` starts and serves at `localhost:3000`
+- [ ] PixiJS v8 canvas renders without errors (blank or placeholder scene)
+- [ ] No game logic in the host client — pure renderer only
+- [ ] Imports types from `shared-types`
+- [ ] Attempts WebSocket connection to simulation-server (connection failure handled gracefully — shows "offline" state)
+- [ ] `pnpm -F host-client typecheck` passes
 
 ---
 
@@ -95,16 +99,17 @@ Tasks are listed in dependency order. Do not start a task until its dependencies
 **Owner:** Mobile Controller Engineer
 **Hooks:** Pre-task, Ownership, Client-UX
 **Depends on:** P1-1
-**Inputs:** `docs/specs/controller-ux-spec.md`, `docs/adr/ADR-0001-hybrid-authority.md`, `packages/shared-types/`
+**Inputs:** `docs/specs/controller-ux-spec.md`, `docs/adr/ADR-0001-hybrid-authority.md`, `packages/shared-types/`, `_bmad-output/game-architecture.md`
 **Allowed paths:** `apps/mobile-controller/**`, `packages/ui-kit/**` (mobile parts only)
-**Deliverable:** Runnable mobile-optimized browser app
-**Status:** Done
+**Deliverable:** Runnable React 18 + Vite mobile-optimized browser app (PWA-ready via vite-plugin-pwa)
+**Status:** Todo
 **Acceptance:**
-- [x] `pnpm -F mobile-controller dev` starts and serves at `localhost:3001`
-- [x] Page renders correctly on a 390px-wide viewport (iPhone SE)
-- [x] Imports types from `shared-types`
-- [x] Attempts WebSocket connection to simulation-server (connection failure is handled gracefully)
-- [x] `pnpm -F mobile-controller typecheck` passes
+- [ ] `pnpm -F mobile-controller dev` starts and serves at `localhost:3001`
+- [ ] Page renders correctly on a 390px-wide viewport (iPhone SE)
+- [ ] PWA manifest present (vite-plugin-pwa configured)
+- [ ] Imports types from `shared-types`
+- [ ] Attempts WebSocket connection to simulation-server (connection failure handled gracefully)
+- [ ] `pnpm -F mobile-controller typecheck` passes
 
 ---
 
@@ -112,14 +117,14 @@ Tasks are listed in dependency order. Do not start a task until its dependencies
 **Owner:** QA + Telemetry Engineer
 **Hooks:** Pre-task, Ownership
 **Depends on:** P1-1, P1-2, P1-3, P1-4, P1-5
-**Allowed paths:** `tools/**`, `package.json` (root), all `package.json` files, `tsconfig*.json` files, `.eslintrc*`
+**Allowed paths:** `tools/**`, `package.json` (root), all `package.json` files, `tsconfig*.json` files, `.eslintrc*`, `pnpm-workspace.yaml`
 **Deliverable:** Root-level scripts that run lint, typecheck, and tests across all packages
-**Status:** Done
+**Status:** Todo
 **Acceptance:**
-- [x] `pnpm typecheck` runs `tsc --noEmit` across all packages — no errors
-- [x] `pnpm lint` runs ESLint across all packages — no errors on scaffolded code
-- [x] `pnpm test` runs all test suites — no failures (passing with zero tests is acceptable at this stage)
-- [x] All three commands exit 0 on a clean checkout
+- [ ] `pnpm typecheck` runs `tsc --noEmit` across all packages — no errors
+- [ ] `pnpm lint` runs ESLint across all packages — no errors on scaffolded code
+- [ ] `pnpm test` runs all test suites — no failures (passing with zero tests is acceptable at this stage)
+- [ ] All three commands exit 0 on a clean checkout
 
 ---
 
@@ -129,12 +134,12 @@ Tasks are listed in dependency order. Do not start a task until its dependencies
 **Depends on:** P1-6
 **Allowed paths:** `.github/workflows/**`
 **Deliverable:** GitHub Actions workflow that runs on every PR
-**Status:** Done
+**Status:** Todo
 **Acceptance:**
-- [x] Workflow triggers on `pull_request` to `main`
-- [x] Runs `pnpm typecheck`, `pnpm lint`, `pnpm test` in sequence
-- [x] Fails the PR check if any command exits non-zero
-- [x] Completes in under 5 minutes on a cold runner
+- [ ] Workflow triggers on `pull_request` to `main`
+- [ ] Runs `pnpm typecheck`, `pnpm lint`, `pnpm test` in sequence
+- [ ] Fails the PR check if any command exits non-zero
+- [ ] Completes in under 5 minutes on a cold runner
 
 ---
 
@@ -142,18 +147,18 @@ Tasks are listed in dependency order. Do not start a task until its dependencies
 **Owner:** All agents — Orchestrator coordinates; each agent owns their layer
 **Hooks:** Pre-task, Ownership, Contract-change, Client-UX, Telemetry
 **Depends on:** P1-3, P1-4, P1-5, P1-6, P1-7
-**Inputs:** `docs/specs/networking-spec.md`, `packages/net-protocol/`, first event contract (P0-6)
+**Inputs:** `docs/specs/networking-spec.md`, `packages/net-protocol/`, first event contract (P0-6), `_bmad-output/game-architecture.md`
 **Allowed paths:** `apps/**`, `packages/net-protocol/**` (additive only), `packages/shared-types/**` (additive only)
 **Non-goals:** Movement, combat, character selection, authentication
-**Deliverable:** End-to-end flow: host creates session → mobile joins → mobile appears as connected player on host
-**Status:** Done
+**Deliverable:** End-to-end flow: host creates Colyseus session → mobile joins → mobile appears as connected player on host
+**Status:** Todo
 **Acceptance:**
-- [x] Host app creates a session and displays a room code or QR code
-- [x] Mobile app can enter the room code and join
-- [x] Host app shows the joined player as connected (slot filled)
-- [x] Joining a second mobile device fills a second slot (up to 4 players)
-- [x] Disconnecting a mobile device shows the slot as disconnected on host
-- [x] E2e smoke test (script or Playwright test) validates this flow and passes in CI
+- [ ] Host app creates a session and displays a room code or QR code
+- [ ] Mobile app can enter the room code and join
+- [ ] Host app shows the joined player as connected (slot filled)
+- [ ] Joining a second mobile device fills a second slot (up to 4 players)
+- [ ] Disconnecting a mobile device shows the slot as disconnected on host
+- [ ] E2e smoke test (script or Playwright test) validates this flow and passes in CI
 
 ---
 
@@ -164,20 +169,20 @@ Tasks are listed in dependency order. Do not start a task until its dependencies
 **Inputs:** `docs/specs/telemetry-spec.md` (including payload schemas from P0-11)
 **Allowed paths:** `packages/telemetry/**`, `apps/simulation-server/**` (telemetry calls only), `apps/host-client/**` (telemetry calls only), `apps/mobile-controller/**` (telemetry calls only)
 **Deliverable:** Session funnel events firing with correct payloads
-**Status:** Done
+**Status:** Todo
 **Acceptance:**
-- [x] `session_create_started` and `session_create_succeeded` fire when host creates a session
-- [x] `join_attempt_started`, `join_attempt_succeeded`, and `join_attempt_failed` fire on mobile join
-- [x] Each event payload includes all required common fields: `session_id`, `mode`, `build_version`, `timestamp`
-- [x] Events are logged to console in local mode (no external service required yet)
-- [x] A contract test asserts that each event payload matches its schema from `telemetry-spec.md`
+- [ ] `session_create_started` and `session_create_succeeded` fire when host creates a session
+- [ ] `join_attempt_started`, `join_attempt_succeeded`, and `join_attempt_failed` fire on mobile join
+- [ ] Each event payload includes all required common fields: `session_id`, `mode`, `build_version`, `timestamp`
+- [ ] Events are logged to console in local mode (no external service required yet)
+- [ ] A contract test asserts that each event payload matches its schema from `telemetry-spec.md`
 
 ---
 
 ## Deliverables
 
 - Three runnable apps (`simulation-server`, `host-client`, `mobile-controller`)
-- Two runnable packages (`shared-types`, `net-protocol`)
+- Two shared packages (`shared-types`, `net-protocol`)
 - Baseline CI pipeline (typecheck + lint + test on every PR)
 - End-to-end join-room happy path with e2e smoke test
 - Session funnel telemetry events wired up
@@ -185,7 +190,7 @@ Tasks are listed in dependency order. Do not start a task until its dependencies
 ## Phase 1 → Phase 2 Gate
 
 Phase 2 (Local Party MVP) may not start until:
-- [x] P1-8 e2e smoke test passes in CI
-- [x] P1-9 session funnel events fire with correct payloads
-- [x] All three apps start cleanly from a cold checkout
-- [x] P1-7 CI is green on `main`
+- [ ] P1-8 e2e smoke test passes in CI
+- [ ] P1-9 session funnel events fire with correct payloads
+- [ ] All three apps start cleanly from a cold checkout
+- [ ] P1-7 CI is green on `main`

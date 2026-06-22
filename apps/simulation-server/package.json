@@ -1,0 +1,25 @@
+{
+  "name": "simulation-server",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "colyseus": "0.17.10",
+    "@colyseus/redis-presence": "^0.17.7",
+    "pino": "10.3.1",
+    "game-rules": "*",
+    "net-protocol": "*",
+    "shared-types": "*"
+  },
+  "devDependencies": {
+    "tsx": "^4.22.4",
+    "typescript": "^5.4.0",
+    "vitest": "^2.0.0",
+    "@types/node": "^22.0.0"
+  }
+}
