@@ -966,11 +966,22 @@ npm install
 docker compose up -d
 
 # Dev servers (run in separate terminals)
-npm run dev --workspace=apps/simulation-server
-npm run dev --workspace=apps/host-client
-npm run dev --workspace=apps/mobile-controller
-npm run dev --workspace=apps/backend-platform
+npm run dev --workspace=apps/simulation-server   # ws://localhost:2567
+npm run dev --workspace=apps/host-client          # http://localhost:5173
+npm run dev --workspace=apps/mobile-controller    # http://localhost:5174
+npm run dev --workspace=apps/backend-platform     # http://localhost:4000
 ```
+
+### Local Port Assignments
+
+| App | Port | Protocol | Env var override |
+|---|---|---|---|
+| `simulation-server` | **2567** | WebSocket (Colyseus default) | `PORT` |
+| `host-client` | **5173** | HTTP (Vite dev server) | — |
+| `mobile-controller` | **5174** | HTTP (Vite dev server) | — |
+| `backend-platform` | **4000** | HTTP (Hono) | `PORT` |
+
+Ports were chosen to avoid clashing with common defaults (3000, 3001, 8080, 8081) used by other projects sharing the same machine.
 
 ### First Steps After Setup
 

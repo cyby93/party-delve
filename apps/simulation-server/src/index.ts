@@ -4,7 +4,7 @@ import { RedisPresence } from '@colyseus/redis-presence';
 import { GameRoom } from './rooms/GameRoom.js';
 import { logger } from './logger.js';
 
-const PORT = Number(process.env['PORT'] ?? 3000);
+const PORT = Number(process.env['PORT'] ?? 2567);
 
 // Use RedisPresence only when REDIS_HOST is set (cloud/production).
 // Local Party Mode uses Colyseus's default LocalPresence — no Redis required.
