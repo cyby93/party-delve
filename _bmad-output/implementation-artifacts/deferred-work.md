@@ -29,6 +29,19 @@ The `[confidence: N%]` tag is matched literally. Minor format variations (`[Conf
 
 ---
 
+## From root-dev-script — add dev script to root package.json (2026-06-22)
+
+**D15 — No startup ordering guarantee**
+When packages evolve to ship compiled output rather than raw TypeScript source, `host-client` and `mobile-controller` may boot before workspace packages are ready. The `dev` script encodes no ordering guarantee. Pre-existing structural concern; not triggered by current scaffold.
+
+**D16 — `backend-platform` always started in `npm run dev`**
+Phase 2 (Local Party MVP) keeps cloud off the critical path, but `backend-platform` is included in the root `dev` command. Developers who only want local gameplay must have Redis available. Consider splitting into `dev:local` (sim + host + mobile) and `dev:full` in a later story.
+
+**D17 — No `engines.npm` field**
+The `-w` workspace flag requires npm ≥ 7. The project has no `engines.npm` constraint, so a developer on an older npm gets a confusing failure. Pre-existing.
+
+---
+
 ## Deferred from: code review of 1-1-monorepo-architecture-clean-slate-and-package-scaffold (2026-06-22)
 
 **D8 — `deserialize<T>` unsafe cast** (`packages/net-protocol/src/serialize.ts`)
