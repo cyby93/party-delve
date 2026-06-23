@@ -24,9 +24,10 @@ function createEmptyGameState(roomId: string): GameState {
   };
 }
 
-function createPlayer(id: string): PlayerState {
+function createPlayer(id: string, displayName: string): PlayerState {
   return {
     id,
+    displayName,
     class: PlayerClass.STONEHIDE,
     x: 0,
     y: 0,
@@ -47,7 +48,7 @@ export class GameRoom extends Room {
   private inputQueue: Array<{ clientId: string; msg: InputEventMsg }> = [];
 
   async onCreate(_options: unknown): Promise<void> {
-    this.maxClients = MAX_PLAYERS;
+    this.maxClients = MAX_PLAYERS + 1; // +1 for the host client slot
     this.gameState = createEmptyGameState(this.roomId);
     // Placeholder seed — replaced by xoshiro128++ in Story 3.1
     this.gameState.session.runSeed = (Math.random() * 0xffff_ffff) | 0;
@@ -72,8 +73,18 @@ export class GameRoom extends Room {
     logger.info({ roomId: this.roomId }, 'GameRoom created');
   }
 
-  onJoin(client: Client, _options: unknown): void {
-    const player = createPlayer(client.sessionId);
+  onJoin(client: Client, options: Record<string, unknown> = {}): void {
+    if (options['isHost'] === true) {
+      this.gameState.session.hostId = client.sessionId;
+      logger.info({ roomId: this.roomId, clientId: client.sessionId }, 'host joined');
+      const snapshot: SnapshotMsg = { type: 'snapshot', state: this.gameState };
+      client.send(EventNames.SNAPSHOT, serialize(snapshot));
+      return;
+    }
+
+    const rawName = [...String(options['playerName'] ?? '').trim()].slice(0, 32).join('');
+    const displayName = rawName.length > 0 ? rawName : client.sessionId.slice(-6);
+    const player = createPlayer(client.sessionId, displayName);
     this.gameState.players.push(player);
     this.gameState.session.playerCount = this.gameState.players.length;
 

@@ -34,6 +34,7 @@ describe('net-protocol contract tests', () => {
       const state = mockGameState();
       state.players.push({
         id: 'player-1',
+        displayName: 'TestPlayer',
         class: PlayerClass.STONEHIDE,
         x: 10,
         y: 20,

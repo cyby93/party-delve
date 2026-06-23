@@ -107,3 +107,97 @@ Contract tests verify serialize/deserialize codec but not EventNames dispatch ke
 
 **D30 — Source files created with executable bit 100755** (`logger.ts`, `GameRoom.ts`)
 Both new TypeScript source files have the executable bit set (WSL filesystem umask behavior). No runtime impact. Should be 100644. Fix with `chmod 644` if it causes CI issues.
+
+---
+
+## Deferred from: code review of 1-3-host-app-main-menu-and-lobby-screen (2026-06-22)
+
+**D31 — Host `onLeave` not tracked; hostId not cleared on disconnect** (`apps/simulation-server/src/rooms/GameRoom.ts`)
+`onLeave` checks `if (!player) return` — the host is never in `gameState.players`, so host disconnects are silently ignored. A second client can claim `hostId` mid-session. Story 1.6 reconnect scope.
+
+**D32 — `applyDelta` stub drops `player:left` deltas — ghost slots persist up to 5s** (`packages/net-protocol`)
+Server sends `player:left` delta on consented leave; host client applies the stub no-op, player remains in UI until next periodic snapshot (SNAPSHOT_INTERVAL_S = 5s). Documented known limitation per story Dev Notes; real applyDelta in Phase 2 delta story.
+
+**D33 — Double-serialization risk: Colyseus may re-encode string payload** (`apps/host-client/src/session/host-session.ts`)
+Server calls `serialize(snapshot)` then `client.send(event, serializedString)`. If Colyseus treats the second arg as an arbitrary value and JSON-encodes it again, client receives a JSON-string-of-a-JSON-string. Confirmed working in smoke test; revisit if serialization breaks after Colyseus version bumps.
+
+**D34 — Snapshot broadcast storm on rapid multi-player joins** (`apps/simulation-server/src/rooms/GameRoom.ts`)
+N concurrent joins each trigger a full broadcast to all N clients (O(N²) snapshot messages). Pre-existing from Story 1.2 (D20). Optimize when lobby is fully built in Story 1.5.
+
+**D35 — `onError` after lobby transition has no visible error surface in lobby UI** (`apps/host-client/src/App.tsx`)
+`setError` only renders in `MainMenuScreen`. If server drops after screen transitions to lobby, host has no visual indicator. Story 1.6 reconnect/error recovery scope.
+
+**D36 — App unmount doesn't call `session.disconnect()`** (`apps/host-client/src/App.tsx`)
+No cleanup effect on `session`. In practice App never unmounts (SPA); StrictMode double-mount in dev could create an orphaned room. Low risk; add cleanup if StrictMode double-invoke causes issues during development.
+
+**D37 — `PlayerSlot` renders truncated session ID instead of display name** (`apps/host-client/src/components/PlayerSlot.tsx`)
+AC 3 says "display name" but `PlayerState` has no `displayName` field. Current impl uses `player.id.slice(0, 8)`. Deferred until Protocol Architect adds `displayName: string` to `PlayerState` (Story 1.4 or dedicated Protocol story).
+
+**D38 — `sendStartGame` uses raw string `'host:start'` instead of `EventNames` enum** (`apps/host-client/src/session/host-session.ts`)
+Project rule requires `EventNames` for all message types, but `EventNames` has no `HOST_START` entry. Adding it requires Protocol Architect approval (`packages/net-protocol/**`). Deferred to Protocol Architect; companion ticket for Story 1.4 or net-protocol cleanup story.
+
+## Deferred from: code review of 1-4-mobile-app-guest-join-flow (2026-06-23)
+
+**D1 — isHost flag unauthenticated / host slot overwriteable** [GameRoom.ts:onJoin]
+Any client can send `{isHost:true}` to claim host privileges; a second such client silently overwrites `hostId`. Pre-existing Story 1.3 gap — address in security hardening pass before Phase 2.
+
+**D2 — No onLeave handling for host client** [GameRoom.ts:onLeave]
+When the host disconnects, `hostId` remains stale and the room becomes unrecoverable. Pre-existing Story 1.3 gap — address in Story 1.6 reconnect flow.
+
+**D3 — Serialization errors silently discarded in mobile-session.ts** [mobile-session.ts]
+Malformed SNAPSHOT or DELTA messages are caught and ignored with no telemetry or error callback. Wire to telemetry/error surface in QA telemetry story.
+
+**D4 — room.leave() does not remove onMessage/onError listeners** [mobile-session.ts]
+Stale message handlers from a disconnected session persist in memory; will cause state contamination when reconnect flow (Story 1.6) is implemented.
+
+**D5 — window.location.search re-evaluated on every render** [SessionCodeEntryScreen.tsx]
+`urlCode` is computed at top of function body rather than in a useMemo/useRef. Harmless in practice since `useState(urlCode)` only uses the initial value; refactor opportunity.
+
+**D6 — isSuccess dead state if parent never transitions** [SessionCodeEntryScreen.tsx]
+If the parent's navigation call after `joinSession` is ever removed or deferred, the user is permanently stuck on a green Join button with no retry path. Latent refactor risk.
+
+**D7 — Missed initial snapshot race on sub-ms RTT** [mobile-session.ts]
+Server broadcasts snapshot synchronously in `onJoin`; client registers `onMessage` handlers after `await joinById` resolves. In practice Colyseus SDK buffers messages, but verify under local loopback conditions before Phase 2.
+
+**D8 — StrictMode double-invocation on OrientationPromptScreen** [OrientationPromptScreen.tsx]
+`onDismiss` fires twice in dev when device is already in landscape (StrictMode remounts the effect). Currently idempotent (`setScreen` called twice is fine); address if side effects are added to dismiss path.
+
+**D9 — displayName XSS surface at server boundary** [GameRoom.ts:onJoin / PlayerSlot.tsx]
+`playerName` is stored raw in GameState and broadcast. Safe in React JSX text nodes, but adding sanitization (length cap + strip control chars) at the server boundary before any non-React rendering is used.
+
+**D10 — displayName field added without schema migration note** [shared-types/src/player.ts]
+`displayName: string` is required with no optional marker. No persisted/replayed state exists in Phase 1 so this is safe now; document migration strategy before Phase 3 replay work.
+
+**D11 — @colyseus/sdk patch range ^0.17.43 couples error behavior to patch releases** [mobile-controller/package.json]
+`joinById` rejection vs. `onError` semantics can differ across 0.17.x patches. Pin the version when planning 0.18 migration.
+
+**D12 — simulateOnJoin duplicates production onJoin logic** [game-room-host-join.test.ts]
+Tests re-implement rather than call the real `GameRoom.onJoin`, so production divergence won't break them. Pre-existing Story 1.3 test architecture — refactor when integration test harness is available.
+
+**D13 — NFR2 (10-second lobby appearance) has no timeout detection** [AC5]
+No mechanism detects or recovers when a player slot doesn't appear within 10 seconds. Address in QA/telemetry story with latency measurement.
+
+---
+
+## Story 1.4 — Round 2 Review Deferred Findings
+
+**D14 — Host role unauthenticated; any client can overwrite hostId** [GameRoom.ts:onJoin]
+No guard on `this.gameState.session.hostId !== ''` before assigning a new hostId. A malicious or mis-configured client sending `{ isHost: true }` after the host joins overwrites the privileged seat. Address in server auth hardening (Phase 5 scope).
+
+**D15 — iOS Safari BFCache thaw leaves join screen permanently loading** [SessionCodeEntryScreen.tsx]
+When the page is frozen to BFCache mid-`joinById()` and later thawed, the promise is dead but `isSubmittingRef.current` stays `true`. No `pageshow`/`pagehide` handler resets the state. Address in connectivity/reconnect story or iOS-specific platform testing pass.
+
+**D16 — App unmounts during in-flight joinSession leaves orphaned WebSocket** [App.tsx]
+If `App` unmounts while `joinSession()` is awaiting, the cleanup effect captures `session=null` (noop), then the resolved session is `setSession(s)`-called on the dead component. `s.disconnect()` is never called. Player slot lingers until server 30s grace expires. Address with a `mountedRef` guard in Story 1.6 or platform hardening.
+
+**D17 — No `room.onLeave` handler; server-initiated disconnects are invisible to UI** [mobile-session.ts]
+After join, if the server forces a disconnect (`client.leave()`, room disposal, game end), `room.onLeave` fires but no callback is wired. User is stranded on ControllerScreen with a dead session. Address in Story 1.6 disconnect/reconnect flow.
+
+**D18 — StrictMode fires `onDismiss()` twice when phone already in landscape on mount** [OrientationPromptScreen.tsx]
+Dev-only. React 18 StrictMode re-runs effects after cleanup; the immediate-dismiss guard `if (mq.matches) { onDismiss(); return; }` doesn't prevent the second call. `setScreen('controller')` is idempotent so no user-visible impact. Document or add a ref guard if double-invocation causes issues in future animation work.
+
+**D19 — `room.leave()` callable multiple times; Colyseus SDK accumulates dead handlers** [mobile-session.ts]
+`room.leave()` pushes a new `onLeave` handler to the EventEmitter array each call. Not deduplicated or cleared. Becomes a concern in Phase 5 reconnect teardown where `leave()` may be called as part of reconnect handshake. Wrap with a called-once guard when reconnect is implemented.
+
+**D20 — Short sessionId (< 6 chars) would not behave as documented in displayName fallback** [GameRoom.ts]
+`client.sessionId.slice(-6)` on a string shorter than 6 chars returns the full string (no error). Colyseus currently always generates 9-char IDs via nanoid. Guard is not needed now but should be verified when Phase 5 auth providers are wired in.

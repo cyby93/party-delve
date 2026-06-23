@@ -15,6 +15,7 @@
     "pixi.js": "^8.18.0",
     "howler": "2.2.4",
     "@colyseus/sdk": "^0.17.43",
+    "react-qr-code": "^2.0.15",
     "net-protocol": "*",
     "shared-types": "*",
     "ui-kit": "*"
