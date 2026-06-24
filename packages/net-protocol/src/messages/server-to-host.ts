@@ -1,4 +1,4 @@
-import type { GameState, BondState, EssenceDrop } from 'shared-types';
+import type { GameState, BondState, EssenceDrop, PlayerClass } from 'shared-types';
 
 export interface SnapshotMsg {
   type: 'snapshot';
@@ -79,6 +79,12 @@ export type PlayerPoiExitedDelta = {
   playerId: string;
 };
 
+export type PlayerClassUpdatedDelta = {
+  type: 'player:class-updated';
+  playerId: string;
+  class: PlayerClass;
+};
+
 export type DeltaEventMsg =
   | PlayerMovedDelta
   | PlayerDownedDelta
@@ -92,4 +98,5 @@ export type DeltaEventMsg =
   | EssenceDroppedDelta
   | EssenceCollectedDelta
   | PlayerPoiEnteredDelta
-  | PlayerPoiExitedDelta;
+  | PlayerPoiExitedDelta
+  | PlayerClassUpdatedDelta;

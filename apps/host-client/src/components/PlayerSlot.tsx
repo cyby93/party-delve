@@ -1,6 +1,5 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
 import type { PlayerState } from 'shared-types';
-import { PlayerClass } from 'shared-types';
 
 const HOLD_MS = 1500;
 
@@ -71,8 +70,7 @@ interface PlayerSlotProps {
 }
 
 export function PlayerSlot({ player, onKick }: PlayerSlotProps) {
-  const classLabel =
-    player.class === PlayerClass.STONEHIDE ? 'Class TBD' : player.class;
+  const classLabel = player.class === null ? 'Class TBD' : player.class;
 
   return (
     <div

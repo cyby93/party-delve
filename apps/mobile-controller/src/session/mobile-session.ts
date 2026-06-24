@@ -1,6 +1,6 @@
 import * as Colyseus from '@colyseus/sdk';
 import { EventNames, deserialize } from 'net-protocol';
-import type { SnapshotMsg, DeltaEventMsg, InputEventMsg } from 'net-protocol';
+import type { SnapshotMsg, DeltaEventMsg, InputEventMsg, ClassSelectMsg, CooldownUpdateMsg } from 'net-protocol';
 import type { GameState } from 'shared-types';
 
 const SIM_URL = import.meta.env['VITE_SIM_URL'] ?? 'ws://localhost:2567';
@@ -16,6 +16,7 @@ export interface MobileSession {
   playerId: string;
   roomId: string;
   sendInput: (msg: InputEventMsg) => void;
+  sendClassSelect: (msg: ClassSelectMsg) => void;
   disconnect: () => void;
 }
 
@@ -48,6 +49,7 @@ function wireRoomHandlers(
   room: Colyseus.Room<any>,
   onStateUpdate: (state: GameState) => void,
   onDelta: (delta: DeltaEventMsg) => void,
+  onCooldownUpdate: (msg: CooldownUpdateMsg) => void,
   onError: (code: number, message: string) => void,
   onDisconnect: (code: number) => void,
 ): void {
@@ -63,6 +65,13 @@ function wireRoomHandlers(
       const delta = decode<DeltaEventMsg>(data);
       onDelta(delta);
     } catch { /* ignore malformed delta */ }
+  });
+
+  room.onMessage(EventNames.COOLDOWN_UPDATE, (data: unknown) => {
+    try {
+      const msg = decode<CooldownUpdateMsg>(data);
+      onCooldownUpdate(msg);
+    } catch { /* ignore malformed */ }
   });
 
   room.onError((code: number, message?: string) => {
@@ -83,6 +92,7 @@ export async function joinSession(
   playerName: string,
   onStateUpdate: (state: GameState) => void,
   onDelta: (delta: DeltaEventMsg) => void,
+  onCooldownUpdate: (msg: CooldownUpdateMsg) => void,
   onError: (code: number, message: string) => void,
   onDisconnect: (code: number) => void,
 ): Promise<MobileSession> {
@@ -93,7 +103,7 @@ export async function joinSession(
   // Persist before wiring handlers — ensures token is available if onLeave fires during setup.
   persistSession(room.reconnectionToken, room.roomId, playerName);
 
-  wireRoomHandlers(room, onStateUpdate, onDelta, onError, onDisconnect);
+  wireRoomHandlers(room, onStateUpdate, onDelta, onCooldownUpdate, onError, onDisconnect);
 
   return {
     playerId: room.sessionId,
@@ -101,6 +111,7 @@ export async function joinSession(
     // Send input as a plain object — Colyseus msgpack-encodes it for us.
     // The server INPUT handler accepts both plain objects and JSON strings defensively.
     sendInput: (msg: InputEventMsg) => room.send(EventNames.INPUT, msg),
+    sendClassSelect: (msg: ClassSelectMsg) => room.send(EventNames.CLASS_SELECT, msg),
     disconnect: () => {
       try { room.leave(); } catch { /* socket may already be closed */ }
     },
@@ -111,6 +122,7 @@ export async function reconnectToSession(
   reconnectionToken: string,
   onStateUpdate: (state: GameState) => void,
   onDelta: (delta: DeltaEventMsg) => void,
+  onCooldownUpdate: (msg: CooldownUpdateMsg) => void,
   onError: (code: number, message: string) => void,
   onDisconnect: (code: number) => void,
 ): Promise<MobileSession> {
@@ -125,12 +137,13 @@ export async function reconnectToSession(
     persistSession(room.reconnectionToken, existing.roomId, existing.playerName);
   }
 
-  wireRoomHandlers(room, onStateUpdate, onDelta, onError, onDisconnect);
+  wireRoomHandlers(room, onStateUpdate, onDelta, onCooldownUpdate, onError, onDisconnect);
 
   return {
     playerId: room.sessionId,
     roomId: room.roomId,
     sendInput: (msg: InputEventMsg) => room.send(EventNames.INPUT, msg),
+    sendClassSelect: (msg: ClassSelectMsg) => room.send(EventNames.CLASS_SELECT, msg),
     disconnect: () => {
       try { room.leave(); } catch { /* socket may already be closed */ }
     },

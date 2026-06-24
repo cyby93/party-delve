@@ -5,4 +5,6 @@ export enum EventNames {
   JOIN_REQUEST = 'join_request',
   JOIN_RESPONSE = 'join_response',
   HOST_START = 'host:start',
+  CLASS_SELECT = 'class:select',
+  COOLDOWN_UPDATE = 'cooldown:update',
 }

@@ -6,8 +6,13 @@ import { ControllerScreen } from './screens/ControllerScreen';
 import { ReconnectScreen } from './screens/ReconnectScreen';
 import { joinSession, reconnectToSession, getPersistedSession, clearPersistedSession, type MobileSession } from './session/mobile-session';
 import type { GameState } from 'shared-types';
-import type { DeltaEventMsg } from 'net-protocol';
+import type { DeltaEventMsg, CooldownUpdateMsg } from 'net-protocol';
 import { applyDelta } from 'net-protocol';
+
+export interface CooldownState {
+  startAt: number;
+  expiresAt: number;
+}
 
 type AppScreen = 'auth-choice' | 'session-entry' | 'orientation-prompt' | 'controller' | 'reconnect';
 
@@ -18,6 +23,7 @@ export function App() {
   const [screen, setScreen] = useState<AppScreen>('auth-choice');
   const [session, setSession] = useState<MobileSession | null>(null);
   const [gameState, setGameState] = useState<GameState | null>(null);
+  const [cooldowns, setCooldowns] = useState<(CooldownState | null)[]>([null, null, null, null]);
   const [reconnectRoomId, setReconnectRoomId] = useState<string>('');
   const [sessionEntryInitialCode, setSessionEntryInitialCode] = useState<string | undefined>(undefined);
   // Ref keeps handleDelta dep-free while always reading the live playerId.
@@ -45,6 +51,19 @@ export function App() {
     setGameState(prev => prev !== null ? applyDelta(prev, delta) : prev);
   }, []);
 
+  const handleCooldownUpdate = useCallback((msg: CooldownUpdateMsg) => {
+    setCooldowns(prev => {
+      const next = [...prev] as (CooldownState | null)[];
+      if (msg.remainingMs > 0) {
+        const now = Date.now();
+        next[msg.abilityIndex] = { startAt: now, expiresAt: now + msg.remainingMs };
+      } else {
+        next[msg.abilityIndex] = null;
+      }
+      return next;
+    });
+  }, []);
+
   const handleDisconnect = useCallback((code: number) => {
     if (code === CLOSE_CONSENTED) {
       clearPersistedSession();
@@ -67,6 +86,7 @@ export function App() {
         playerName,
         setGameState,
         handleDelta,
+        handleCooldownUpdate,
         (code, msg) => { console.warn('[session] room error after join', code, msg); },
         handleDisconnect,
       );
@@ -76,7 +96,7 @@ export function App() {
     } catch (err) {
       throw err; // re-throw so SessionCodeEntryScreen can reset its loading state and show the error
     }
-  }, [handleDelta, handleDisconnect]);
+  }, [handleDelta, handleCooldownUpdate, handleDisconnect]);
 
   const handleOrientationDismiss = useCallback(() => {
     setScreen('controller');
@@ -89,12 +109,14 @@ export function App() {
       persisted.reconnectionToken,
       setGameState,
       handleDelta,
+      handleCooldownUpdate,
       (code, msg) => { console.warn('[session] reconnect error', code, msg); },
       handleDisconnect,
     );
     setSession(s);
+    setCooldowns([null, null, null, null]);
     setScreen('controller');
-  }, [handleDelta, handleDisconnect]);
+  }, [handleDelta, handleCooldownUpdate, handleDisconnect]);
 
   const handleGiveUp = useCallback(() => {
     clearPersistedSession();
@@ -126,5 +148,5 @@ export function App() {
       />
     );
   }
-  return <ControllerScreen session={session} gameState={gameState} />;
+  return <ControllerScreen session={session} gameState={gameState} cooldowns={cooldowns} />;
 }

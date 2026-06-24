@@ -49,6 +49,13 @@ export function applyDelta(state: GameState, evt: DeltaEventMsg): GameState {
         ),
       };
     }
+    case 'player:class-updated': {
+      if (!state.players.some(p => p.id === evt.playerId)) return state;
+      const players = state.players.map(p =>
+        p.id === evt.playerId ? { ...p, class: evt.class } : p
+      );
+      return { ...state, players };
+    }
     default:
       return state;
   }

@@ -19,7 +19,7 @@ export enum SessionColor {
 export interface PlayerState {
   id: string;
   displayName: string;
-  class: PlayerClass;
+  class: PlayerClass | null;
   x: number;
   y: number;
   hp: number;

@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { Application, Graphics, Text, TextStyle } from 'pixi.js';
 import type { GameState } from 'shared-types';
-import { SessionColor, HUB_POIS, PoiType } from 'shared-types';
+import { SessionColor, HUB_POIS, PoiType, PlayerClass, CLASS_DEFINITIONS } from 'shared-types';
 import type { HostSession } from '../session/host-session';
 
 interface HubWorldScreenProps {
@@ -28,12 +28,15 @@ const VIRTUAL_H = 1080;
 interface PlayerEntry {
   circle: Graphics;
   chatBubble: Text;
+  flashUntil: number;
+  knownClass: PlayerClass | null;
 }
 
 function renderFrame(
   state: GameState,
   app: Application,
   playerGraphics: Map<string, PlayerEntry>,
+  poiGraphics: Map<string, { body: Graphics; label: Text }>,
 ): void {
   // Scale stage so virtual coords map to actual canvas pixels.
   // Virtual center (960, 540) always lands at screen center regardless of display size.
@@ -59,11 +62,25 @@ function renderFrame(
       chatBubble.anchor.set(0.5, 1);
       app.stage.addChild(circle);
       app.stage.addChild(chatBubble);
-      entry = { circle, chatBubble };
+      entry = { circle, chatBubble, flashUntil: 0, knownClass: player.class };
       playerGraphics.set(player.id, entry);
     }
     const { circle, chatBubble } = entry;
-    circle.alpha = player.isFrozen ? 0.3 : 1;
+
+    // Detect class confirmation and start flash
+    if (entry.knownClass !== player.class && player.class !== null) {
+      entry.knownClass = player.class;
+      entry.flashUntil = Date.now() + 600;
+    }
+
+    // Alpha pulse during flash; frozen state overrides
+    const now = Date.now();
+    if (!player.isFrozen && entry.flashUntil > 0 && now < entry.flashUntil) {
+      const progress = (entry.flashUntil - now) / 600; // 1.0 → 0.0 as time passes
+      circle.alpha = 0.6 + 0.4 * Math.cos(2 * Math.PI * (1 - progress)); // 1→0.2→1
+    } else {
+      circle.alpha = player.isFrozen ? 0.3 : 1;
+    }
     const color = SESSION_COLOR_HEX[player.sessionColor] ?? 0xffffff;
     circle.position.set(player.x, player.y);
     circle.clear();
@@ -72,6 +89,19 @@ function renderFrame(
     // Chat bubble appears PLAYER_RADIUS + 8 above the circle center
     chatBubble.visible = player.nearPoiId !== null;
     chatBubble.position.set(player.x, player.y - PLAYER_RADIUS - 8);
+  }
+
+  // Training dummy targeting indicator
+  const anyNearDummy = state.players.some(p => p.nearPoiId === 'training-dummy');
+  const dummyEntry = poiGraphics.get('training-dummy');
+  if (dummyEntry) {
+    dummyEntry.body.clear();
+    dummyEntry.body.roundRect(-24, -24, 48, 48, 6).fill({ color: 0xc07d35 });
+    if (anyNearDummy) {
+      dummyEntry.body
+        .roundRect(-32, -32, 64, 64, 10)
+        .stroke({ color: 0xc07d35, width: 2, alpha: 0.7 });
+    }
   }
 }
 
@@ -133,7 +163,7 @@ export function HubWorldScreen({ gameState, session: _session }: HubWorldScreenP
 
       // Render any state that arrived while PixiJS was initializing
       if (latestGameStateRef.current) {
-        renderFrame(latestGameStateRef.current, app, playerGraphicsRef.current);
+        renderFrame(latestGameStateRef.current, app, playerGraphicsRef.current, poiGraphicsRef.current);
       }
     }
     void initPixi();
@@ -152,7 +182,7 @@ export function HubWorldScreen({ gameState, session: _session }: HubWorldScreenP
 
   useEffect(() => {
     if (!pixiAppRef.current || !gameState) return;
-    renderFrame(gameState, pixiAppRef.current, playerGraphicsRef.current);
+    renderFrame(gameState, pixiAppRef.current, playerGraphicsRef.current, poiGraphicsRef.current);
   }, [gameState]);
 
   const players = gameState?.players ?? [];
@@ -182,14 +212,18 @@ export function HubWorldScreen({ gameState, session: _session }: HubWorldScreenP
         }}
       >
         {players.map(player => (
-          <PlayerChip key={player.id} name={player.displayName} isFrozen={player.isFrozen} />
+          <PlayerChip key={player.id} name={player.displayName} isFrozen={player.isFrozen} playerClass={player.class} />
         ))}
       </div>
     </div>
   );
 }
 
-function PlayerChip({ name, isFrozen }: { name: string; isFrozen: boolean }) {
+function PlayerChip({ name, isFrozen, playerClass }: { name: string; isFrozen: boolean; playerClass: PlayerClass | null }) {
+  const classLabel = playerClass !== null
+    ? CLASS_DEFINITIONS[playerClass].displayName
+    : 'Class TBD';
+
   return (
     <div
       style={{
@@ -224,7 +258,7 @@ function PlayerChip({ name, isFrozen }: { name: string; isFrozen: boolean }) {
           color: 'var(--text-secondary)',
         }}
       >
-        Class TBD
+        {classLabel}
       </span>
     </div>
   );

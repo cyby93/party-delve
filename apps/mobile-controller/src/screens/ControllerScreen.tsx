@@ -5,10 +5,12 @@ import type { GameState } from 'shared-types';
 import type { ClassDef } from 'shared-types';
 import type { AbilityInputType, ClassAbilityDef } from 'shared-types';
 import { CLASS_DEFINITIONS, PlayerClass } from 'shared-types';
+import type { CooldownState } from '../App';
 
 interface ControllerScreenProps {
   session: MobileSession | null;
   gameState: GameState | null;
+  cooldowns: (CooldownState | null)[];
 }
 
 const JOYSTICK_MAX_RADIUS = 60;
@@ -473,9 +475,249 @@ function ClassSelectionScreen({ onBack, onPickClass }: ClassSelectionScreenProps
   );
 }
 
-export function ControllerScreen({ session, gameState }: ControllerScreenProps) {
-  const myPlayer = gameState?.players.find(p => p.id === session?.playerId);
+interface SkillCellProps {
+  index: number;
+  ability: ClassAbilityDef | null;
+  cooldownState: CooldownState | null;
+  isInteractive: boolean;
+  badgeBorderColor: string;
+  onAbilityFire: (abilityIndex: number, dirX: number, dirY: number, isContinuous: boolean) => void;
+  tapFlash: boolean;
+}
+
+function SkillCell({ index, ability, cooldownState: cd, isInteractive, badgeBorderColor, onAbilityFire, tapFlash }: SkillCellProps) {
+  const cellRef = useRef<HTMLDivElement>(null);
+  const activeTouchRef = useRef<{ id: number; originX: number; originY: number; lastDirX: number; lastDirY: number } | null>(null);
+  const autoIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const now = Date.now();
+  const isOnCooldown = cd !== null && cd.expiresAt > now;
+  const totalDuration = cd !== null ? cd.expiresAt - cd.startAt : 1;
+  const elapsed = cd !== null ? now - cd.startAt : 0;
+  const pctElapsed = Math.min(elapsed / totalDuration, 1);
+  const degRevealed = Math.round(pctElapsed * 360);
+  const countdownSeconds = cd !== null ? Math.ceil((cd.expiresAt - now) / 1000) : 0;
+
+  useEffect(() => {
+    const el = cellRef.current;
+    if (!el || !isInteractive || ability === null) return;
+    if (ability.inputType === 'TAP') return;
+
+    const onTouchStart = (e: TouchEvent) => {
+      e.preventDefault();
+      if (activeTouchRef.current !== null) return;
+      const touch = e.changedTouches[0];
+      if (!touch) return;
+      const rect = el.getBoundingClientRect();
+      activeTouchRef.current = {
+        id: touch.identifier,
+        originX: touch.clientX - rect.left,
+        originY: touch.clientY - rect.top,
+        lastDirX: 0,
+        lastDirY: 0,
+      };
+      if (ability.inputType === 'AUTO') {
+        autoIntervalRef.current = setInterval(() => {
+          const t = activeTouchRef.current;
+          if (t) onAbilityFire(index, t.lastDirX, t.lastDirY, true);
+        }, 33);
+      }
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      e.preventDefault();
+      const t = activeTouchRef.current;
+      if (t === null) return;
+      let touch: Touch | undefined;
+      for (let i = 0; i < e.touches.length; i++) {
+        if (e.touches[i]!.identifier === t.id) { touch = e.touches[i]; break; }
+      }
+      if (!touch) return;
+      const rect = el.getBoundingClientRect();
+      const rawX = touch.clientX - rect.left - t.originX;
+      const rawY = touch.clientY - rect.top - t.originY;
+      const dist = Math.sqrt(rawX * rawX + rawY * rawY);
+      const DEADZONE = 6;
+      if (dist >= DEADZONE) {
+        const angle = Math.atan2(rawY, rawX);
+        t.lastDirX = Math.cos(angle);
+        t.lastDirY = Math.sin(angle);
+      }
+    };
+
+    const onTouchEnd = (e: TouchEvent) => {
+      e.preventDefault();
+      const t = activeTouchRef.current;
+      if (t === null) return;
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        if (e.changedTouches[i]!.identifier === t.id) {
+          if (ability.inputType === 'RELEASE') {
+            onAbilityFire(index, t.lastDirX, t.lastDirY, false);
+          }
+          if (autoIntervalRef.current) {
+            clearInterval(autoIntervalRef.current);
+            autoIntervalRef.current = null;
+          }
+          activeTouchRef.current = null;
+          break;
+        }
+      }
+    };
+
+    const onDocumentTouchEnd = (e: TouchEvent) => {
+      const t = activeTouchRef.current;
+      if (t === null) return;
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        if (e.changedTouches[i]!.identifier === t.id) {
+          if (ability.inputType === 'RELEASE') {
+            onAbilityFire(index, t.lastDirX, t.lastDirY, false);
+          }
+          if (autoIntervalRef.current) {
+            clearInterval(autoIntervalRef.current);
+            autoIntervalRef.current = null;
+          }
+          activeTouchRef.current = null;
+          break;
+        }
+      }
+    };
+
+    el.addEventListener('touchstart', onTouchStart, { passive: false });
+    el.addEventListener('touchmove', onTouchMove, { passive: false });
+    el.addEventListener('touchend', onTouchEnd, { passive: false });
+    el.addEventListener('touchcancel', onTouchEnd, { passive: false });
+    document.addEventListener('touchend', onDocumentTouchEnd, { passive: false });
+    document.addEventListener('touchcancel', onDocumentTouchEnd, { passive: false });
+
+    return () => {
+      el.removeEventListener('touchstart', onTouchStart);
+      el.removeEventListener('touchmove', onTouchMove);
+      el.removeEventListener('touchend', onTouchEnd);
+      el.removeEventListener('touchcancel', onTouchEnd);
+      document.removeEventListener('touchend', onDocumentTouchEnd);
+      document.removeEventListener('touchcancel', onDocumentTouchEnd);
+      if (autoIntervalRef.current) {
+        clearInterval(autoIntervalRef.current);
+        autoIntervalRef.current = null;
+      }
+      activeTouchRef.current = null;
+    };
+  }, [isInteractive, ability, index, onAbilityFire]);
+
+  return (
+    <div
+      ref={cellRef}
+      style={{
+        position: 'relative',
+        background: 'var(--bg-subtle)',
+        borderRadius: 6,
+        border: '1px solid var(--border)',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'flex-end',
+        alignItems: 'flex-start',
+        padding: '6px 8px',
+        opacity: ability !== null ? 1.0 : 0.6,
+        pointerEvents: isInteractive && !isOnCooldown ? 'auto' : 'none',
+        overflow: 'hidden',
+        boxSizing: 'border-box',
+        minHeight: 44,
+        boxShadow: tapFlash && ability?.inputType === 'TAP'
+          ? 'inset 0 0 0 2000px rgba(110,168,216,0.5)'
+          : 'none',
+      }}
+      onPointerDown={e => {
+        if (!isInteractive || ability === null) return;
+        if (ability.inputType !== 'TAP') return;
+        e.preventDefault();
+        onAbilityFire(index, 0, 0, false);
+      }}
+    >
+      {ability !== null ? (
+        <>
+          <span
+            style={{
+              fontFamily: 'var(--font-body)',
+              fontWeight: 400,
+              fontStyle: 'italic',
+              fontSize: 'var(--text-base)',
+              color: 'var(--text-primary)',
+              lineHeight: 1.2,
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              width: '100%',
+            }}
+          >
+            {ability.name}
+          </span>
+          <span
+            style={{
+              fontFamily: 'var(--font-body)',
+              fontWeight: 400,
+              fontSize: 'var(--text-xs)',
+              color: 'var(--text-secondary)',
+              marginTop: 3,
+              borderLeft: `3px solid ${badgeBorderColor}`,
+              paddingLeft: 4,
+              lineHeight: 1,
+            }}
+          >
+            {ability.inputType}
+          </span>
+        </>
+      ) : (
+        <span
+          style={{
+            fontFamily: 'var(--font-body)',
+            fontStyle: 'italic',
+            fontSize: 'var(--text-base)',
+            color: 'var(--text-secondary)',
+            margin: 'auto',
+          }}
+        >
+          —
+        </span>
+      )}
+
+      {/* Cooldown overlay */}
+      {isOnCooldown && (
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            borderRadius: 6,
+            background: `conic-gradient(transparent ${degRevealed}deg, rgba(15,14,16,0.7) ${degRevealed}deg)`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 5,
+            pointerEvents: 'none',
+          }}
+        >
+          <span
+            style={{
+              fontFamily: 'var(--font-body)',
+              fontWeight: 700,
+              fontSize: 'var(--text-sm)',
+              color: 'var(--text-primary)',
+              textShadow: '0 1px 3px rgba(0,0,0,0.8)',
+              pointerEvents: 'none',
+            }}
+          >
+            {countdownSeconds}
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function ControllerScreen({ session, gameState, cooldowns }: ControllerScreenProps) {
+  const myPlayer = gameState?.players.find(p => p.id === session?.playerId) ?? null;
   const activePoi = myPlayer?.nearPoiId ?? null;
+  const confirmedClass = myPlayer?.class ?? null;
+  const classDef = confirmedClass !== null ? CLASS_DEFINITIONS[confirmedClass] : null;
   const joystickZoneRef = useRef<HTMLDivElement>(null);
 
   // Refs for values read inside event handlers — avoids stale closure issues
@@ -488,11 +730,59 @@ export function ControllerScreen({ session, gameState }: ControllerScreenProps) 
   const [joystickOriginState, setJoystickOriginState] = useState<{ x: number; y: number } | null>(null);
   const [joystickKnobOffset, setJoystickKnobOffset] = useState({ x: 0, y: 0 });
   const [classSelectionOpen, setClassSelectionOpen] = useState(false);
+  const [trainingDummyActive, setTrainingDummyActive] = useState(false);
+  const [tapFlash, setTapFlash] = useState<boolean[]>([false, false, false, false]);
+  const [displayTick, setDisplayTick] = useState(0);
 
   // Keep sessionRef in sync so event handlers always have the latest session
   useEffect(() => {
     sessionRef.current = session;
   }, [session]);
+
+  // Clear training mode when player moves away from training dummy
+  useEffect(() => {
+    if (activePoi !== 'training-dummy') {
+      setTrainingDummyActive(false);
+    }
+  }, [activePoi]);
+
+  // Force re-render while any cooldown is active, to update countdown displays
+  const anyCooldownActive = cooldowns.some(cd => cd !== null && cd.expiresAt > Date.now());
+  useEffect(() => {
+    if (!anyCooldownActive) return;
+    const interval = setInterval(() => {
+      setDisplayTick(t => t + 1);
+    }, 100);
+    return () => clearInterval(interval);
+  }, [anyCooldownActive]);
+
+  // Suppress unused variable warning — displayTick is only used to trigger re-renders
+  void displayTick;
+
+  const handleAbilityFire = useCallback((abilityIndex: number, dirX: number, dirY: number, isContinuous: boolean) => {
+    const s = sessionRef.current;
+    if (!s) return;
+    const msg: InputEventMsg = {
+      type: 'input',
+      event: { type: 'ability', ability: { abilityIndex, directionX: dirX, directionY: dirY } },
+    };
+    s.sendInput(msg);
+
+    if (!isContinuous) {
+      setTapFlash(prev => {
+        const next = [...prev];
+        next[abilityIndex] = true;
+        return next;
+      });
+      setTimeout(() => {
+        setTapFlash(prev => {
+          const next = [...prev];
+          next[abilityIndex] = false;
+          return next;
+        });
+      }, 150);
+    }
+  }, []);
 
   const sendJoystick = useCallback((nx: number, ny: number) => {
     const now = Date.now();
@@ -610,7 +900,7 @@ export function ControllerScreen({ session, gameState }: ControllerScreenProps) 
         visible={activePoi !== null}
         onTap={() => {
           if (activePoi === 'class-select') setClassSelectionOpen(true);
-          // training-dummy and dungeon-entrance handled in future stories
+          if (activePoi === 'training-dummy' && confirmedClass !== null) setTrainingDummyActive(true);
         }}
       />
       {/* Left zone — floating joystick (40% width) */}
@@ -693,7 +983,7 @@ export function ControllerScreen({ session, gameState }: ControllerScreenProps) 
         )}
       </div>
 
-      {/* Right zone — 2×2 skill grid (60% width), non-interactive in hub */}
+      {/* Right zone — 2×2 skill grid (60% width) */}
       <div
         style={{
           width: '60%',
@@ -704,43 +994,47 @@ export function ControllerScreen({ session, gameState }: ControllerScreenProps) 
           gap: 4,
           padding: 8,
           boxSizing: 'border-box',
+          touchAction: trainingDummyActive ? 'none' : 'auto',
+          position: 'relative',
         }}
       >
-        {[0, 1, 2, 3].map(i => (
-          <div
-            key={i}
-            style={{
-              background: 'var(--bg-subtle)',
-              borderRadius: 6,
-              border: '1px solid var(--border)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              opacity: 0.6,
-              pointerEvents: 'none',
-            }}
-          >
-            <span
-              style={{
-                fontFamily: 'var(--font-body)',
-                fontStyle: 'italic',
-                fontSize: 'var(--text-base)',
-                color: 'var(--text-secondary)',
-              }}
-            >
-              —
-            </span>
-          </div>
-        ))}
+        {[0, 1, 2, 3].map(i => {
+          const ability = classDef?.abilities[i] ?? null;
+          const cd = cooldowns[i] ?? null;
+          const now = Date.now();
+          const isOnCooldown = cd !== null && cd.expiresAt > now;
+          const isInteractive = trainingDummyActive && ability !== null && !isOnCooldown;
+          const badgeBorderColor = ability !== null
+            ? (ability.inputType === 'AUTO' ? 'var(--accent-spirit)'
+              : ability.inputType === 'RELEASE' ? 'var(--accent-warm)'
+              : 'var(--border)')
+            : 'var(--border)';
+
+          return (
+            <SkillCell
+              key={i}
+              index={i}
+              ability={ability}
+              cooldownState={isOnCooldown ? cd : null}
+              isInteractive={isInteractive}
+              badgeBorderColor={badgeBorderColor}
+              onAbilityFire={handleAbilityFire}
+              tapFlash={tapFlash[i] ?? false}
+            />
+          );
+        })}
       </div>
 
       {/* Class selection overlay */}
       {classSelectionOpen && (
         <ClassSelectionScreen
           onBack={() => setClassSelectionOpen(false)}
-          onPickClass={(_classId) => {
+          onPickClass={(classId) => {
             setClassSelectionOpen(false);
-            // TODO Story 2.3 — send class:selected message to sim server and persist class
+            const s = sessionRef.current;
+            if (s) {
+              s.sendClassSelect({ type: 'class:select', classId });
+            }
           }}
         />
       )}

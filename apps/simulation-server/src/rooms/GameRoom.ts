@@ -3,7 +3,7 @@ import type { GameState, PlayerState } from 'shared-types';
 import { TICK_RATE_HZ, RECONNECT_GRACE_S, SNAPSHOT_INTERVAL_S, MAX_PLAYERS, PlayerClass, SessionColor, INTERACTIVE_HUB_POIS } from 'shared-types';
 import type { PoiDefinition } from 'shared-types';
 import { EventNames } from 'net-protocol';
-import type { InputEventMsg, SnapshotMsg, DeltaEventMsg } from 'net-protocol';
+import type { InputEventMsg, SnapshotMsg, DeltaEventMsg, CooldownUpdateMsg } from 'net-protocol';
 import { logger } from '../logger.js';
 
 // Distinct session colors assigned per player slot index
@@ -42,7 +42,7 @@ function createPlayer(id: string, displayName: string, slotIndex: number): Playe
   return {
     id,
     displayName,
-    class: PlayerClass.STONEHIDE,
+    class: null,
     x: spawn.x,
     y: spawn.y,
     hp: 100,
@@ -61,6 +61,10 @@ export class GameRoom extends Room {
   private tickCount = 0;
   private tickTimer: ReturnType<typeof setInterval> | null = null;
   private inputQueue: Array<{ clientId: string; msg: InputEventMsg }> = [];
+  // Tracks cooldown expiry timestamps per player per ability slot (ms since epoch).
+  // Array index = abilityIndex (0–3). Value 0 = no cooldown active.
+  // NOT part of GameState — purely server-local, not snapshotted.
+  private cooldownMap = new Map<string, number[]>();
   private nextSlotIndex = 0;
 
   async onCreate(_options: unknown): Promise<void> {
@@ -72,6 +76,37 @@ export class GameRoom extends Room {
     // host:start has no server-side effect yet (deferred to Story 3.x) — register a no-op
     // so Colyseus does not close the host connection with WITH_ERROR (4002)
     this.onMessage(EventNames.HOST_START, () => { /* intentionally empty */ });
+
+    this.onMessage(EventNames.CLASS_SELECT, (client: Client, raw: unknown) => {
+      try {
+        const msg = (typeof raw === 'string' ? JSON.parse(raw) : raw) as { classId: unknown };
+        const validClasses = Object.values(PlayerClass) as string[];
+        if (typeof msg?.classId !== 'string' || !validClasses.includes(msg.classId)) {
+          logger.warn({ clientId: client.sessionId, roomId: this.roomId }, 'invalid CLASS_SELECT payload — discarded');
+          return;
+        }
+        const classId = msg.classId as PlayerClass;
+        const player = this.gameState.players.find(p => p.id === client.sessionId);
+        if (!player) {
+          logger.warn({ clientId: client.sessionId, roomId: this.roomId }, 'CLASS_SELECT from unknown player — discarded');
+          return;
+        }
+        if (player.isFrozen) {
+          logger.warn({ clientId: client.sessionId, roomId: this.roomId }, 'CLASS_SELECT from frozen player — discarded');
+          return;
+        }
+        player.class = classId;
+        const delta = {
+          type: 'player:class-updated' as const,
+          playerId: client.sessionId,
+          class: classId,
+        } satisfies DeltaEventMsg;
+        this.broadcast(EventNames.DELTA, delta);
+        logger.info({ roomId: this.roomId, clientId: client.sessionId, classId }, 'player class confirmed');
+      } catch {
+        logger.warn({ clientId: client.sessionId, roomId: this.roomId }, 'failed to parse CLASS_SELECT message — discarded');
+      }
+    });
 
     this.onMessage(EventNames.INPUT, (client: Client, raw: unknown) => {
       try {
@@ -113,6 +148,7 @@ export class GameRoom extends Room {
     const player = createPlayer(client.sessionId, displayName, slotIndex);
     this.gameState.players.push(player);
     this.gameState.session.playerCount = this.gameState.players.length;
+    this.cooldownMap.set(client.sessionId, [0, 0, 0, 0]);
 
     const snapshot: SnapshotMsg = { type: 'snapshot', state: this.gameState };
     this.broadcast(EventNames.SNAPSHOT, snapshot);
@@ -127,6 +163,7 @@ export class GameRoom extends Room {
     if (code === CloseCode.CONSENTED) {
       this.gameState.players = this.gameState.players.filter(p => p.id !== client.sessionId);
       this.gameState.session.playerCount = this.gameState.players.length;
+      this.cooldownMap.delete(client.sessionId);
       const delta = { type: 'player:left' as const, playerId: client.sessionId } satisfies DeltaEventMsg;
       this.broadcast(EventNames.DELTA, delta);
       logger.info({ roomId: this.roomId, clientId: client.sessionId }, 'player left (consented)');
@@ -157,6 +194,7 @@ export class GameRoom extends Room {
       // Grace period expired — remove slot permanently
       this.gameState.players = this.gameState.players.filter(p => p.id !== client.sessionId);
       this.gameState.session.playerCount = this.gameState.players.length;
+      this.cooldownMap.delete(client.sessionId);
       const delta = { type: 'player:left' as const, playerId: client.sessionId } satisfies DeltaEventMsg;
       this.broadcast(EventNames.DELTA, delta);
       logger.info({ roomId: this.roomId, clientId: client.sessionId }, 'reconnect grace expired — player removed');
@@ -182,7 +220,6 @@ export class GameRoom extends Room {
         joystickByPlayer.set(clientId, msg.event.joystick);
       }
     }
-    this.inputQueue.length = 0;
 
     // Apply movement — speed inline for Story 1.5; move to game-rules/balance.ts in Story 3.x
     const SPEED = 200; // pixels per second in virtual 1920×1080 space
@@ -236,6 +273,60 @@ export class GameRoom extends Room {
             playerId: player.id,
           } satisfies DeltaEventMsg;
           this.broadcast(EventNames.DELTA, exitedDelta);
+        }
+      }
+    }
+
+    // Process ability inputs — training dummy only (inline cooldown; Story 3.x moves to game-rules/balance.ts)
+    const TRAINING_DUMMY_COOLDOWN_MS = 3000;
+    for (const { clientId, msg } of this.inputQueue) {
+      if (msg.event.type !== 'ability') continue;
+      const { abilityIndex, directionX, directionY: _dirY } = msg.event.ability;
+
+      const player = this.gameState.players.find(p => p.id === clientId);
+      if (!player) continue;
+      if (player.class === null) continue;
+      if (player.nearPoiId !== 'training-dummy') continue;
+
+      const playerCooldowns = this.cooldownMap.get(clientId);
+      if (!playerCooldowns) continue;
+
+      if (abilityIndex < 0 || abilityIndex > 3) continue;
+
+      const nowAbility = Date.now();
+      if ((playerCooldowns[abilityIndex] ?? 0) > nowAbility) continue;
+
+      playerCooldowns[abilityIndex] = nowAbility + TRAINING_DUMMY_COOLDOWN_MS;
+
+      const targetClient = this.clients.find(c => c.sessionId === clientId);
+      if (targetClient) {
+        targetClient.send(EventNames.COOLDOWN_UPDATE, {
+          type: 'cooldown:update',
+          abilityIndex,
+          remainingMs: TRAINING_DUMMY_COOLDOWN_MS,
+        } satisfies CooldownUpdateMsg);
+      }
+
+      logger.debug({ roomId: this.roomId, clientId, abilityIndex, directionX }, 'ability fired at training dummy');
+    }
+
+    this.inputQueue.length = 0;
+
+    // Notify clients whose cooldowns have expired this tick
+    const nowExpiry = Date.now();
+    for (const [clientId, cooldowns] of this.cooldownMap) {
+      for (let i = 0; i < cooldowns.length; i++) {
+        const expiry = cooldowns[i];
+        if (expiry !== undefined && expiry > 0 && nowExpiry >= expiry) {
+          cooldowns[i] = 0;
+          const targetClient = this.clients.find(c => c.sessionId === clientId);
+          if (targetClient) {
+            targetClient.send(EventNames.COOLDOWN_UPDATE, {
+              type: 'cooldown:update',
+              abilityIndex: i,
+              remainingMs: 0,
+            } satisfies CooldownUpdateMsg);
+          }
         }
       }
     }
