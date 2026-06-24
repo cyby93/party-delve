@@ -1,6 +1,7 @@
 import { Room, Client, CloseCode } from 'colyseus';
 import type { GameState, PlayerState } from 'shared-types';
-import { TICK_RATE_HZ, RECONNECT_GRACE_S, SNAPSHOT_INTERVAL_S, MAX_PLAYERS, PlayerClass, SessionColor } from 'shared-types';
+import { TICK_RATE_HZ, RECONNECT_GRACE_S, SNAPSHOT_INTERVAL_S, MAX_PLAYERS, PlayerClass, SessionColor, INTERACTIVE_HUB_POIS } from 'shared-types';
+import type { PoiDefinition } from 'shared-types';
 import { EventNames } from 'net-protocol';
 import type { InputEventMsg, SnapshotMsg, DeltaEventMsg } from 'net-protocol';
 import { logger } from '../logger.js';
@@ -51,6 +52,7 @@ function createPlayer(id: string, displayName: string, slotIndex: number): Playe
     isSpirit: false,
     sessionColor: SESSION_COLORS[slotIndex % SESSION_COLORS.length] ?? SessionColor.RED,
     downCount: 0,
+    nearPoiId: null,
   };
 }
 
@@ -201,6 +203,41 @@ export class GameRoom extends Room {
         y: player.y,
       } satisfies DeltaEventMsg;
       this.broadcast(EventNames.DELTA, delta);
+    }
+
+    // POI proximity — Euclidean distance check (planck.js sensor migration deferred to Story 3.1)
+    for (const player of this.gameState.players) {
+      if (player.isFrozen) continue;
+
+      let matchedPoi: PoiDefinition | null = null;
+      for (const poi of INTERACTIVE_HUB_POIS) {
+        const dx = player.x - poi.x;
+        const dy = player.y - poi.y;
+        if (dx * dx + dy * dy < poi.radius * poi.radius) {
+          matchedPoi = poi;
+          break; // POIs don't overlap — first match wins
+        }
+      }
+      const newPoiId = matchedPoi?.id ?? null;
+
+      if (player.nearPoiId !== newPoiId) {
+        player.nearPoiId = newPoiId;
+        if (matchedPoi !== null) {
+          const enteredDelta = {
+            type: 'player:poi-entered' as const,
+            playerId: player.id,
+            poiId: matchedPoi.id,
+            poiType: matchedPoi.type,
+          } satisfies DeltaEventMsg;
+          this.broadcast(EventNames.DELTA, enteredDelta);
+        } else {
+          const exitedDelta = {
+            type: 'player:poi-exited' as const,
+            playerId: player.id,
+          } satisfies DeltaEventMsg;
+          this.broadcast(EventNames.DELTA, exitedDelta);
+        }
+      }
     }
 
     // Periodic full snapshot every SNAPSHOT_INTERVAL_S seconds

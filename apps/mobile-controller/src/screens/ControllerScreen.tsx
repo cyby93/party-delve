@@ -12,7 +12,52 @@ const JOYSTICK_MAX_RADIUS = 60;
 const DEADZONE_RADIUS = 8;
 const INPUT_INTERVAL_MS = 33; // ~30hz throttle to match sim tick rate
 
-export function ControllerScreen({ session, gameState: _gameState }: ControllerScreenProps) {
+interface InteractButtonProps {
+  visible: boolean;
+  onTap: () => void;
+}
+
+function InteractButton({ visible, onTap }: InteractButtonProps) {
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        top: 'env(safe-area-inset-top, 0px)',
+        left: '10%',
+        right: '10%',
+        transform: visible ? 'translateY(0)' : 'translateY(-150%)',
+        transition: 'transform 200ms ease-out',
+        background: 'var(--bg-surface)',
+        border: '2px solid var(--accent-spirit)',
+        borderRadius: 8,
+        minHeight: 44,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 30,
+        boxShadow: '0 0 12px rgba(110,168,216,0.4)',
+        pointerEvents: visible ? 'auto' : 'none',
+        touchAction: 'manipulation',
+      }}
+      onPointerDown={e => { e.preventDefault(); onTap(); }}
+    >
+      <span
+        style={{
+          fontFamily: 'var(--font-body)',
+          fontWeight: 700,
+          fontSize: 'var(--text-md)',
+          color: 'var(--text-primary)',
+        }}
+      >
+        Interact
+      </span>
+    </div>
+  );
+}
+
+export function ControllerScreen({ session, gameState }: ControllerScreenProps) {
+  const myPlayer = gameState?.players.find(p => p.id === session?.playerId);
+  const activePoi = myPlayer?.nearPoiId ?? null;
   const joystickZoneRef = useRef<HTMLDivElement>(null);
 
   // Refs for values read inside event handlers — avoids stale closure issues
@@ -134,6 +179,7 @@ export function ControllerScreen({ session, gameState: _gameState }: ControllerS
   return (
     <div
       style={{
+        position: 'relative',
         height: '100%',
         display: 'flex',
         background: 'var(--bg-base)',
@@ -141,6 +187,10 @@ export function ControllerScreen({ session, gameState: _gameState }: ControllerS
         userSelect: 'none',
       }}
     >
+      <InteractButton
+        visible={activePoi !== null}
+        onTap={() => { /* TODO Story 2.2 — open POI UI */ }}
+      />
       {/* Left zone — floating joystick (40% width) */}
       <div
         ref={joystickZoneRef}

@@ -65,6 +65,7 @@ function simulateOnJoin(
     isSpirit: false,
     sessionColor: SessionColor.RED,
     downCount: 0,
+    nearPoiId: null,
   });
   gameState.session.playerCount = gameState.players.length;
   const snapshot: SnapshotMsg = { type: 'snapshot', state: gameState };

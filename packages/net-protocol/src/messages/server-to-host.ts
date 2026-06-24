@@ -67,6 +67,18 @@ export type EssenceCollectedDelta = {
   byPlayerId: string;
 };
 
+export type PlayerPoiEnteredDelta = {
+  type: 'player:poi-entered';
+  playerId: string;
+  poiId: string;
+  poiType: string;  // PoiType value — string to avoid circular import between packages
+};
+
+export type PlayerPoiExitedDelta = {
+  type: 'player:poi-exited';
+  playerId: string;
+};
+
 export type DeltaEventMsg =
   | PlayerMovedDelta
   | PlayerDownedDelta
@@ -78,4 +90,6 @@ export type DeltaEventMsg =
   | EnemyMovedDelta
   | BondAssignedDelta
   | EssenceDroppedDelta
-  | EssenceCollectedDelta;
+  | EssenceCollectedDelta
+  | PlayerPoiEnteredDelta
+  | PlayerPoiExitedDelta;

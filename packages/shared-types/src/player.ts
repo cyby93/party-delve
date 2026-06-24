@@ -29,4 +29,5 @@ export interface PlayerState {
   isSpirit: boolean;
   sessionColor: SessionColor;
   downCount: number;
+  nearPoiId: string | null;  // null = not near any interactive POI
 }
