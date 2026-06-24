@@ -239,3 +239,11 @@ AC4 specifies "navigate to session-entry with room code pre-filled" as the prima
 
 **D30 — Network indicator dot same color for `idle` and `connecting` states** [apps/mobile-controller/src/screens/ReconnectScreen.tsx:57]
 Both idle ("Connection lost") and connecting ("Reconnecting…") show `var(--accent-warm)`. Only error gets `var(--corruption-blood)`. A pulsing animation or distinct color (e.g., `var(--accent-cool)`) for the connecting state would give clearer feedback. Defer to UX polish pass.
+
+## Deferred from: code review of 1-7-epic-1-deferred-hardening (2026-06-24)
+
+**D-1.7-A — initialCode useState seeding is mount-time only** [apps/mobile-controller/src/screens/SessionCodeEntryScreen.tsx:28]
+`useState(initialCode ?? urlCode)` reads the prop only on first mount. If SessionCodeEntryScreen ever stays mounted while `initialCode` changes (e.g., an in-place error-retry-with-prefill flow), the field won't update. Current nav graph forces remounts on screen transitions so this is latent. Recommended hardening: add `key={sessionEntryInitialCode ?? 'manual'}` to force remount, or sync via `useEffect([initialCode])`.
+
+**D-1.7-B — sessionEntryInitialCode could leak to future session-entry renders** [apps/mobile-controller/src/App.tsx:22]
+`sessionEntryInitialCode` is only cleared in `handleGuestContinue` (auth-choice → session-entry). If a future story adds a back-to-menu or logout path reachable after first navigation, the stale reconnectRoomId-derived code silently pre-fills the field with a dead room id. Recommended hardening: clear `sessionEntryInitialCode` in `handleJoin` on success.

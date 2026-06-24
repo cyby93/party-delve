@@ -1,0 +1,14 @@
+# party-delve team overrides for gds-code-review.
+# Merges over base customize.toml per BMad structural rules (arrays append, scalars override).
+
+[workflow]
+
+persistent_facts = [
+  "file:{project-root}/CLAUDE.md",
+
+  "SPEC AUTO-DISCOVERY: If no spec file is explicitly provided, automatically search for the most recently modified story file in {project-root}/_bmad-output/implementation-artifacts/ with status 'review' or 'in-progress'. Use its Acceptance Criteria section as the spec for the Acceptance Auditor layer. Do not halt to ask the user for a spec file unless no story file can be found.",
+
+  "AUTONOMOUS TRIAGE: After all review layers complete, proceed directly through triage (Step 3) and into the final presentation (Step 4) without halting for a user confirmation gate between steps. Only halt if a decision genuinely cannot be made without user input.",
+
+  "CONFIRMATION PASS ON HIGH FINDINGS: In Step 3 triage, for every finding initially categorized as High severity, re-read the specific diff lines it references and confirm the finding is real. Downgrade to Medium if the re-read cannot confirm it. Annotate each High finding as 'confirmed' or 'downgraded from High — [reason]'. This eliminates the need for a manual second review pass.",
+]

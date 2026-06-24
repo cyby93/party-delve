@@ -1,0 +1,12 @@
+# party-delve team overrides for gds-create-story.
+# Merges over base customize.toml per BMad structural rules (arrays append, scalars override).
+
+[workflow]
+
+persistent_facts = [
+  "file:{project-root}/CLAUDE.md",
+
+  "OWNERSHIP SCOPE CHECK: After drafting the story, inspect the task list and affected file paths against the CLAUDE.md Ownership Rules. If tasks span more than one primary ownership area (e.g., both apps/simulation-server and apps/host-client), output a one-paragraph summary of the overlap and suggest whether the story should be split before saving. Let the user decide, then save as directed. Do not silently create a cross-boundary story.",
+
+  "MINIMAL CLARIFICATION: Exhaust all available artifacts (epics.md, gdd.md, architecture.md, project-context.md, CLAUDE.md, sprint-status.yaml, existing story files) before asking any clarifying question. Only ask when the information genuinely cannot be inferred from these sources. Target zero clarifying questions for features that are already well-specified in the epics or architecture docs.",
+]

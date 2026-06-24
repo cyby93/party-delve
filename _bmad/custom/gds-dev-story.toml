@@ -1,0 +1,22 @@
+# party-delve team overrides for gds-dev-story.
+# Merges over base customize.toml per BMad structural rules (arrays append, scalars override).
+
+[workflow]
+
+persistent_facts = [
+  "file:{project-root}/CLAUDE.md",
+
+  "OWNERSHIP ENFORCEMENT: Before writing any file, verify its path falls within the Allowed paths for this story's Owner agent as defined in the CLAUDE.md Ownership Rules section. If a target path is outside Allowed paths, HALT with: 'Ownership violation: {path} is outside allowed scope for this role. Request task split or explicit cross-context approval per CLAUDE.md.'",
+
+  "CONTRACT CHANGE DETECTION: At story start, scan the story's task list and any referenced file paths. If any path matches packages/shared-types/**, packages/net-protocol/**, or if the story touches session lifecycle, reconnect flow, room state, join flow, or prediction/reconciliation — set a CONTRACT CHANGE flag in your working context. When CONTRACT CHANGE is set: include the CLAUDE.md Contract-change hook checklist verbatim in Completion Notes, add 'Protocol Architect review required' to Dev Agent Record, and do not mark the story review until the checklist is documented.",
+
+  "SILENT RUN: Once implementation begins (after the first task starts in Step 5), produce no user-facing status updates between task completions. The only permitted output mid-implementation is an explicit HALT condition (test failure after two strikes, ownership violation, missing config, ambiguous requirement, unapproved new dependency). At completion, produce one final summary.",
+
+  "TWO-STRIKE QA: In Step 7, when pnpm typecheck or pnpm test fails on first run — diagnose the root cause, fix it, and re-run once without user input. If the second run also fails, HALT with the full error output and your root-cause diagnosis. Never attempt a third retry.",
+
+  "CONFIDENCE GATE: In Step 9 Completion Notes, always append a line: 'Confidence: N%' with a one-line reason if below 80%. If confidence is below 60%, HALT before marking the story review — explain your assumptions and what information would increase confidence. If 60-79%, continue to review status but make the confidence line prominent in Completion Notes.",
+]
+
+# After the Step 10 final outputs are produced, automatically start gds-code-review
+# on the completed story without waiting for the user to invoke it manually.
+on_complete = "Automatically start the gds-code-review workflow. Pass the completed story file path as context and use the story's Acceptance Criteria section as the spec. Do not ask the user whether to proceed — start immediately."

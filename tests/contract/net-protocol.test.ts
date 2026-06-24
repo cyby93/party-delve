@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { serialize, deserialize, applyDelta } from 'net-protocol';
+import { serialize, deserialize, applyDelta, EventNames } from 'net-protocol';
 import type { SnapshotMsg, DeltaEventMsg, InputEventMsg } from 'net-protocol';
 import type { GameState, PlayerState } from 'shared-types';
 import { PlayerClass, SessionColor } from 'shared-types';
@@ -110,6 +110,30 @@ describe('net-protocol contract tests', () => {
       const state: GameState = { ...mockGameState(), players: [mockPlayer(), p2] };
       const next = applyDelta(state, { type: 'player:disconnected', playerId: 'p1' });
       expect(next.players[1]?.isFrozen).toBe(false);
+    });
+
+    it('player:moved returns same reference for unknown playerId', () => {
+      const state: GameState = { ...mockGameState(), players: [] };
+      const next = applyDelta(state, { type: 'player:moved', playerId: 'ghost', x: 1, y: 2 });
+      expect(next).toBe(state);
+    });
+
+    it('player:disconnected returns same reference for unknown playerId', () => {
+      const state: GameState = { ...mockGameState(), players: [] };
+      const next = applyDelta(state, { type: 'player:disconnected', playerId: 'ghost' });
+      expect(next).toBe(state);
+    });
+
+    it('player:reconnected returns same reference for unknown playerId', () => {
+      const state: GameState = { ...mockGameState(), players: [] };
+      const next = applyDelta(state, { type: 'player:reconnected', playerId: 'ghost' });
+      expect(next).toBe(state);
+    });
+  });
+
+  describe('EventNames constants', () => {
+    it('HOST_START matches the wire string expected by the server', () => {
+      expect(EventNames.HOST_START).toBe('host:start');
     });
   });
 
