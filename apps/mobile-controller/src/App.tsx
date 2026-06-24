@@ -3,20 +3,40 @@ import { AuthChoiceScreen } from './screens/AuthChoiceScreen';
 import { SessionCodeEntryScreen } from './screens/SessionCodeEntryScreen';
 import { OrientationPromptScreen } from './screens/OrientationPromptScreen';
 import { ControllerScreen } from './screens/ControllerScreen';
-import { joinSession, type MobileSession } from './session/mobile-session';
+import { ReconnectScreen } from './screens/ReconnectScreen';
+import { joinSession, reconnectToSession, getPersistedSession, clearPersistedSession, type MobileSession } from './session/mobile-session';
 import type { GameState } from 'shared-types';
+import type { DeltaEventMsg } from 'net-protocol';
+import { applyDelta } from 'net-protocol';
 
-type AppScreen = 'auth-choice' | 'session-entry' | 'orientation-prompt' | 'controller';
+type AppScreen = 'auth-choice' | 'session-entry' | 'orientation-prompt' | 'controller' | 'reconnect';
+
+// CloseCode.CONSENTED = 4000 (Colyseus intentional leave — do not show reconnect screen)
+const CLOSE_CONSENTED = 4000;
 
 export function App() {
   const [screen, setScreen] = useState<AppScreen>('auth-choice');
   const [session, setSession] = useState<MobileSession | null>(null);
   const [gameState, setGameState] = useState<GameState | null>(null);
+  const [reconnectRoomId, setReconnectRoomId] = useState<string>('');
 
-  // P4: disconnect the Colyseus room when the session changes or the component unmounts
   useEffect(() => {
     return () => { session?.disconnect(); };
   }, [session]);
+
+  const handleDelta = useCallback((delta: DeltaEventMsg) => {
+    setGameState(prev => prev !== null ? applyDelta(prev, delta) : prev);
+  }, []);
+
+  const handleDisconnect = useCallback((code: number) => {
+    if (code === CLOSE_CONSENTED) {
+      clearPersistedSession();
+      return;
+    }
+    const persisted = getPersistedSession();
+    setReconnectRoomId(persisted?.roomId ?? '');
+    setScreen('reconnect');
+  }, []);
 
   const handleGuestContinue = useCallback(() => {
     setScreen('session-entry');
@@ -28,8 +48,9 @@ export function App() {
         roomId,
         playerName,
         setGameState,
-        (_delta) => { /* delta processing in Story 1.5 */ },
-        (code, msg) => { console.warn('[session] room error after join', code, msg); }
+        handleDelta,
+        (code, msg) => { console.warn('[session] room error after join', code, msg); },
+        handleDisconnect,
       );
       setSession(s);
       // delay navigation so SessionCodeEntryScreen renders the accent-purify flash (AC4)
@@ -37,10 +58,30 @@ export function App() {
     } catch (err) {
       throw err; // re-throw so SessionCodeEntryScreen can reset its loading state and show the error
     }
-  }, []);
+  }, [handleDelta, handleDisconnect]);
 
   const handleOrientationDismiss = useCallback(() => {
     setScreen('controller');
+  }, []);
+
+  const handleReconnect = useCallback(async () => {
+    const persisted = getPersistedSession();
+    if (!persisted) throw new Error('no session data');
+    const s = await reconnectToSession(
+      persisted.reconnectionToken,
+      setGameState,
+      handleDelta,
+      (code, msg) => { console.warn('[session] reconnect error', code, msg); },
+      handleDisconnect,
+    );
+    setSession(s);
+    setScreen('controller');
+  }, [handleDelta, handleDisconnect]);
+
+  const handleGiveUp = useCallback(() => {
+    clearPersistedSession();
+    setSession(null);
+    setScreen('session-entry');
   }, []);
 
   if (screen === 'auth-choice') {
@@ -51,6 +92,15 @@ export function App() {
   }
   if (screen === 'orientation-prompt') {
     return <OrientationPromptScreen onDismiss={handleOrientationDismiss} />;
+  }
+  if (screen === 'reconnect') {
+    return (
+      <ReconnectScreen
+        roomId={reconnectRoomId}
+        onReconnect={handleReconnect}
+        onGiveUp={handleGiveUp}
+      />
+    );
   }
   return <ControllerScreen session={session} gameState={gameState} />;
 }

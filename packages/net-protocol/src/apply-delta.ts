@@ -12,6 +12,22 @@ export function applyDelta(state: GameState, evt: DeltaEventMsg): GameState {
     case 'player:left': {
       return { ...state, players: state.players.filter(p => p.id !== evt.playerId) };
     }
+    case 'player:disconnected': {
+      return {
+        ...state,
+        players: state.players.map(p =>
+          p.id === evt.playerId ? { ...p, isFrozen: true } : p
+        ),
+      };
+    }
+    case 'player:reconnected': {
+      return {
+        ...state,
+        players: state.players.map(p =>
+          p.id === evt.playerId ? { ...p, isFrozen: false } : p
+        ),
+      };
+    }
     default:
       return state;
   }

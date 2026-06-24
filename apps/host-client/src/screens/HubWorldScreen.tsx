@@ -51,6 +51,7 @@ function renderFrame(
       app.stage.addChild(g);
       playerGraphics.set(player.id, g);
     }
+    g.alpha = player.isFrozen ? 0.3 : 1;
     const color = SESSION_COLOR_HEX[player.sessionColor] ?? 0xffffff;
     g.position.set(player.x, player.y);
     g.clear();
@@ -132,19 +133,19 @@ export function HubWorldScreen({ gameState, session: _session }: HubWorldScreenP
         }}
       >
         {players.map(player => (
-          <PlayerChip key={player.id} name={player.displayName} />
+          <PlayerChip key={player.id} name={player.displayName} isFrozen={player.isFrozen} />
         ))}
       </div>
     </div>
   );
 }
 
-function PlayerChip({ name }: { name: string }) {
+function PlayerChip({ name, isFrozen }: { name: string; isFrozen: boolean }) {
   return (
     <div
       style={{
         background: 'var(--bg-surface)',
-        border: '1px solid var(--border)',
+        border: isFrozen ? '1px dashed var(--border)' : '1px solid var(--border)',
         borderRadius: 6,
         padding: '0 8px',
         height: 36,
@@ -160,7 +161,7 @@ function PlayerChip({ name }: { name: string }) {
           fontFamily: 'var(--font-body)',
           fontWeight: 700,
           fontSize: 'var(--text-base)',
-          color: 'var(--text-primary)',
+          color: isFrozen ? 'var(--text-secondary)' : 'var(--text-primary)',
           whiteSpace: 'nowrap',
         }}
       >

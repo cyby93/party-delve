@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { serialize, deserialize } from 'net-protocol';
+import { serialize, deserialize, applyDelta } from 'net-protocol';
 import type { SnapshotMsg, DeltaEventMsg, InputEventMsg } from 'net-protocol';
-import type { GameState } from 'shared-types';
+import type { GameState, PlayerState } from 'shared-types';
 import { PlayerClass, SessionColor } from 'shared-types';
 
 function mockGameState(): GameState {
@@ -60,6 +60,56 @@ describe('net-protocol contract tests', () => {
     it('player:left survives serialize → deserialize', () => {
       const delta = { type: 'player:left' as const, playerId: 'p1' } satisfies DeltaEventMsg;
       expect(deserialize<DeltaEventMsg>(serialize(delta))).toEqual(delta);
+    });
+
+    it('player:disconnected survives serialize → deserialize', () => {
+      const delta = { type: 'player:disconnected' as const, playerId: 'p1' } satisfies DeltaEventMsg;
+      expect(deserialize<DeltaEventMsg>(serialize(delta))).toEqual(delta);
+    });
+
+    it('player:reconnected survives serialize → deserialize', () => {
+      const delta = { type: 'player:reconnected' as const, playerId: 'p1' } satisfies DeltaEventMsg;
+      expect(deserialize<DeltaEventMsg>(serialize(delta))).toEqual(delta);
+    });
+  });
+
+  describe('applyDelta behavior', () => {
+    function mockPlayer(overrides?: Partial<PlayerState>): PlayerState {
+      return {
+        id: 'p1',
+        displayName: 'Test',
+        class: PlayerClass.STONEHIDE,
+        x: 0,
+        y: 0,
+        hp: 100,
+        maxHp: 100,
+        isFrozen: false,
+        isDown: false,
+        isSpirit: false,
+        sessionColor: SessionColor.RED,
+        downCount: 0,
+        ...overrides,
+      };
+    }
+
+    it('player:disconnected sets isFrozen=true on matching player', () => {
+      const state: GameState = { ...mockGameState(), players: [mockPlayer()] };
+      const next = applyDelta(state, { type: 'player:disconnected', playerId: 'p1' });
+      expect(next.players[0]?.isFrozen).toBe(true);
+    });
+
+    it('player:reconnected sets isFrozen=false on matching player', () => {
+      const state: GameState = { ...mockGameState(), players: [mockPlayer({ isFrozen: true })] };
+      const next = applyDelta(state, { type: 'player:reconnected', playerId: 'p1' });
+      expect(next.players[0]?.isFrozen).toBe(false);
+      expect(state.players[0]?.isFrozen).toBe(true); // original state must not be mutated
+    });
+
+    it('player:disconnected does not mutate other players', () => {
+      const p2 = mockPlayer({ id: 'p2', isFrozen: false });
+      const state: GameState = { ...mockGameState(), players: [mockPlayer(), p2] };
+      const next = applyDelta(state, { type: 'player:disconnected', playerId: 'p1' });
+      expect(next.players[1]?.isFrozen).toBe(false);
     });
   });
 

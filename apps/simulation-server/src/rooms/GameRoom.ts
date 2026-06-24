@@ -59,6 +59,7 @@ export class GameRoom extends Room {
   private tickCount = 0;
   private tickTimer: ReturnType<typeof setInterval> | null = null;
   private inputQueue: Array<{ clientId: string; msg: InputEventMsg }> = [];
+  private nextSlotIndex = 0;
 
   async onCreate(_options: unknown): Promise<void> {
     this.maxClients = MAX_PLAYERS + 1; // +1 for the host client slot
@@ -106,7 +107,7 @@ export class GameRoom extends Room {
 
     const rawName = [...String(options['playerName'] ?? '').trim()].slice(0, 32).join('');
     const displayName = rawName.length > 0 ? rawName : client.sessionId.slice(-6);
-    const slotIndex = this.gameState.players.length; // capture before push
+    const slotIndex = this.nextSlotIndex++;
     const player = createPlayer(client.sessionId, displayName, slotIndex);
     this.gameState.players.push(player);
     this.gameState.session.playerCount = this.gameState.players.length;
@@ -130,13 +131,23 @@ export class GameRoom extends Room {
       return;
     }
 
-    // Network drop — freeze in place, hold slot, await reconnect
+    // Network drop — freeze in place, hold slot, notify host immediately, await reconnect
     player.isFrozen = true;
+    const disconnectDelta = {
+      type: 'player:disconnected' as const,
+      playerId: client.sessionId,
+    } satisfies DeltaEventMsg;
+    this.broadcast(EventNames.DELTA, disconnectDelta);
     logger.info({ roomId: this.roomId, clientId: client.sessionId }, 'player disconnected — grace period started');
 
     try {
       const reconnectedClient = await this.allowReconnection(client, RECONNECT_GRACE_S);
       player.isFrozen = false;
+      const reconnectDelta = {
+        type: 'player:reconnected' as const,
+        playerId: reconnectedClient.sessionId,
+      } satisfies DeltaEventMsg;
+      this.broadcast(EventNames.DELTA, reconnectDelta);
       const snapshot: SnapshotMsg = { type: 'snapshot', state: this.gameState };
       reconnectedClient.send(EventNames.SNAPSHOT, snapshot);
       logger.info({ roomId: this.roomId, clientId: reconnectedClient.sessionId }, 'player reconnected');

@@ -28,6 +28,16 @@ export type PlayerLeftDelta = {
   playerId: string;
 };
 
+export type PlayerDisconnectedDelta = {
+  type: 'player:disconnected';
+  playerId: string;
+};
+
+export type PlayerReconnectedDelta = {
+  type: 'player:reconnected';
+  playerId: string;
+};
+
 export type EnemyKilledDelta = {
   type: 'enemy:killed';
   enemyId: string;
@@ -62,6 +72,8 @@ export type DeltaEventMsg =
   | PlayerDownedDelta
   | PlayerReviveDelta
   | PlayerLeftDelta
+  | PlayerDisconnectedDelta
+  | PlayerReconnectedDelta
   | EnemyKilledDelta
   | EnemyMovedDelta
   | BondAssignedDelta

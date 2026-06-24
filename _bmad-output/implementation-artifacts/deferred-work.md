@@ -223,3 +223,19 @@ If `sessionRef.current` is null when touch ends, the zero-vector stop message is
 
 **D26 — useEffect touch listener re-registration if sendJoystick/stopJoystick identity changes** [apps/mobile-controller/src/screens/ControllerScreen.tsx:133]
 Both callbacks are stable (`useCallback` with `[]` deps) today, so the effect runs once. If a future developer adds a dep to either callback, listeners are torn down and re-added mid-touch. Currently safe; add a comment warning against adding deps.
+
+---
+
+## Deferred from: code review of 1-6-disconnect-grace-period-and-reconnect-flow (2026-06-24)
+
+**D27 — `nextSlotIndex` unbounded — spawn falls back to center after slot 7** [apps/simulation-server/src/rooms/GameRoom.ts:110]
+`nextSlotIndex` increments monotonically and is never reclaimed after grace expiry. `SESSION_COLORS` wraps via `%` (correct), but `SPAWN_POSITIONS` uses `?? fallback` to center-stage for indices ≥ 8. In a revolving-door session (joins, grace expires, new joins), cumulative joiners beyond slot 7 all spawn at the center. Bounded by room lifetime and `MAX_PLAYERS` concurrent constraint. Revisit with a free-slot recycling map when Phase 2 combat introduces meaningful spawn positioning.
+
+**D28 — Mobile client applies `player:disconnected` delta to its own `gameState`, freezing itself** [packages/net-protocol/src/apply-delta.ts]
+Server broadcasts `player:disconnected` to all clients including the disconnecting player's new connection. Mobile `handleDelta` → `applyDelta` sets `isFrozen: true` on the local state for the player's own ID. No UX impact in Phase 1 (controller screen doesn't render `isFrozen`), but will cause incorrect controller state in Phase 2 when the controller reflects player status. Filter out self-targeted disconnect/reconnect deltas at the mobile layer, or document the invariant clearly.
+
+**D29 — "Rejoin as New Player" navigates to session-entry without pre-filling the room code** [apps/mobile-controller/src/App.tsx:79]
+AC4 specifies "navigate to session-entry with room code pre-filled" as the primary behavior. The implementation takes the minimum fallback (bare navigation). `reconnectRoomId` is already in `App` state and can be passed to `SessionCodeEntryScreen` as an initial value. Defer to UX polish pass.
+
+**D30 — Network indicator dot same color for `idle` and `connecting` states** [apps/mobile-controller/src/screens/ReconnectScreen.tsx:57]
+Both idle ("Connection lost") and connecting ("Reconnecting…") show `var(--accent-warm)`. Only error gets `var(--corruption-blood)`. A pulsing animation or distinct color (e.g., `var(--accent-cool)`) for the connecting state would give clearer feedback. Defer to UX polish pass.
