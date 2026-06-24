@@ -30,6 +30,10 @@ export default [
               group: ['**/game-rules**', 'game-rules', '@game-rules/**'],
               message: 'game-rules must not be imported in client apps — authority violation',
             },
+            {
+              group: ['planck', 'planck/**'],
+              message: 'planck.js must not be imported in client apps — physics is server authority only',
+            },
           ],
         },
       ],
@@ -49,6 +53,10 @@ export default [
             {
               group: ['**/ui-kit**', 'ui-kit', '@ui-kit/**'],
               message: 'ui-kit must not be imported in game-rules — no UI in pure functions',
+            },
+            {
+              group: ['planck', 'planck/**'],
+              message: 'planck.js must not be imported in game-rules — physics runs in sim-server only',
             },
           ],
         },

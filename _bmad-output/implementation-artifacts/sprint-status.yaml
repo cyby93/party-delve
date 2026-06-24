@@ -42,7 +42,7 @@
 # Phase2 legacy stories (old Phase-based keys) are tracked below under PHASE 2 STORIES.
 
 generated: 2026-06-22
-last_updated: 2026-06-24 (story 2-3 review done)
+last_updated: 2026-06-25 (story 3-1 done)
 project: party-delve
 project_key: NOKEY
 tracking_system: file-system
@@ -81,8 +81,8 @@ development_status:
   # dungeon combat. Players use abilities, go down, get revived, enter spirit
   # form. "Clear" objective type is operational.
   # FRs: FR9(Clear), FR11, FR12, FR13, FR17, FR18, FR19, FR20, FR21, FR22, FR23
-  epic-3: backlog
-  3-1-xoshiro128-prng-and-planckjs-physics-world: backlog
+  epic-3: in-progress
+  3-1-xoshiro128-prng-and-planckjs-physics-world: done
   3-2-enemy-ai-base-fsm-and-layered-difficulty-behaviors: backlog
   3-3-4-alpha-class-implementations-abilities-and-input-types: backlog
   3-4-combat-resolution-hitboxes-damage-and-spirit-essence-collection: backlog

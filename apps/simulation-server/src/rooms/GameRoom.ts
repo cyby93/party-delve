@@ -1,9 +1,17 @@
 import { Room, Client, CloseCode } from 'colyseus';
 import type { GameState, PlayerState } from 'shared-types';
 import { TICK_RATE_HZ, RECONNECT_GRACE_S, SNAPSHOT_INTERVAL_S, MAX_PLAYERS, PlayerClass, SessionColor, INTERACTIVE_HUB_POIS } from 'shared-types';
-import type { PoiDefinition } from 'shared-types';
 import { EventNames } from 'net-protocol';
 import type { InputEventMsg, SnapshotMsg, DeltaEventMsg, CooldownUpdateMsg } from 'net-protocol';
+import { randomInt } from 'node:crypto';
+import { Vec2, Body, Contact } from 'planck';
+import type { World } from 'planck';
+import {
+  createPhysicsWorld, createPlayerBody, createPoiSensorBody,
+  extractPoiBeginContact, extractPoiEndContact, toMeters, toPixels,
+} from '../physics/world.js';
+import type { PoiBeginContactEvent, PoiEndContactEvent } from '../physics/world.js';
+import { createRng } from 'game-rules';
 import { logger } from '../logger.js';
 
 // Distinct session colors assigned per player slot index
@@ -66,13 +74,18 @@ export class GameRoom extends Room {
   // NOT part of GameState — purely server-local, not snapshotted.
   private cooldownMap = new Map<string, number[]>();
   private lastKnownJoystick = new Map<string, { x: number; y: number }>();
+  private physicsWorld!: World;
+  private playerBodies = new Map<string, Body>();
+  private prng!: () => number;
+  private pendingPoiBeginContacts: Array<PoiBeginContactEvent> = [];
+  private pendingPoiEndContacts:   Array<PoiEndContactEvent>   = [];
   private nextSlotIndex = 0;
 
   async onCreate(_options: unknown): Promise<void> {
     this.maxClients = MAX_PLAYERS + 1; // +1 for the host client slot
     this.gameState = createEmptyGameState(this.roomId);
-    // Placeholder seed — replaced by xoshiro128++ in Story 3.1
-    this.gameState.session.runSeed = (Math.random() * 0xffff_ffff) | 0;
+    this.gameState.session.runSeed = randomInt(0, 0x1_0000_0000);
+    this.prng = createRng(this.gameState.session.runSeed);
 
     // host:start has no server-side effect yet (deferred to Story 3.x) — register a no-op
     // so Colyseus does not close the host connection with WITH_ERROR (4002)
@@ -123,6 +136,24 @@ export class GameRoom extends Room {
       }
     });
 
+    // Initialize physics world
+    this.physicsWorld = createPhysicsWorld();
+
+    // Create static sensor bodies for interactive hub POIs
+    for (const poi of INTERACTIVE_HUB_POIS) {
+      createPoiSensorBody(this.physicsWorld, poi);
+    }
+
+    // Contact listeners — capture events during world.step() for processing after
+    this.physicsWorld.on('begin-contact', (contact: Contact) => {
+      const evt = extractPoiBeginContact(contact);
+      if (evt) this.pendingPoiBeginContacts.push(evt);
+    });
+    this.physicsWorld.on('end-contact', (contact: Contact) => {
+      const evt = extractPoiEndContact(contact);
+      if (evt) this.pendingPoiEndContacts.push(evt);
+    });
+
     this.tickTimer = setInterval(() => {
       try {
         this.tick();
@@ -151,6 +182,10 @@ export class GameRoom extends Room {
     this.gameState.session.playerCount = this.gameState.players.length;
     this.cooldownMap.set(client.sessionId, [0, 0, 0, 0]);
 
+    // Create physics body at this player's spawn position
+    const body = createPlayerBody(this.physicsWorld, client.sessionId, player.x, player.y);
+    this.playerBodies.set(client.sessionId, body);
+
     const snapshot: SnapshotMsg = { type: 'snapshot', state: this.gameState };
     this.broadcast(EventNames.SNAPSHOT, snapshot);
 
@@ -166,6 +201,11 @@ export class GameRoom extends Room {
       this.gameState.session.playerCount = this.gameState.players.length;
       this.cooldownMap.delete(client.sessionId);
       this.lastKnownJoystick.delete(client.sessionId);
+      const leaveBody = this.playerBodies.get(client.sessionId);
+      if (leaveBody) {
+        this.physicsWorld.destroyBody(leaveBody);
+        this.playerBodies.delete(client.sessionId);
+      }
       const delta = { type: 'player:left' as const, playerId: client.sessionId } satisfies DeltaEventMsg;
       this.broadcast(EventNames.DELTA, delta);
       logger.info({ roomId: this.roomId, clientId: client.sessionId }, 'player left (consented)');
@@ -198,6 +238,11 @@ export class GameRoom extends Room {
       this.gameState.session.playerCount = this.gameState.players.length;
       this.cooldownMap.delete(client.sessionId);
       this.lastKnownJoystick.delete(client.sessionId);
+      const expireBody = this.playerBodies.get(client.sessionId);
+      if (expireBody) {
+        this.physicsWorld.destroyBody(expireBody);
+        this.playerBodies.delete(client.sessionId);
+      }
       const delta = { type: 'player:left' as const, playerId: client.sessionId } satisfies DeltaEventMsg;
       this.broadcast(EventNames.DELTA, delta);
       logger.info({ roomId: this.roomId, clientId: client.sessionId }, 'reconnect grace expired — player removed');
@@ -209,6 +254,12 @@ export class GameRoom extends Room {
       clearInterval(this.tickTimer);
       this.tickTimer = null;
     }
+    for (const body of this.playerBodies.values()) {
+      this.physicsWorld.destroyBody(body);
+    }
+    this.playerBodies.clear();
+    this.pendingPoiBeginContacts.length = 0;
+    this.pendingPoiEndContacts.length = 0;
     logger.info({ roomId: this.roomId }, 'GameRoom disposed');
   }
 
@@ -225,62 +276,80 @@ export class GameRoom extends Room {
       }
     }
 
-    // Apply movement — speed inline for Story 1.5; move to game-rules/balance.ts in Story 3.x
+    // ── Planck phase 1: set player body velocities ──────────────────────────────
     const SPEED = 200; // pixels per second in virtual 1920×1080 space
-    const DT = 1 / TICK_RATE_HZ; // seconds per tick
+    const DT = 1 / TICK_RATE_HZ;
 
     for (const player of this.gameState.players) {
-      if (player.isFrozen) continue;
-      // player.id === client.sessionId (set in createPlayer); map is keyed by clientId (= client.sessionId)
+      const body = this.playerBodies.get(player.id);
+      if (!body) continue;
+
+      if (player.isFrozen) {
+        body.setLinearVelocity(Vec2(0, 0));
+        continue;
+      }
+
       const joystick = this.lastKnownJoystick.get(player.id);
-      if (!joystick) continue;
-      const { x, y } = joystick;
-      if (Math.abs(x) < 0.05 && Math.abs(y) < 0.05) continue;
-      player.x += x * SPEED * DT;
-      player.y += y * SPEED * DT;
-      const delta = {
-        type: 'player:moved' as const,
-        playerId: player.id,
-        x: player.x,
-        y: player.y,
-      } satisfies DeltaEventMsg;
-      this.broadcast(EventNames.DELTA, delta);
+      const jx = joystick?.x ?? 0;
+      const jy = joystick?.y ?? 0;
+      const inDeadzone = Math.abs(jx) < 0.05 && Math.abs(jy) < 0.05;
+
+      body.setLinearVelocity(inDeadzone
+        ? Vec2(0, 0)
+        : Vec2(toMeters(jx * SPEED), toMeters(jy * SPEED))
+      );
     }
 
-    // POI proximity — Euclidean distance check (planck.js sensor migration deferred to Story 3.1)
+    // ── Planck phase 2: step world (integrates velocities + fires contact events) ─
+    this.physicsWorld.step(DT, 8, 3);
+
+    // ── Planck phase 3: read back positions, broadcast player:moved deltas ───────
     for (const player of this.gameState.players) {
-      if (player.isFrozen) continue;
+      const body = this.playerBodies.get(player.id);
+      if (!body) continue;
 
-      let matchedPoi: PoiDefinition | null = null;
-      for (const poi of INTERACTIVE_HUB_POIS) {
-        const dx = player.x - poi.x;
-        const dy = player.y - poi.y;
-        if (dx * dx + dy * dy < poi.radius * poi.radius) {
-          matchedPoi = poi;
-          break; // POIs don't overlap — first match wins
-        }
-      }
-      const newPoiId = matchedPoi?.id ?? null;
+      const pos = body.getPosition();
+      const newX = toPixels(pos.x);
+      const newY = toPixels(pos.y);
 
-      if (player.nearPoiId !== newPoiId) {
-        player.nearPoiId = newPoiId;
-        if (matchedPoi !== null) {
-          const enteredDelta = {
-            type: 'player:poi-entered' as const,
-            playerId: player.id,
-            poiId: matchedPoi.id,
-            poiType: matchedPoi.type,
-          } satisfies DeltaEventMsg;
-          this.broadcast(EventNames.DELTA, enteredDelta);
-        } else {
-          const exitedDelta = {
-            type: 'player:poi-exited' as const,
-            playerId: player.id,
-          } satisfies DeltaEventMsg;
-          this.broadcast(EventNames.DELTA, exitedDelta);
-        }
+      if (Math.abs(newX - player.x) > 0.5 || Math.abs(newY - player.y) > 0.5) {
+        player.x = newX;
+        player.y = newY;
+        const delta = {
+          type: 'player:moved' as const,
+          playerId: player.id,
+          x: player.x,
+          y: player.y,
+        } satisfies DeltaEventMsg;
+        this.broadcast(EventNames.DELTA, delta);
       }
     }
+
+    // ── Planck phase 4: process POI contact events from this tick's world.step() ─
+    for (const { playerId, poiId, poiType } of this.pendingPoiBeginContacts) {
+      const player = this.gameState.players.find(p => p.id === playerId);
+      if (!player || player.nearPoiId === poiId) continue;
+      player.nearPoiId = poiId;
+      const enteredDelta = {
+        type: 'player:poi-entered' as const,
+        playerId,
+        poiId,
+        poiType,
+      } satisfies DeltaEventMsg;
+      this.broadcast(EventNames.DELTA, enteredDelta);
+    }
+    for (const { playerId, poiId } of this.pendingPoiEndContacts) {
+      const player = this.gameState.players.find(p => p.id === playerId);
+      if (!player || player.nearPoiId !== poiId) continue;
+      player.nearPoiId = null;
+      const exitedDelta = {
+        type: 'player:poi-exited' as const,
+        playerId,
+      } satisfies DeltaEventMsg;
+      this.broadcast(EventNames.DELTA, exitedDelta);
+    }
+    this.pendingPoiBeginContacts.length = 0;
+    this.pendingPoiEndContacts.length = 0;
 
     // Process ability inputs — training dummy only (inline cooldown; Story 3.x moves to game-rules/balance.ts)
     const TRAINING_DUMMY_COOLDOWN_MS = 3000;

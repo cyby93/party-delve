@@ -326,3 +326,25 @@ For RELEASE-type abilities, both the element-level `onTouchEnd` handler and the 
 
 **D-2.3-E — player:class-updated delta silently dropped if received before join snapshot** [packages/net-protocol/src/apply-delta.ts:53]
 If a `player:class-updated` delta arrives at a client before the join-triggered snapshot has been processed (network reordering or rapid message delivery), `applyDelta` returns the unchanged state because the player does not yet exist in `state.players`. The class change is lost until the next periodic snapshot (every `SNAPSHOT_INTERVAL_S` seconds) restores the correct state. Acceptable for hub-mode class display; revisit if class state is load-bearing in Story 3.x combat.
+
+---
+
+## Deferred from: code review of 3-1-xoshiro128-prng-and-planckjs-physics-world (2026-06-25)
+
+**D-3.1-A — `onLeave` catch block runs after room disposal** [apps/simulation-server/src/rooms/GameRoom.ts:onLeave]
+Pre-existing architecture from Stories 1.2 and 1.6 (logged as D19). The `destroyBody` call in Story 3.1 follows the same cleanup pattern as existing mutations. Planck world is never destroyed in `onDispose` so the call is safe. Full fix requires a `disposed` flag; address in Phase 5 server hardening.
+
+**D-3.1-B — O(n) player scan in POI contact flush loops** [apps/simulation-server/src/rooms/GameRoom.ts:tick()]
+`gameState.players.find(p => p.id === playerId)` runs linearly inside the POI begin/end contact flush loops. Acceptable for ≤8 players with at most 2 active POI sensors. Replace with a `Map<string, PlayerState>` lookup if player cap grows.
+
+**D-3.1-C — No boundary walls; `linearDamping:0` with zero gravity** [apps/simulation-server/src/physics/world.ts]
+Dynamic bodies receive no clamping to the virtual world rect. A planck impulse from a player-player or player-enemy collision can send players off-map with no recovery. Bounds clamping is explicitly non-goal for Story 3.1 (deferred to 3.x per non-goals section).
+
+**D-3.1-D — Player-player contact callbacks fire without filter bits** [apps/simulation-server/src/physics/world.ts]
+Player and enemy fixtures have no `filterCategory`/`filterMask`, so planck fires `begin-contact`/`end-contact` for every player-player and player-enemy pair. `extractPoiBeginContact` returns null for these correctly, keeping pending arrays clean. O(n²) contact overhead will compound when enemies are added. Set filterCategory/filterMask on player and POI fixtures in Story 3.x.
+
+**D-3.1-E — `nextSlotIndex` never recycled — overflow spawn at center** [apps/simulation-server/src/rooms/GameRoom.ts]
+Pre-existing (already logged as D27 from Story 1.6 code review). Monotonically increasing slot index; SPAWN_POSITIONS falls back to center for indices ≥ 8. Bounded by MAX_PLAYERS concurrent limit within a session; revisit with a free-slot recycling map in Phase 2 spawn positioning work.
+
+**D-3.1-F — `planck` dependency in `packages/game-rules/package.json`** [packages/game-rules/package.json:15]
+`"planck": "1.5.0"` is present as a runtime dependency in game-rules even though no game-rules source imports it (ESLint restriction enforces this). Pre-planned entry from project setup; story Dev Notes explicitly defer removal to a cleanup task. Remove in a separate dependency hygiene story.
