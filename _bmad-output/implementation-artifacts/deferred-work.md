@@ -247,3 +247,63 @@ Both idle ("Connection lost") and connecting ("Reconnecting…") show `var(--acc
 
 **D-1.7-B — sessionEntryInitialCode could leak to future session-entry renders** [apps/mobile-controller/src/App.tsx:22]
 `sessionEntryInitialCode` is only cleared in `handleGuestContinue` (auth-choice → session-entry). If a future story adds a back-to-menu or logout path reachable after first navigation, the stale reconnectRoomId-derived code silently pre-fills the field with a dead room id. Recommended hardening: clear `sessionEntryInitialCode` in `handleJoin` on success.
+
+---
+
+## Deferred from: code review of 2-1-hub-world-poi-layout-and-interact-button (2026-06-24)
+
+**D-2.1-A — Missing poi-exited delta when player transitions directly between overlapping POIs** [apps/simulation-server/src/rooms/GameRoom.ts:tick()]
+When `player.nearPoiId` transitions from POI-A to POI-B in the same tick (i.e., both are non-null and different), only a `poi-entered` delta for POI-B is broadcast — no `poi-exited` for POI-A. On the client, `applyDelta` overwrites `nearPoiId` with the new POI, which is correct end-state, but a strict delta stream would include the exit first. Not triggered today because `INTERACTIVE_HUB_POIS` has 2 entries placed far apart ("POIs don't overlap" is a stated design invariant). Revisit if overlapping POI zones are ever introduced in later epics.
+
+---
+
+## Deferred from: code review of 2-2-class-selection-flow-card-browse-and-selection (2026-06-24)
+
+**D-2.2-A — stopJoystick not called on ControllerScreen unmount** [apps/mobile-controller/src/screens/ControllerScreen.tsx]
+The joystick `useEffect` cleanup removes touch listeners but does not call `stopJoystick()` to send a zero-vector stop message. If the screen unmounts while joystick is held (e.g., during disconnect), the sim server holds the last non-zero input vector until its own timeout. Pre-existing gap from Story 1.5; address in Story 1.6 follow-up or when ControllerScreen lifetime management is revisited.
+
+**D-2.2-B — Object.values(CLASS_DEFINITIONS) display order is implicit insertion-order** [packages/shared-types/src/class-definitions.ts]
+Card row order depends on V8 object insertion order (STONEHIDE → SPIRITCALLER → SOULDRINKER → STORMCALLER). V8 guarantees this for string keys, but the ordering is a hidden invariant. Consider an explicit `const CLASS_ORDER: PlayerClass[]` in a future polish pass to make ordering intentional and reviewable.
+
+**D-2.2-C — WebkitOverflowScrolling:'touch' deprecated** [apps/mobile-controller/src/screens/ControllerScreen.tsx]
+`-webkit-overflow-scrolling: touch` is a no-op on iOS 13+. Harmless; verify scroll momentum behavior on minimum supported iOS version before removing.
+
+**D-2.2-D — scrollSnapType + alignItems:center may misfire on panel-open resize** [apps/mobile-controller/src/screens/ControllerScreen.tsx]
+When the ability panel opens and the card area height changes mid-drag, `scrollSnapType: 'x mandatory'` may snap to an incorrect center point. Browser-specific; verify on target device range during QA.
+
+**D-2.2-E — Ability panel missing aria-hidden/inert when translated off-screen** [apps/mobile-controller/src/screens/ControllerScreen.tsx]
+The panel div is always in the DOM (translated 100% off-screen when closed); assistive technology may reach the panel container when it is not visible. A11y out of scope for Phase 2; address in accessibility pass before launch.
+
+## Deferred from: code review of 2-4-training-dummy-poi (2026-06-24)
+
+**D-2.4-A — Reconnect clears client cooldowns but server retains cooldownMap entries** [apps/mobile-controller/src/App.tsx:116]
+On reconnect, `setCooldowns([null,null,null,null])` resets all client-side cooldowns, but the server's `cooldownMap` retains live expiry timestamps. If a player reconnects mid-cooldown the client shows all abilities as ready; the server silently drops fire attempts until expiry. Acknowledged in story Dev Notes §Existing Code as acceptable for Story 2.4 (hub-only training dummy). Address in Story 3.x when cooldowns persist into dungeon runs.
+
+**D-2.4-B — RELEASE ability can fire in React render gap after trainingDummyActive cleared** [apps/mobile-controller/src/screens/ControllerScreen.tsx]
+When the player leaves the training dummy, `setTrainingDummyActive(false)` dispatches but effect cleanup runs after the next render. An in-flight RELEASE thumb-lift occurring in that window fires `onAbilityFire`. Sub-frame window (~0–16ms); server validates nearPoiId and may accept or reject depending on tick timing. No user-visible corruption.
+
+**D-2.4-C — flashUntil alpha animation only progresses on gameState updates** [apps/host-client/src/screens/HubWorldScreen.tsx:~77]
+The class-confirmation flash (600ms alpha pulse) is driven by `renderFrame`, which only runs when `gameState` changes. With no player movement the flash freezes between renders. Story 2.3 scope visible in this diff; fix in a dedicated host animation pass (add `requestAnimationFrame` loop or polling effect).
+
+**D-2.4-D — Same-tick movement+ability can silently drop ability input** [apps/simulation-server/src/rooms/GameRoom.ts:~216]
+If a player is at the edge of the training dummy's proximity radius, a joystick input in the same tick as an ability input can move them outside the radius before the ability handler's `nearPoiId` check, silently dropping the ability. Negligible in casual couch gameplay; address when POI interaction precision matters (Story 3.x dungeon combat).
+
+**D-2.4-E — Non-integer abilityIndex bypasses bounds check** [apps/simulation-server/src/rooms/GameRoom.ts:~290]
+The `abilityIndex < 0 || abilityIndex > 3` check allows floats like `1.5`. `playerCooldowns[1.5]` writes a non-integer property that the expiry loop never iterates, leaking the entry. Typed mobile client prevents this in practice; add `Number.isInteger(abilityIndex)` guard in Story 3.x when ability inputs are expanded.
+
+## Deferred from: code review of 2-3-class-confirmation-and-hub-controller-transition (2026-06-24)
+
+**D-2.3-A — React Strict Mode double-mount permanently loses class-confirmation flash** [apps/host-client/src/screens/HubWorldScreen.tsx:117-181]
+In dev builds, Strict Mode mounts, unmounts, and remounts HubWorldScreen. If a `player:class-updated` delta arrives during the async PixiJS second-init window (while `pixiAppRef.current` is null), `renderFrame` is skipped. The new `PlayerEntry` is then created with `knownClass: player.class` (the confirmed class), so the flash is permanently lost for that delta. Dev-only; production does not use double-mount. Address before the first QA session that uses StrictMode-enabled host builds.
+
+**D-2.3-B — No rate-limiting on CLASS_SELECT messages** [apps/simulation-server/src/rooms/GameRoom.ts:80-105]
+Every valid `CLASS_SELECT` message triggers a `this.broadcast(EventNames.DELTA, delta)` to all clients. A malicious or buggy mobile client can spam the message, causing all connected clients to re-render `PlayerChip` and trigger flash animations repeatedly. Add a per-client rate limit (e.g., max 1 per second) in a future hardening story.
+
+**D-2.3-C — applyDelta missing exhaustiveness guard** [packages/net-protocol/src/apply-delta.ts:59]
+The `default: return state` in `applyDelta` silently no-ops for any delta type not explicitly handled (e.g., `player:downed`, `player:revived`, `enemy:moved`). TypeScript does not enforce switch exhaustiveness here — a `never` assertion on the default branch would catch missing cases at compile time. Add the guard when implementing Story 3.x delta types.
+
+**D-2.3-D — RELEASE ability fires twice when lift occurs inside cell bounds** [apps/mobile-controller/src/screens/ControllerScreen.tsx:548-583]
+For RELEASE-type abilities, both the element-level `onTouchEnd` handler and the document-level `onDocumentTouchEnd` handler fire when the lift occurs inside the cell's bounding rect. Both call `onAbilityFire`, resulting in two `sendInput` calls to the server for a single lift. The server processes both in the same tick; since the cooldown is written on the first and the second reads the same pre-write expiry, the ability fires twice with one cooldown entry. Occurs in interactive skill cell mode (training dummy). Address in Story 3.x when ability hit registration accuracy matters in dungeon combat.
+
+**D-2.3-E — player:class-updated delta silently dropped if received before join snapshot** [packages/net-protocol/src/apply-delta.ts:53]
+If a `player:class-updated` delta arrives at a client before the join-triggered snapshot has been processed (network reordering or rapid message delivery), `applyDelta` returns the unchanged state because the player does not yet exist in `state.players`. The class change is lost until the next periodic snapshot (every `SNAPSHOT_INTERVAL_S` seconds) restores the correct state. Acceptable for hub-mode class display; revisit if class state is load-bearing in Story 3.x combat.

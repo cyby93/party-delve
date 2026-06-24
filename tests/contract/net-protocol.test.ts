@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { serialize, deserialize, applyDelta, EventNames } from 'net-protocol';
-import type { SnapshotMsg, DeltaEventMsg, InputEventMsg } from 'net-protocol';
+import type { SnapshotMsg, DeltaEventMsg, InputEventMsg, PlayerPoiEnteredDelta, PlayerPoiExitedDelta } from 'net-protocol';
 import type { GameState, PlayerState } from 'shared-types';
 import { PlayerClass, SessionColor } from 'shared-types';
 
@@ -45,6 +45,7 @@ describe('net-protocol contract tests', () => {
         isSpirit: false,
         sessionColor: SessionColor.RED,
         downCount: 1,
+        nearPoiId: null,
       });
       const msg: SnapshotMsg = { type: 'snapshot', state };
       expect(deserialize<SnapshotMsg>(serialize(msg))).toEqual(msg);
@@ -88,6 +89,7 @@ describe('net-protocol contract tests', () => {
         isSpirit: false,
         sessionColor: SessionColor.RED,
         downCount: 0,
+        nearPoiId: null,
         ...overrides,
       };
     }
@@ -127,6 +129,71 @@ describe('net-protocol contract tests', () => {
     it('player:reconnected returns same reference for unknown playerId', () => {
       const state: GameState = { ...mockGameState(), players: [] };
       const next = applyDelta(state, { type: 'player:reconnected', playerId: 'ghost' });
+      expect(next).toBe(state);
+    });
+  });
+
+  describe('PlayerPoiEnteredDelta round-trip', () => {
+    it('serializes and deserializes', () => {
+      const msg: PlayerPoiEnteredDelta = {
+        type: 'player:poi-entered',
+        playerId: 'p1',
+        poiId: 'class-select',
+        poiType: 'class-select',
+      };
+      expect(deserialize<DeltaEventMsg>(serialize(msg))).toEqual(msg);
+    });
+  });
+
+  describe('PlayerPoiExitedDelta round-trip', () => {
+    it('serializes and deserializes', () => {
+      const msg: PlayerPoiExitedDelta = { type: 'player:poi-exited', playerId: 'p1' };
+      expect(deserialize<DeltaEventMsg>(serialize(msg))).toEqual(msg);
+    });
+  });
+
+  describe('applyDelta POI cases', () => {
+    function mockPlayer(overrides?: Partial<PlayerState>): PlayerState {
+      return {
+        id: 'p1',
+        displayName: 'Test',
+        class: PlayerClass.STONEHIDE,
+        x: 0,
+        y: 0,
+        hp: 100,
+        maxHp: 100,
+        isFrozen: false,
+        isDown: false,
+        isSpirit: false,
+        sessionColor: SessionColor.RED,
+        downCount: 0,
+        nearPoiId: null,
+        ...overrides,
+      };
+    }
+
+    it('player:poi-entered sets nearPoiId', () => {
+      const state: GameState = { ...mockGameState(), players: [mockPlayer()] };
+      const next = applyDelta(state, { type: 'player:poi-entered', playerId: 'p1', poiId: 'class-select', poiType: 'class-select' });
+      expect(next.players[0]!.nearPoiId).toBe('class-select');
+    });
+
+    it('player:poi-exited clears nearPoiId', () => {
+      const base: GameState = { ...mockGameState(), players: [mockPlayer()] };
+      const withPoi = applyDelta(base, { type: 'player:poi-entered', playerId: 'p1', poiId: 'class-select', poiType: 'class-select' });
+      const cleared = applyDelta(withPoi, { type: 'player:poi-exited', playerId: 'p1' });
+      expect(cleared.players[0]!.nearPoiId).toBeNull();
+    });
+
+    it('player:poi-entered returns same reference for unknown playerId', () => {
+      const state: GameState = { ...mockGameState(), players: [mockPlayer()] };
+      const next = applyDelta(state, { type: 'player:poi-entered', playerId: 'ghost', poiId: 'class-select', poiType: 'class-select' });
+      expect(next).toBe(state);
+    });
+
+    it('player:poi-exited returns same reference for unknown playerId', () => {
+      const state: GameState = { ...mockGameState(), players: [mockPlayer()] };
+      const next = applyDelta(state, { type: 'player:poi-exited', playerId: 'ghost' });
       expect(next).toBe(state);
     });
   });

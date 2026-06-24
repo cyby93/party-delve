@@ -2,17 +2,722 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import type { InputEventMsg } from 'net-protocol';
 import type { MobileSession } from '../session/mobile-session';
 import type { GameState } from 'shared-types';
+import type { ClassDef } from 'shared-types';
+import type { AbilityInputType, ClassAbilityDef } from 'shared-types';
+import { CLASS_DEFINITIONS, PlayerClass } from 'shared-types';
+import type { CooldownState } from '../App';
 
 interface ControllerScreenProps {
   session: MobileSession | null;
   gameState: GameState | null;
+  cooldowns: (CooldownState | null)[];
 }
 
 const JOYSTICK_MAX_RADIUS = 60;
 const DEADZONE_RADIUS = 8;
 const INPUT_INTERVAL_MS = 33; // ~30hz throttle to match sim tick rate
 
-export function ControllerScreen({ session, gameState: _gameState }: ControllerScreenProps) {
+interface InteractButtonProps {
+  visible: boolean;
+  onTap: () => void;
+}
+
+function InteractButton({ visible, onTap }: InteractButtonProps) {
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        top: 'env(safe-area-inset-top, 0px)',
+        left: '10%',
+        right: '10%',
+        transform: visible ? 'translateY(0)' : 'translateY(-150%)',
+        transition: 'transform 200ms ease-out',
+        background: 'var(--bg-surface)',
+        border: '2px solid var(--accent-spirit)',
+        borderRadius: 8,
+        minHeight: 44,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 30,
+        boxShadow: '0 0 12px rgba(110,168,216,0.4)',
+        pointerEvents: visible ? 'auto' : 'none',
+        touchAction: 'manipulation',
+      }}
+      onPointerDown={e => { e.preventDefault(); onTap(); }}
+    >
+      <span
+        style={{
+          fontFamily: 'var(--font-body)',
+          fontWeight: 700,
+          fontSize: 'var(--text-md)',
+          color: 'var(--text-primary)',
+        }}
+      >
+        Interact
+      </span>
+    </div>
+  );
+}
+
+interface ClassIconProps {
+  classId: PlayerClass;
+  isSelected: boolean;
+}
+
+function ClassIcon({ classId, isSelected }: ClassIconProps) {
+  const stroke = isSelected ? 'var(--accent-spirit)' : 'var(--border)';
+
+  switch (classId) {
+    case PlayerClass.STONEHIDE:
+      return (
+        <svg width="44" height="44" viewBox="0 0 48 48" fill="none">
+          <polygon points="24,6 44,40 4,40" stroke={stroke} strokeWidth="2" strokeLinejoin="round"/>
+          <polygon points="24,14 36,36 12,36" stroke={stroke} strokeWidth="1.2" strokeLinejoin="round"/>
+        </svg>
+      );
+    case PlayerClass.SPIRITCALLER:
+      return (
+        <svg width="44" height="44" viewBox="0 0 44 44" fill="none">
+          <circle cx="22" cy="24" r="14" stroke={stroke} strokeWidth="1.5" strokeDasharray="4 3"/>
+          <circle cx="22" cy="24" r="5" stroke={stroke} strokeWidth="1.5"/>
+          <line x1="22" y1="6" x2="22" y2="18" stroke={stroke} strokeWidth="1" strokeLinecap="round"/>
+          <line x1="22" y1="30" x2="22" y2="42" stroke={stroke} strokeWidth="1" strokeLinecap="round"/>
+        </svg>
+      );
+    case PlayerClass.SOULDRINKER:
+      return (
+        <svg width="44" height="44" viewBox="0 0 44 44" fill="none">
+          <path d="M22 4 C10 4 4 14 4 22 C4 32 22 44 22 44 C22 44 40 32 40 22 C40 14 34 4 22 4 Z"
+            stroke={stroke} strokeWidth="1.8" strokeLinejoin="round"/>
+          <circle cx="22" cy="20" r="5" stroke={stroke} strokeWidth="1.2"/>
+        </svg>
+      );
+    case PlayerClass.STORMCALLER:
+      return (
+        <svg width="44" height="44" viewBox="0 0 44 44" fill="none">
+          <path d="M22 4 L28 18 L42 18 L30 28 L34 42 L22 34 L10 42 L14 28 L2 18 L16 18 Z"
+            stroke={stroke} strokeWidth="1.5" strokeLinejoin="round"/>
+        </svg>
+      );
+    default:
+      return null;
+  }
+}
+
+interface ClassCardProps {
+  def: ClassDef;
+  isSelected: boolean;
+  onTap: () => void;
+}
+
+function ClassCard({ def, isSelected, onTap }: ClassCardProps) {
+  return (
+    <div
+      onPointerDown={e => { e.preventDefault(); onTap(); }}
+      style={{
+        width: 190,
+        minWidth: 190,
+        height: 190,
+        background: isSelected ? 'var(--bg-subtle)' : 'var(--bg-surface)',
+        border: isSelected ? '2px solid var(--accent-spirit)' : '1px solid var(--border)',
+        borderRadius: 8,
+        boxShadow: isSelected ? '0 0 12px rgba(110,168,216,0.25)' : 'none',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        padding: '0 0 12px 0',
+        flexShrink: 0,
+        overflow: 'hidden',
+        touchAction: 'manipulation',
+        cursor: 'pointer',
+        scrollSnapAlign: 'center',
+      }}
+    >
+      {/* Icon area */}
+      <div
+        style={{
+          width: '100%',
+          height: 66,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          borderBottom: '1px solid var(--border)',
+          marginBottom: 10,
+          background: isSelected ? 'var(--bg-subtle)' : 'transparent',
+          flexShrink: 0,
+        }}
+      >
+        <ClassIcon classId={def.id} isSelected={isSelected} />
+      </div>
+
+      {/* Class name — Uncial Antiqua md (20px) */}
+      <span
+        style={{
+          fontFamily: 'var(--font-display)',
+          fontSize: 'var(--text-md)',
+          color: 'var(--text-primary)',
+          textAlign: 'center',
+          marginBottom: 4,
+          padding: '0 8px',
+        }}
+      >
+        {def.displayName}
+      </span>
+
+      {/* Role label — Lora 700 sm text-secondary */}
+      <span
+        style={{
+          fontFamily: 'var(--font-body)',
+          fontWeight: 700,
+          fontSize: 'var(--text-sm)',
+          color: 'var(--text-secondary)',
+          textAlign: 'center',
+          marginBottom: 8,
+          padding: '0 8px',
+        }}
+      >
+        {def.role}
+      </span>
+
+      {/* Flavor — Lora 400 italic sm text-secondary */}
+      <span
+        style={{
+          fontFamily: 'var(--font-body)',
+          fontStyle: 'italic',
+          fontSize: 'var(--text-sm)',
+          color: 'var(--text-secondary)',
+          textAlign: 'center',
+          lineHeight: 1.5,
+          padding: '0 12px',
+          overflow: 'hidden',
+          display: '-webkit-box',
+          WebkitLineClamp: 3,
+          WebkitBoxOrient: 'vertical',
+        }}
+      >
+        {def.flavor}
+      </span>
+    </div>
+  );
+}
+
+const ABILITY_BADGE_BORDER: Record<AbilityInputType, string> = {
+  AUTO:    'var(--accent-spirit)',
+  RELEASE: 'var(--accent-warm)',
+  TAP:     'var(--border)',
+};
+
+interface AbilityChipProps {
+  ability: ClassAbilityDef;
+}
+
+function AbilityChip({ ability }: AbilityChipProps) {
+  return (
+    <div
+      style={{
+        background: 'var(--bg-subtle)',
+        borderRadius: 4,
+        padding: '6px 6px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 3,
+        minWidth: 0,
+        borderLeft: `3px solid ${ABILITY_BADGE_BORDER[ability.inputType]}`,
+      }}
+    >
+      <span
+        style={{
+          fontFamily: 'var(--font-body)',
+          fontWeight: 700,
+          fontSize: 'var(--text-sm)',
+          color: 'var(--text-primary)',
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+        }}
+      >
+        {ability.name}
+      </span>
+      <span
+        style={{
+          display: 'inline-block',
+          fontFamily: 'var(--font-body)',
+          fontSize: 'var(--text-xs)',
+          color: 'var(--text-secondary)',
+          background: 'var(--border)',
+          borderRadius: 4,
+          padding: '1px 5px',
+          alignSelf: 'flex-start',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {ability.inputType}
+      </span>
+    </div>
+  );
+}
+
+interface ClassSelectionScreenProps {
+  onBack: () => void;
+  onPickClass: (classId: PlayerClass) => void;
+}
+
+function ClassSelectionScreen({ onBack, onPickClass }: ClassSelectionScreenProps) {
+  const [selectedClass, setSelectedClass] = useState<PlayerClass | null>(null);
+  const panelOpen = selectedClass !== null;
+  const selectedDef = selectedClass !== null ? CLASS_DEFINITIONS[selectedClass] : null;
+
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        inset: 0,
+        background: 'var(--bg-base)',
+        zIndex: 50,
+        touchAction: 'auto',
+        userSelect: 'none',
+      }}
+    >
+      {/* Top bar */}
+      <div
+        style={{
+          position: 'absolute',
+          top: 0, left: 0, right: 0,
+          height: 44,
+          background: 'var(--bg-surface)',
+          borderBottom: '1px solid var(--border)',
+          display: 'flex',
+          alignItems: 'center',
+          padding: '0 16px',
+          zIndex: 10,
+        }}
+      >
+        <button
+          onPointerDown={e => { e.preventDefault(); onBack(); }}
+          style={{
+            background: 'none',
+            border: 'none',
+            padding: '0 8px',
+            minWidth: 44,
+            minHeight: 44,
+            cursor: 'pointer',
+            fontFamily: 'var(--font-body)',
+            fontSize: 'var(--text-sm)',
+            color: 'var(--text-secondary)',
+            display: 'flex',
+            alignItems: 'center',
+          }}
+        >
+          ← Back
+        </button>
+        <span
+          style={{
+            position: 'absolute',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            fontFamily: 'var(--font-display)',
+            fontSize: 16,
+            color: 'var(--text-primary)',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          Choose Your Class
+        </span>
+      </div>
+
+      {/* Card scroll area */}
+      <div
+        style={{
+          position: 'absolute',
+          top: 44,
+          left: 0,
+          right: 0,
+          bottom: panelOpen ? 130 : 0,
+          overflowX: 'auto',
+          overflowY: 'hidden',
+          display: 'flex',
+          alignItems: 'center',
+          padding: '12px 24px',
+          gap: 14,
+          WebkitOverflowScrolling: 'touch',
+          scrollSnapType: 'x mandatory',
+          touchAction: 'pan-x',
+          transition: 'bottom 200ms ease-out',
+        }}
+      >
+        {(Object.values(CLASS_DEFINITIONS) as ClassDef[]).map(def => (
+          <ClassCard
+            key={def.id}
+            def={def}
+            isSelected={selectedClass === def.id}
+            onTap={() => setSelectedClass(def.id)}
+          />
+        ))}
+        {/* Trailing spacer so last card is not flush with right edge */}
+        <div style={{ minWidth: 24, flexShrink: 0 }} />
+      </div>
+
+      {/* Right-edge fade */}
+      <div
+        style={{
+          position: 'absolute',
+          top: 44,
+          right: 0,
+          bottom: panelOpen ? 130 : 0,
+          width: 80,
+          background: 'linear-gradient(to right, transparent 0%, var(--bg-base) 100%)',
+          pointerEvents: 'none',
+          zIndex: 5,
+          transition: 'bottom 200ms ease-out',
+        }}
+      />
+
+      {/* Ability panel */}
+      <div
+        style={{
+          position: 'absolute',
+          bottom: 0, left: 0, right: 0,
+          height: 130,
+          background: 'var(--bg-surface)',
+          borderTop: '1px solid var(--border)',
+          transform: panelOpen ? 'translateY(0)' : 'translateY(100%)',
+          transition: 'transform 200ms ease-out',
+          display: 'flex',
+          zIndex: 10,
+        }}
+      >
+        {selectedDef !== null && (
+          <>
+            {/* Left ~80%: ability chips + role hint */}
+            <div
+              style={{
+                flex: '0 0 80%',
+                padding: '12px 14px 10px 16px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 6,
+                overflow: 'hidden',
+              }}
+            >
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(4, 1fr)',
+                  gap: 6,
+                  flex: 1,
+                }}
+              >
+                {selectedDef.abilities.map((ab, i) => (
+                  <AbilityChip key={i} ability={ab} />
+                ))}
+              </div>
+              <p
+                style={{
+                  fontFamily: 'var(--font-body)',
+                  fontSize: 'var(--text-xs)',
+                  color: 'var(--text-secondary)',
+                  margin: 0,
+                  paddingTop: 2,
+                }}
+              >
+                {selectedDef.role}
+              </p>
+            </div>
+
+            {/* Right ~20%: pick button */}
+            <div
+              style={{
+                flex: '0 0 20%',
+                borderLeft: '1px solid var(--border)',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '10px 10px',
+                gap: 6,
+              }}
+            >
+              <button
+                onPointerDown={e => { e.preventDefault(); onPickClass(selectedDef.id); }}
+                style={{
+                  width: '100%',
+                  minHeight: 48,
+                  background: 'var(--interactive)',
+                  border: 'none',
+                  borderRadius: 6,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  touchAction: 'manipulation',
+                }}
+              >
+                <span
+                  style={{
+                    fontFamily: 'var(--font-body)',
+                    fontWeight: 700,
+                    fontSize: 11,
+                    color: 'var(--bg-base)',
+                    letterSpacing: '0.02em',
+                    textAlign: 'center',
+                    lineHeight: 1.3,
+                  }}
+                >
+                  Pick Selected Class
+                </span>
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+interface SkillCellProps {
+  index: number;
+  ability: ClassAbilityDef | null;
+  cooldownState: CooldownState | null;
+  isInteractive: boolean;
+  badgeBorderColor: string;
+  onAbilityFire: (abilityIndex: number, dirX: number, dirY: number, isContinuous: boolean) => void;
+  tapFlash: boolean;
+}
+
+function SkillCell({ index, ability, cooldownState: cd, isInteractive, badgeBorderColor, onAbilityFire, tapFlash }: SkillCellProps) {
+  const cellRef = useRef<HTMLDivElement>(null);
+  const activeTouchRef = useRef<{ id: number; originX: number; originY: number; lastDirX: number; lastDirY: number } | null>(null);
+  const autoIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const now = Date.now();
+  const isOnCooldown = cd !== null && cd.expiresAt > now;
+  const totalDuration = cd !== null ? cd.expiresAt - cd.startAt : 1;
+  const elapsed = cd !== null ? now - cd.startAt : 0;
+  const pctElapsed = Math.min(elapsed / totalDuration, 1);
+  const degRevealed = Math.round(pctElapsed * 360);
+  const countdownSeconds = cd !== null ? Math.ceil((cd.expiresAt - now) / 1000) : 0;
+
+  useEffect(() => {
+    const el = cellRef.current;
+    if (!el || !isInteractive || ability === null) return;
+    if (ability.inputType === 'TAP') return;
+
+    const onTouchStart = (e: TouchEvent) => {
+      e.preventDefault();
+      if (activeTouchRef.current !== null) return;
+      const touch = e.changedTouches[0];
+      if (!touch) return;
+      const rect = el.getBoundingClientRect();
+      activeTouchRef.current = {
+        id: touch.identifier,
+        originX: touch.clientX - rect.left,
+        originY: touch.clientY - rect.top,
+        lastDirX: 0,
+        lastDirY: 0,
+      };
+      if (ability.inputType === 'AUTO') {
+        autoIntervalRef.current = setInterval(() => {
+          const t = activeTouchRef.current;
+          if (t) onAbilityFire(index, t.lastDirX, t.lastDirY, true);
+        }, 33);
+      }
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      e.preventDefault();
+      const t = activeTouchRef.current;
+      if (t === null) return;
+      let touch: Touch | undefined;
+      for (let i = 0; i < e.touches.length; i++) {
+        if (e.touches[i]!.identifier === t.id) { touch = e.touches[i]; break; }
+      }
+      if (!touch) return;
+      const rect = el.getBoundingClientRect();
+      const rawX = touch.clientX - rect.left - t.originX;
+      const rawY = touch.clientY - rect.top - t.originY;
+      const dist = Math.sqrt(rawX * rawX + rawY * rawY);
+      const DEADZONE = 6;
+      if (dist >= DEADZONE) {
+        const angle = Math.atan2(rawY, rawX);
+        t.lastDirX = Math.cos(angle);
+        t.lastDirY = Math.sin(angle);
+      }
+    };
+
+    const onTouchEnd = (e: TouchEvent) => {
+      e.preventDefault();
+      const t = activeTouchRef.current;
+      if (t === null) return;
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        if (e.changedTouches[i]!.identifier === t.id) {
+          if (ability.inputType === 'RELEASE') {
+            onAbilityFire(index, t.lastDirX, t.lastDirY, false);
+          }
+          if (autoIntervalRef.current) {
+            clearInterval(autoIntervalRef.current);
+            autoIntervalRef.current = null;
+          }
+          activeTouchRef.current = null;
+          break;
+        }
+      }
+    };
+
+    const onDocumentTouchEnd = (e: TouchEvent) => {
+      const t = activeTouchRef.current;
+      if (t === null) return;
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        if (e.changedTouches[i]!.identifier === t.id) {
+          if (ability.inputType === 'RELEASE') {
+            onAbilityFire(index, t.lastDirX, t.lastDirY, false);
+          }
+          if (autoIntervalRef.current) {
+            clearInterval(autoIntervalRef.current);
+            autoIntervalRef.current = null;
+          }
+          activeTouchRef.current = null;
+          break;
+        }
+      }
+    };
+
+    el.addEventListener('touchstart', onTouchStart, { passive: false });
+    el.addEventListener('touchmove', onTouchMove, { passive: false });
+    el.addEventListener('touchend', onTouchEnd, { passive: false });
+    el.addEventListener('touchcancel', onTouchEnd, { passive: false });
+    document.addEventListener('touchend', onDocumentTouchEnd, { passive: false });
+    document.addEventListener('touchcancel', onDocumentTouchEnd, { passive: false });
+
+    return () => {
+      el.removeEventListener('touchstart', onTouchStart);
+      el.removeEventListener('touchmove', onTouchMove);
+      el.removeEventListener('touchend', onTouchEnd);
+      el.removeEventListener('touchcancel', onTouchEnd);
+      document.removeEventListener('touchend', onDocumentTouchEnd);
+      document.removeEventListener('touchcancel', onDocumentTouchEnd);
+      if (autoIntervalRef.current) {
+        clearInterval(autoIntervalRef.current);
+        autoIntervalRef.current = null;
+      }
+      activeTouchRef.current = null;
+    };
+  }, [isInteractive, ability, index, onAbilityFire]);
+
+  return (
+    <div
+      ref={cellRef}
+      style={{
+        position: 'relative',
+        background: 'var(--bg-subtle)',
+        borderRadius: 6,
+        border: '1px solid var(--border)',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'flex-end',
+        alignItems: 'flex-start',
+        padding: '6px 8px',
+        opacity: ability !== null ? 1.0 : 0.6,
+        pointerEvents: isInteractive && !isOnCooldown ? 'auto' : 'none',
+        overflow: 'hidden',
+        boxSizing: 'border-box',
+        minHeight: 44,
+        boxShadow: tapFlash && ability?.inputType === 'TAP'
+          ? 'inset 0 0 0 2000px rgba(110,168,216,0.5)'
+          : 'none',
+      }}
+      onPointerDown={e => {
+        if (!isInteractive || ability === null) return;
+        if (ability.inputType !== 'TAP') return;
+        e.preventDefault();
+        onAbilityFire(index, 0, 0, false);
+      }}
+    >
+      {ability !== null ? (
+        <>
+          <span
+            style={{
+              fontFamily: 'var(--font-body)',
+              fontWeight: 400,
+              fontStyle: 'italic',
+              fontSize: 'var(--text-base)',
+              color: 'var(--text-primary)',
+              lineHeight: 1.2,
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              width: '100%',
+            }}
+          >
+            {ability.name}
+          </span>
+          <span
+            style={{
+              fontFamily: 'var(--font-body)',
+              fontWeight: 400,
+              fontSize: 'var(--text-xs)',
+              color: 'var(--text-secondary)',
+              marginTop: 3,
+              borderLeft: `3px solid ${badgeBorderColor}`,
+              paddingLeft: 4,
+              lineHeight: 1,
+            }}
+          >
+            {ability.inputType}
+          </span>
+        </>
+      ) : (
+        <span
+          style={{
+            fontFamily: 'var(--font-body)',
+            fontStyle: 'italic',
+            fontSize: 'var(--text-base)',
+            color: 'var(--text-secondary)',
+            margin: 'auto',
+          }}
+        >
+          —
+        </span>
+      )}
+
+      {/* Cooldown overlay */}
+      {isOnCooldown && (
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            borderRadius: 6,
+            background: `conic-gradient(transparent ${degRevealed}deg, rgba(15,14,16,0.7) ${degRevealed}deg)`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 5,
+            pointerEvents: 'none',
+          }}
+        >
+          <span
+            style={{
+              fontFamily: 'var(--font-body)',
+              fontWeight: 700,
+              fontSize: 'var(--text-sm)',
+              color: 'var(--text-primary)',
+              textShadow: '0 1px 3px rgba(0,0,0,0.8)',
+              pointerEvents: 'none',
+            }}
+          >
+            {countdownSeconds}
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function ControllerScreen({ session, gameState, cooldowns }: ControllerScreenProps) {
+  const myPlayer = gameState?.players.find(p => p.id === session?.playerId) ?? null;
+  const activePoi = myPlayer?.nearPoiId ?? null;
+  const confirmedClass = myPlayer?.class ?? null;
+  const classDef = confirmedClass !== null ? CLASS_DEFINITIONS[confirmedClass] : null;
   const joystickZoneRef = useRef<HTMLDivElement>(null);
 
   // Refs for values read inside event handlers — avoids stale closure issues
@@ -24,11 +729,60 @@ export function ControllerScreen({ session, gameState: _gameState }: ControllerS
   // State for visual rendering only; origin starts null so knob is hidden until first touch
   const [joystickOriginState, setJoystickOriginState] = useState<{ x: number; y: number } | null>(null);
   const [joystickKnobOffset, setJoystickKnobOffset] = useState({ x: 0, y: 0 });
+  const [classSelectionOpen, setClassSelectionOpen] = useState(false);
+  const [trainingDummyActive, setTrainingDummyActive] = useState(false);
+  const [tapFlash, setTapFlash] = useState<boolean[]>([false, false, false, false]);
+  const [displayTick, setDisplayTick] = useState(0);
 
   // Keep sessionRef in sync so event handlers always have the latest session
   useEffect(() => {
     sessionRef.current = session;
   }, [session]);
+
+  // Clear training mode when player moves away from training dummy
+  useEffect(() => {
+    if (activePoi !== 'training-dummy') {
+      setTrainingDummyActive(false);
+    }
+  }, [activePoi]);
+
+  // Force re-render while any cooldown is active, to update countdown displays
+  const anyCooldownActive = cooldowns.some(cd => cd !== null && cd.expiresAt > Date.now());
+  useEffect(() => {
+    if (!anyCooldownActive) return;
+    const interval = setInterval(() => {
+      setDisplayTick(t => t + 1);
+    }, 100);
+    return () => clearInterval(interval);
+  }, [anyCooldownActive]);
+
+  // Suppress unused variable warning — displayTick is only used to trigger re-renders
+  void displayTick;
+
+  const handleAbilityFire = useCallback((abilityIndex: number, dirX: number, dirY: number, isContinuous: boolean) => {
+    const s = sessionRef.current;
+    if (!s) return;
+    const msg: InputEventMsg = {
+      type: 'input',
+      event: { type: 'ability', ability: { abilityIndex, directionX: dirX, directionY: dirY } },
+    };
+    s.sendInput(msg);
+
+    if (!isContinuous) {
+      setTapFlash(prev => {
+        const next = [...prev];
+        next[abilityIndex] = true;
+        return next;
+      });
+      setTimeout(() => {
+        setTapFlash(prev => {
+          const next = [...prev];
+          next[abilityIndex] = false;
+          return next;
+        });
+      }, 150);
+    }
+  }, []);
 
   const sendJoystick = useCallback((nx: number, ny: number) => {
     const now = Date.now();
@@ -134,6 +888,7 @@ export function ControllerScreen({ session, gameState: _gameState }: ControllerS
   return (
     <div
       style={{
+        position: 'relative',
         height: '100%',
         display: 'flex',
         background: 'var(--bg-base)',
@@ -141,6 +896,13 @@ export function ControllerScreen({ session, gameState: _gameState }: ControllerS
         userSelect: 'none',
       }}
     >
+      <InteractButton
+        visible={activePoi !== null}
+        onTap={() => {
+          if (activePoi === 'class-select') setClassSelectionOpen(true);
+          if (activePoi === 'training-dummy' && confirmedClass !== null) setTrainingDummyActive(true);
+        }}
+      />
       {/* Left zone — floating joystick (40% width) */}
       <div
         ref={joystickZoneRef}
@@ -221,7 +983,7 @@ export function ControllerScreen({ session, gameState: _gameState }: ControllerS
         )}
       </div>
 
-      {/* Right zone — 2×2 skill grid (60% width), non-interactive in hub */}
+      {/* Right zone — 2×2 skill grid (60% width) */}
       <div
         style={{
           width: '60%',
@@ -232,35 +994,50 @@ export function ControllerScreen({ session, gameState: _gameState }: ControllerS
           gap: 4,
           padding: 8,
           boxSizing: 'border-box',
+          touchAction: trainingDummyActive ? 'none' : 'auto',
+          position: 'relative',
         }}
       >
-        {[0, 1, 2, 3].map(i => (
-          <div
-            key={i}
-            style={{
-              background: 'var(--bg-subtle)',
-              borderRadius: 6,
-              border: '1px solid var(--border)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              opacity: 0.6,
-              pointerEvents: 'none',
-            }}
-          >
-            <span
-              style={{
-                fontFamily: 'var(--font-body)',
-                fontStyle: 'italic',
-                fontSize: 'var(--text-base)',
-                color: 'var(--text-secondary)',
-              }}
-            >
-              —
-            </span>
-          </div>
-        ))}
+        {[0, 1, 2, 3].map(i => {
+          const ability = classDef?.abilities[i] ?? null;
+          const cd = cooldowns[i] ?? null;
+          const now = Date.now();
+          const isOnCooldown = cd !== null && cd.expiresAt > now;
+          const isInteractive = trainingDummyActive && ability !== null && !isOnCooldown;
+          const badgeBorderColor = ability !== null
+            ? (ability.inputType === 'AUTO' ? 'var(--accent-spirit)'
+              : ability.inputType === 'RELEASE' ? 'var(--accent-warm)'
+              : 'var(--border)')
+            : 'var(--border)';
+
+          return (
+            <SkillCell
+              key={i}
+              index={i}
+              ability={ability}
+              cooldownState={isOnCooldown ? cd : null}
+              isInteractive={isInteractive}
+              badgeBorderColor={badgeBorderColor}
+              onAbilityFire={handleAbilityFire}
+              tapFlash={tapFlash[i] ?? false}
+            />
+          );
+        })}
       </div>
+
+      {/* Class selection overlay */}
+      {classSelectionOpen && (
+        <ClassSelectionScreen
+          onBack={() => setClassSelectionOpen(false)}
+          onPickClass={(classId) => {
+            setClassSelectionOpen(false);
+            const s = sessionRef.current;
+            if (s) {
+              s.sendClassSelect({ type: 'class:select', classId });
+            }
+          }}
+        />
+      )}
     </div>
   );
 }

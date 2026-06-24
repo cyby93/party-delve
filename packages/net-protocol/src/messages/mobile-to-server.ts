@@ -1,4 +1,4 @@
-import type { InputEvent, JoinRequest } from 'shared-types';
+import type { InputEvent, JoinRequest, PlayerClass } from 'shared-types';
 
 export interface InputEventMsg {
   type: 'input';
@@ -8,4 +8,9 @@ export interface InputEventMsg {
 export interface JoinRequestMsg {
   type: 'join_request';
   request: JoinRequest;
+}
+
+export interface ClassSelectMsg {
+  type: 'class:select';
+  classId: PlayerClass;
 }

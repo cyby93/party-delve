@@ -31,6 +31,31 @@ export function applyDelta(state: GameState, evt: DeltaEventMsg): GameState {
         ),
       };
     }
+    case 'player:poi-entered': {
+      if (!state.players.some(p => p.id === evt.playerId)) return state;
+      return {
+        ...state,
+        players: state.players.map(p =>
+          p.id === evt.playerId ? { ...p, nearPoiId: evt.poiId } : p
+        ),
+      };
+    }
+    case 'player:poi-exited': {
+      if (!state.players.some(p => p.id === evt.playerId)) return state;
+      return {
+        ...state,
+        players: state.players.map(p =>
+          p.id === evt.playerId ? { ...p, nearPoiId: null } : p
+        ),
+      };
+    }
+    case 'player:class-updated': {
+      if (!state.players.some(p => p.id === evt.playerId)) return state;
+      const players = state.players.map(p =>
+        p.id === evt.playerId ? { ...p, class: evt.class } : p
+      );
+      return { ...state, players };
+    }
     default:
       return state;
   }

@@ -1,4 +1,4 @@
-import type { GameState, BondState, EssenceDrop } from 'shared-types';
+import type { GameState, BondState, EssenceDrop, PlayerClass } from 'shared-types';
 
 export interface SnapshotMsg {
   type: 'snapshot';
@@ -67,6 +67,24 @@ export type EssenceCollectedDelta = {
   byPlayerId: string;
 };
 
+export type PlayerPoiEnteredDelta = {
+  type: 'player:poi-entered';
+  playerId: string;
+  poiId: string;
+  poiType: string;  // PoiType value — string to avoid circular import between packages
+};
+
+export type PlayerPoiExitedDelta = {
+  type: 'player:poi-exited';
+  playerId: string;
+};
+
+export type PlayerClassUpdatedDelta = {
+  type: 'player:class-updated';
+  playerId: string;
+  class: PlayerClass;
+};
+
 export type DeltaEventMsg =
   | PlayerMovedDelta
   | PlayerDownedDelta
@@ -78,4 +96,7 @@ export type DeltaEventMsg =
   | EnemyMovedDelta
   | BondAssignedDelta
   | EssenceDroppedDelta
-  | EssenceCollectedDelta;
+  | EssenceCollectedDelta
+  | PlayerPoiEnteredDelta
+  | PlayerPoiExitedDelta
+  | PlayerClassUpdatedDelta;

@@ -19,7 +19,7 @@ export enum SessionColor {
 export interface PlayerState {
   id: string;
   displayName: string;
-  class: PlayerClass;
+  class: PlayerClass | null;
   x: number;
   y: number;
   hp: number;
@@ -29,4 +29,5 @@ export interface PlayerState {
   isSpirit: boolean;
   sessionColor: SessionColor;
   downCount: number;
+  nearPoiId: string | null;  // null = not near any interactive POI
 }
