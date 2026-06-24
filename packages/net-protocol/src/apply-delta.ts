@@ -4,6 +4,7 @@ import type { DeltaEventMsg } from './messages/server-to-host.js';
 export function applyDelta(state: GameState, evt: DeltaEventMsg): GameState {
   switch (evt.type) {
     case 'player:moved': {
+      if (!state.players.some(p => p.id === evt.playerId)) return state;
       const players = state.players.map(p =>
         p.id === evt.playerId ? { ...p, x: evt.x, y: evt.y } : p
       );
@@ -13,6 +14,7 @@ export function applyDelta(state: GameState, evt: DeltaEventMsg): GameState {
       return { ...state, players: state.players.filter(p => p.id !== evt.playerId) };
     }
     case 'player:disconnected': {
+      if (!state.players.some(p => p.id === evt.playerId)) return state;
       return {
         ...state,
         players: state.players.map(p =>
@@ -21,6 +23,7 @@ export function applyDelta(state: GameState, evt: DeltaEventMsg): GameState {
       };
     }
     case 'player:reconnected': {
+      if (!state.players.some(p => p.id === evt.playerId)) return state;
       return {
         ...state,
         players: state.players.map(p =>

@@ -21,11 +21,12 @@ function ThreeDots() {
 
 interface SessionCodeEntryScreenProps {
   onJoin: (roomId: string, playerName: string) => Promise<void>;
+  initialCode?: string;
 }
 
-export function SessionCodeEntryScreen({ onJoin }: SessionCodeEntryScreenProps) {
+export function SessionCodeEntryScreen({ onJoin, initialCode }: SessionCodeEntryScreenProps) {
   const urlCode = new URLSearchParams(window.location.search).get('session') ?? '';
-  const [sessionCode, setSessionCode] = useState(urlCode);
+  const [sessionCode, setSessionCode] = useState(initialCode ?? urlCode);
   const [playerName, setPlayerName] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);

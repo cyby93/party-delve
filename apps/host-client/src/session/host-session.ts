@@ -52,8 +52,7 @@ export async function createHostSession(
   return {
     roomId: room.roomId,
     sessionId: room.sessionId,
-    // TODO: add EventNames.HOST_START (deferred to Protocol Architect, see deferred-work.md D38)
-    sendStartGame: () => room.send('host:start', ''),
+    sendStartGame: () => room.send(EventNames.HOST_START, ''),
     disconnect: () => room.leave(),
   };
 }

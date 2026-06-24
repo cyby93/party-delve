@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { AuthChoiceScreen } from './screens/AuthChoiceScreen';
 import { SessionCodeEntryScreen } from './screens/SessionCodeEntryScreen';
 import { OrientationPromptScreen } from './screens/OrientationPromptScreen';
@@ -19,12 +19,29 @@ export function App() {
   const [session, setSession] = useState<MobileSession | null>(null);
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [reconnectRoomId, setReconnectRoomId] = useState<string>('');
+  const [sessionEntryInitialCode, setSessionEntryInitialCode] = useState<string | undefined>(undefined);
+  // Ref keeps handleDelta dep-free while always reading the live playerId.
+  // The callback is wired into room.onMessage once at join time — a closure
+  // over `session` state would capture null and never update.
+  const sessionRef = useRef<MobileSession | null>(null);
 
   useEffect(() => {
     return () => { session?.disconnect(); };
   }, [session]);
 
+  useEffect(() => {
+    sessionRef.current = session;
+  }, [session]);
+
   const handleDelta = useCallback((delta: DeltaEventMsg) => {
+    // Skip self-targeted freeze/thaw deltas — the mobile controller should not
+    // freeze its own state based on the server's broadcast to all clients.
+    if (
+      (delta.type === 'player:disconnected' || delta.type === 'player:reconnected') &&
+      delta.playerId === sessionRef.current?.playerId
+    ) {
+      return;
+    }
     setGameState(prev => prev !== null ? applyDelta(prev, delta) : prev);
   }, []);
 
@@ -39,6 +56,7 @@ export function App() {
   }, []);
 
   const handleGuestContinue = useCallback(() => {
+    setSessionEntryInitialCode(undefined);
     setScreen('session-entry');
   }, []);
 
@@ -81,14 +99,20 @@ export function App() {
   const handleGiveUp = useCallback(() => {
     clearPersistedSession();
     setSession(null);
+    setSessionEntryInitialCode(reconnectRoomId || undefined);
     setScreen('session-entry');
-  }, []);
+  }, [reconnectRoomId]);
 
   if (screen === 'auth-choice') {
     return <AuthChoiceScreen onGuestContinue={handleGuestContinue} />;
   }
   if (screen === 'session-entry') {
-    return <SessionCodeEntryScreen onJoin={handleJoin} />;
+    return (
+      <SessionCodeEntryScreen
+        {...(sessionEntryInitialCode !== undefined ? { initialCode: sessionEntryInitialCode } : {})}
+        onJoin={handleJoin}
+      />
+    );
   }
   if (screen === 'orientation-prompt') {
     return <OrientationPromptScreen onDismiss={handleOrientationDismiss} />;

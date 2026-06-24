@@ -54,7 +54,12 @@ export function ReconnectScreen({ roomId, onReconnect, onGiveUp }: ReconnectScre
             width: 8,
             height: 8,
             borderRadius: '50%',
-            background: status === 'error' ? 'var(--corruption-blood)' : 'var(--accent-warm)',
+            background:
+              status === 'error'
+                ? 'var(--corruption-blood)'
+                : status === 'connecting'
+                  ? 'var(--accent-spirit)'
+                  : 'var(--accent-warm)',
             flexShrink: 0,
           }}
         />

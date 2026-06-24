@@ -69,7 +69,7 @@ export class GameRoom extends Room {
 
     // host:start has no server-side effect yet (deferred to Story 3.x) — register a no-op
     // so Colyseus does not close the host connection with WITH_ERROR (4002)
-    this.onMessage('host:start', () => { /* intentionally empty */ });
+    this.onMessage(EventNames.HOST_START, () => { /* intentionally empty */ });
 
     this.onMessage(EventNames.INPUT, (client: Client, raw: unknown) => {
       try {
