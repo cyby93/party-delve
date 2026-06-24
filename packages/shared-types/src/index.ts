@@ -7,3 +7,4 @@ export * from './input.js';
 export * from './join.js';
 export * from './game-state.js';
 export * from './poi.js';
+export * from './class-definitions.js';

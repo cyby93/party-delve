@@ -254,3 +254,22 @@ Both idle ("Connection lost") and connecting ("Reconnecting…") show `var(--acc
 
 **D-2.1-A — Missing poi-exited delta when player transitions directly between overlapping POIs** [apps/simulation-server/src/rooms/GameRoom.ts:tick()]
 When `player.nearPoiId` transitions from POI-A to POI-B in the same tick (i.e., both are non-null and different), only a `poi-entered` delta for POI-B is broadcast — no `poi-exited` for POI-A. On the client, `applyDelta` overwrites `nearPoiId` with the new POI, which is correct end-state, but a strict delta stream would include the exit first. Not triggered today because `INTERACTIVE_HUB_POIS` has 2 entries placed far apart ("POIs don't overlap" is a stated design invariant). Revisit if overlapping POI zones are ever introduced in later epics.
+
+---
+
+## Deferred from: code review of 2-2-class-selection-flow-card-browse-and-selection (2026-06-24)
+
+**D-2.2-A — stopJoystick not called on ControllerScreen unmount** [apps/mobile-controller/src/screens/ControllerScreen.tsx]
+The joystick `useEffect` cleanup removes touch listeners but does not call `stopJoystick()` to send a zero-vector stop message. If the screen unmounts while joystick is held (e.g., during disconnect), the sim server holds the last non-zero input vector until its own timeout. Pre-existing gap from Story 1.5; address in Story 1.6 follow-up or when ControllerScreen lifetime management is revisited.
+
+**D-2.2-B — Object.values(CLASS_DEFINITIONS) display order is implicit insertion-order** [packages/shared-types/src/class-definitions.ts]
+Card row order depends on V8 object insertion order (STONEHIDE → SPIRITCALLER → SOULDRINKER → STORMCALLER). V8 guarantees this for string keys, but the ordering is a hidden invariant. Consider an explicit `const CLASS_ORDER: PlayerClass[]` in a future polish pass to make ordering intentional and reviewable.
+
+**D-2.2-C — WebkitOverflowScrolling:'touch' deprecated** [apps/mobile-controller/src/screens/ControllerScreen.tsx]
+`-webkit-overflow-scrolling: touch` is a no-op on iOS 13+. Harmless; verify scroll momentum behavior on minimum supported iOS version before removing.
+
+**D-2.2-D — scrollSnapType + alignItems:center may misfire on panel-open resize** [apps/mobile-controller/src/screens/ControllerScreen.tsx]
+When the ability panel opens and the card area height changes mid-drag, `scrollSnapType: 'x mandatory'` may snap to an incorrect center point. Browser-specific; verify on target device range during QA.
+
+**D-2.2-E — Ability panel missing aria-hidden/inert when translated off-screen** [apps/mobile-controller/src/screens/ControllerScreen.tsx]
+The panel div is always in the DOM (translated 100% off-screen when closed); assistive technology may reach the panel container when it is not visible. A11y out of scope for Phase 2; address in accessibility pass before launch.

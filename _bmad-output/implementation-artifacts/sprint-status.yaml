@@ -42,7 +42,7 @@
 # Phase2 legacy stories (old Phase-based keys) are tracked below under PHASE 2 STORIES.
 
 generated: 2026-06-22
-last_updated: 2026-06-24 (story 2-1 done)
+last_updated: 2026-06-24 (story 2-2 done)
 project: party-delve
 project_key: NOKEY
 tracking_system: file-system
@@ -70,7 +70,7 @@ development_status:
   # FRs: FR5, FR11 (4 alpha classes defined), FR12, FR13
   epic-2: in-progress
   2-1-hub-world-poi-layout-and-interact-button: done
-  2-2-class-selection-flow-card-browse-and-selection: backlog
+  2-2-class-selection-flow-card-browse-and-selection: done
   2-3-class-confirmation-and-hub-controller-transition: backlog
   2-4-training-dummy-poi: backlog
   epic-2-retrospective: optional
