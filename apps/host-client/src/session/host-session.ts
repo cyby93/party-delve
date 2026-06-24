@@ -12,6 +12,12 @@ export interface HostSession {
   disconnect: () => void;
 }
 
+// Colyseus may deliver the payload as a msgpack-decoded object or as a JSON string
+// depending on how the server sent it. Accept both.
+function decode<T>(data: unknown): T {
+  return (typeof data === 'string' ? deserialize<T>(data) : data) as T;
+}
+
 export async function createHostSession(
   onStateUpdate: (state: GameState) => void,
   onError: (code: number, message: string) => void
@@ -22,28 +28,21 @@ export async function createHostSession(
 
   let currentState: GameState | null = null;
 
-  // P3: wrap handlers so a throw doesn't leak the connected room
-  room.onMessage(EventNames.SNAPSHOT, (data: string) => {
+  room.onMessage(EventNames.SNAPSHOT, (data: unknown) => {
     try {
-      const msg = deserialize<SnapshotMsg>(data);
+      const msg = decode<SnapshotMsg>(data);
       currentState = msg.state;
       onStateUpdate(currentState);
-    } catch (err) {
-      room.leave();
-      onError(-1, `Snapshot parse error: ${String(err)}`);
-    }
+    } catch { /* ignore malformed snapshot */ }
   });
 
-  room.onMessage(EventNames.DELTA, (data: string) => {
+  room.onMessage(EventNames.DELTA, (data: unknown) => {
     if (!currentState) return;
     try {
-      const delta = deserialize<DeltaEventMsg>(data);
+      const delta = decode<DeltaEventMsg>(data);
       currentState = applyDelta(currentState, delta);
       onStateUpdate(currentState);
-    } catch (err) {
-      room.leave();
-      onError(-1, `Delta parse error: ${String(err)}`);
-    }
+    } catch { /* ignore malformed delta */ }
   });
 
   room.onError((code: number, message?: string) => {

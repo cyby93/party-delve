@@ -55,5 +55,5 @@ export function App() {
       />
     );
   }
-  return <HubWorldScreen />;
+  return <HubWorldScreen gameState={gameState} session={session} />;
 }

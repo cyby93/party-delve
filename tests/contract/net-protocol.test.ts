@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { serialize, deserialize } from 'net-protocol';
-import type { SnapshotMsg, DeltaEventMsg } from 'net-protocol';
+import type { SnapshotMsg, DeltaEventMsg, InputEventMsg } from 'net-protocol';
 import type { GameState } from 'shared-types';
 import { PlayerClass, SessionColor } from 'shared-types';
 
@@ -60,6 +60,24 @@ describe('net-protocol contract tests', () => {
     it('player:left survives serialize → deserialize', () => {
       const delta = { type: 'player:left' as const, playerId: 'p1' } satisfies DeltaEventMsg;
       expect(deserialize<DeltaEventMsg>(serialize(delta))).toEqual(delta);
+    });
+  });
+
+  describe('InputEventMsg round-trip', () => {
+    it('joystick input survives serialize → deserialize', () => {
+      const msg: InputEventMsg = {
+        type: 'input',
+        event: { type: 'joystick', joystick: { x: 0.5, y: -0.75 } },
+      };
+      expect(deserialize<InputEventMsg>(serialize(msg))).toEqual(msg);
+    });
+
+    it('ability input survives serialize → deserialize', () => {
+      const msg: InputEventMsg = {
+        type: 'input',
+        event: { type: 'ability', ability: { abilityIndex: 2, directionX: 1, directionY: 0 } },
+      };
+      expect(deserialize<InputEventMsg>(serialize(msg))).toEqual(msg);
     });
   });
 });

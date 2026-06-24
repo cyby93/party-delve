@@ -201,3 +201,25 @@ Dev-only. React 18 StrictMode re-runs effects after cleanup; the immediate-dismi
 
 **D20 — Short sessionId (< 6 chars) would not behave as documented in displayName fallback** [GameRoom.ts]
 `client.sessionId.slice(-6)` on a string shorter than 6 chars returns the full string (no error). Colyseus currently always generates 9-char IDs via nanoid. Guard is not needed now but should be verified when Phase 5 auth providers are wired in.
+
+---
+
+## Deferred from: code review of 1-5-hub-world-bootstrap-and-player-presence (2026-06-23)
+
+**D21 — slotIndex collision after player disconnects — color/spawn reuse** [apps/simulation-server/src/rooms/GameRoom.ts:100]
+`slotIndex = this.gameState.players.length` is computed after every disconnect shrinks the array. A new joiner inherits a slot index already used by an existing player, colliding on `SESSION_COLORS` and `SPAWN_POSITIONS`. Story 1.6 must use a slot-reservation map instead of array length.
+
+**D22 — isDown/isSpirit flags not checked before applying movement** [apps/simulation-server/src/rooms/GameRoom.ts:tick()]
+Only `isFrozen` is tested in the movement loop. `isDown` and `isSpirit` players should also be immobile. Not meaningful in Story 1.5 scope (no combat); address in Story 3.x with the full player FSM.
+
+**D23 — sendInput closure captures stale room reference post-reconnect** [apps/mobile-controller/src/session/mobile-session.ts:sendInput]
+`sendInput: (msg) => room.send(...)` closes over the `room` object at join time. After reconnect, a new `room` object exists but `sendInput` still references the old one. Needs the same `sessionRef` pattern used in `ControllerScreen`. Address in Story 1.6 reconnect flow.
+
+**D24 — Stop event silently dropped when session is null on touchend** [apps/mobile-controller/src/screens/ControllerScreen.tsx:stopJoystick]
+If `sessionRef.current` is null when touch ends, the zero-vector stop message is never sent. The character keeps moving at last known velocity on the server until the next snapshot overwrites state. Story 1.6 reconnect scope.
+
+**D25 — applyDelta creates new state object for unknown playerId** [packages/net-protocol/src/apply-delta.ts]
+`player:moved` with an unrecognized `playerId` returns a new `{ ...state, players }` even though nothing changed. Any equality-based memoization sees a new reference and triggers a re-render. Add an early-return guard `if (!state.players.some(p => p.id === evt.playerId)) return state`. Low priority optimization.
+
+**D26 — useEffect touch listener re-registration if sendJoystick/stopJoystick identity changes** [apps/mobile-controller/src/screens/ControllerScreen.tsx:133]
+Both callbacks are stable (`useCallback` with `[]` deps) today, so the effect runs once. If a future developer adds a dep to either callback, listeners are torn down and re-added mid-touch. Currently safe; add a comment warning against adding deps.
