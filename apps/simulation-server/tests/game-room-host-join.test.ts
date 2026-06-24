@@ -6,8 +6,8 @@
  * this.broadcast. The Room base class is not instantiated.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { GameState } from 'shared-types';
-import { PlayerClass, SessionColor } from 'shared-types';
+import type { GameState, PlayerState } from 'shared-types';
+import { PlayerClass, SessionColor, TICK_RATE_HZ } from 'shared-types';
 import { serialize, EventNames } from 'net-protocol';
 import type { SnapshotMsg } from 'net-protocol';
 import { deserialize } from 'net-protocol';
@@ -161,5 +161,100 @@ describe('GameRoom.onJoin — host branch (Story 1.3 patch)', () => {
     const longEmojiName = 'A'.repeat(32) + '😀';
     simulateOnJoin(gameState, 'player-id', { playerName: longEmojiName }, clientSend, roomBroadcast);
     expect(gameState.players[0]?.displayName).toBe('A'.repeat(32));
+  });
+});
+
+// Pure helper mirroring GameRoom.tick() steps 1–2 (joystick drain + movement loop).
+function simulateMovementTick(
+  players: GameState['players'],
+  lastKnownJoystick: Map<string, { x: number; y: number }>,
+  incomingJoystickEvents: Array<{ clientId: string; joystick: { x: number; y: number } }>,
+): void {
+  for (const { clientId, joystick } of incomingJoystickEvents) {
+    lastKnownJoystick.set(clientId, joystick);
+  }
+
+  const SPEED = 200;
+  const DT = 1 / TICK_RATE_HZ;
+  for (const player of players) {
+    if (player.isFrozen) continue;
+    const joystick = lastKnownJoystick.get(player.id);
+    if (!joystick) continue;
+    const { x, y } = joystick;
+    if (Math.abs(x) < 0.05 && Math.abs(y) < 0.05) continue;
+    player.x += x * SPEED * DT;
+    player.y += y * SPEED * DT;
+  }
+}
+
+function makePlayer(id: string): PlayerState {
+  return {
+    id,
+    displayName: 'TestPlayer',
+    class: null,
+    x: 0,
+    y: 0,
+    hp: 100,
+    maxHp: 100,
+    isFrozen: false,
+    isDown: false,
+    isSpirit: false,
+    sessionColor: SessionColor.RED,
+    downCount: 0,
+    nearPoiId: null,
+  };
+}
+
+describe('GameRoom.tick() — persistent joystick (Story 2.5)', () => {
+  const SPEED = 200;
+  const DT = 1 / TICK_RATE_HZ;
+
+  it('AC6 — player advances on ticks 2 and 3 with no new input after initial joystick', () => {
+    const player = makePlayer('p1');
+    const players = [player];
+    const lastKnownJoystick = new Map<string, { x: number; y: number }>();
+
+    simulateMovementTick(players, lastKnownJoystick, [{ clientId: 'p1', joystick: { x: 1, y: 0 } }]);
+    expect(player.x).toBeCloseTo(SPEED * DT * 1, 5);
+
+    simulateMovementTick(players, lastKnownJoystick, []);
+    expect(player.x).toBeCloseTo(SPEED * DT * 2, 5);
+
+    simulateMovementTick(players, lastKnownJoystick, []);
+    expect(player.x).toBeCloseTo(SPEED * DT * 3, 5);
+  });
+
+  it('AC2 — sending {x:0,y:0} stops movement on next tick', () => {
+    const player = makePlayer('p1');
+    const players = [player];
+    const lastKnownJoystick = new Map<string, { x: number; y: number }>();
+
+    simulateMovementTick(players, lastKnownJoystick, [{ clientId: 'p1', joystick: { x: 1, y: 0 } }]);
+    const xAfterTick1 = player.x;
+
+    simulateMovementTick(players, lastKnownJoystick, [{ clientId: 'p1', joystick: { x: 0, y: 0 } }]);
+    expect(player.x).toBe(xAfterTick1);
+  });
+
+  it('AC3 — player that never sent joystick does not move', () => {
+    const player = makePlayer('p1');
+    const players = [player];
+    const lastKnownJoystick = new Map<string, { x: number; y: number }>();
+
+    simulateMovementTick(players, lastKnownJoystick, []);
+    simulateMovementTick(players, lastKnownJoystick, []);
+    expect(player.x).toBe(0);
+    expect(player.y).toBe(0);
+  });
+
+  it('AC4 — frozen player does not move even with lastKnownJoystick set', () => {
+    const player = makePlayer('p1');
+    player.isFrozen = true;
+    const players = [player];
+    const lastKnownJoystick = new Map<string, { x: number; y: number }>();
+    lastKnownJoystick.set('p1', { x: 1, y: 0 });
+
+    simulateMovementTick(players, lastKnownJoystick, []);
+    expect(player.x).toBe(0);
   });
 });

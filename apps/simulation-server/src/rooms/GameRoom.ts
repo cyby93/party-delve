@@ -65,6 +65,7 @@ export class GameRoom extends Room {
   // Array index = abilityIndex (0–3). Value 0 = no cooldown active.
   // NOT part of GameState — purely server-local, not snapshotted.
   private cooldownMap = new Map<string, number[]>();
+  private lastKnownJoystick = new Map<string, { x: number; y: number }>();
   private nextSlotIndex = 0;
 
   async onCreate(_options: unknown): Promise<void> {
@@ -164,6 +165,7 @@ export class GameRoom extends Room {
       this.gameState.players = this.gameState.players.filter(p => p.id !== client.sessionId);
       this.gameState.session.playerCount = this.gameState.players.length;
       this.cooldownMap.delete(client.sessionId);
+      this.lastKnownJoystick.delete(client.sessionId);
       const delta = { type: 'player:left' as const, playerId: client.sessionId } satisfies DeltaEventMsg;
       this.broadcast(EventNames.DELTA, delta);
       logger.info({ roomId: this.roomId, clientId: client.sessionId }, 'player left (consented)');
@@ -195,6 +197,7 @@ export class GameRoom extends Room {
       this.gameState.players = this.gameState.players.filter(p => p.id !== client.sessionId);
       this.gameState.session.playerCount = this.gameState.players.length;
       this.cooldownMap.delete(client.sessionId);
+      this.lastKnownJoystick.delete(client.sessionId);
       const delta = { type: 'player:left' as const, playerId: client.sessionId } satisfies DeltaEventMsg;
       this.broadcast(EventNames.DELTA, delta);
       logger.info({ roomId: this.roomId, clientId: client.sessionId }, 'reconnect grace expired — player removed');
@@ -213,11 +216,12 @@ export class GameRoom extends Room {
     this.tickCount++;
     this.gameState.tick = this.tickCount;
 
-    // Collect last joystick input per player (latest entry in queue wins)
-    const joystickByPlayer = new Map<string, { x: number; y: number }>();
+    // Drain joystick events into persistent map (latest entry per player wins).
+    // WARNING: both this loop and the ability loop below read inputQueue before it is cleared.
+    // Do not move the inputQueue.length = 0 clear above either loop.
     for (const { clientId, msg } of this.inputQueue) {
       if (msg.event.type === 'joystick') {
-        joystickByPlayer.set(clientId, msg.event.joystick);
+        this.lastKnownJoystick.set(clientId, msg.event.joystick);
       }
     }
 
@@ -227,7 +231,8 @@ export class GameRoom extends Room {
 
     for (const player of this.gameState.players) {
       if (player.isFrozen) continue;
-      const joystick = joystickByPlayer.get(player.id);
+      // player.id === client.sessionId (set in createPlayer); map is keyed by clientId (= client.sessionId)
+      const joystick = this.lastKnownJoystick.get(player.id);
       if (!joystick) continue;
       const { x, y } = joystick;
       if (Math.abs(x) < 0.05 && Math.abs(y) < 0.05) continue;

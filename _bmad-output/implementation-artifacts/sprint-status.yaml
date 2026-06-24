@@ -73,6 +73,7 @@ development_status:
   2-2-class-selection-flow-card-browse-and-selection: done
   2-3-class-confirmation-and-hub-controller-transition: done
   2-4-training-dummy-poi: done
+  2-5-server-persistent-joystick-vector: done
   epic-2-retrospective: optional
 
   # ─── E3: Core Combat — 4 Alpha Classes ──────────────────────────────────────
@@ -135,10 +136,3 @@ development_status:
   # Stories: not yet defined
   epic-10: backlog
   epic-10-retrospective: optional
-
-# ─── PHASE 2 STORIES (CLAUDE.md Phase-based tracking) ────────────────────────
-# Legacy stories from Phase-based numbering (CLAUDE.md Phase 2 = Local Party MVP).
-# These predate the GDD epic story breakdown and use Phase.Story keys.
-# Once reconciled against E1/E2 epic stories, these should be re-keyed and removed.
-phase2_stories:
-  2-1-controller-movement-input: ready-for-dev

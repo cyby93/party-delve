@@ -291,6 +291,25 @@ If a player is at the edge of the training dummy's proximity radius, a joystick 
 **D-2.4-E — Non-integer abilityIndex bypasses bounds check** [apps/simulation-server/src/rooms/GameRoom.ts:~290]
 The `abilityIndex < 0 || abilityIndex > 3` check allows floats like `1.5`. `playerCooldowns[1.5]` writes a non-integer property that the expiry loop never iterates, leaking the entry. Typed mobile client prevents this in practice; add `Number.isInteger(abilityIndex)` guard in Story 3.x when ability inputs are expanded.
 
+## Deferred from: code review of 2-5-server-persistent-joystick-vector (2026-06-24)
+
+**D-2.5-A — Host client INPUT can populate `lastKnownJoystick` permanently** [apps/simulation-server/src/rooms/GameRoom.ts:onLeave:162]
+The `onLeave` early-return guards on `gameState.players` membership, so the host's entry is never deleted. In practice the host client never sends INPUT events; becomes a correctness issue if that constraint is ever relaxed.
+
+**D-2.5-B — Joystick object stored by reference, not shallow-copied** [apps/simulation-server/src/rooms/GameRoom.ts:tick()]
+`this.lastKnownJoystick.set(clientId, msg.event.joystick)` stores the original reference. Safe with the current JSON-string deserialization path; theoretical concern with zero-copy msgpack decoders.
+
+**D-2.5-C — AC6 test exercises a replica of tick() logic, not real GameRoom.tick()** [apps/simulation-server/tests/game-room-host-join.test.ts]
+`simulateMovementTick` is a hand-rolled mirror of the tick logic — production changes to `GameRoom.ts` won't break the test unless the helper is also updated. Matches the pre-existing `simulateOnJoin` test architecture. Revisit if a proper integration test harness becomes available.
+
+**D-2.5-D — Reconnect sessionId Colyseus assumption unverified** [apps/simulation-server/src/rooms/GameRoom.ts:onLeave]
+`allowReconnection` is assumed to preserve the same `sessionId` (Colyseus contract), but this is never tested in the suite. An edge case where Colyseus assigns a new sessionId on reconnect would leave a stale `lastKnownJoystick` entry.
+
+**D-2.5-E — Deadband threshold 0.05 hardcoded in both GameRoom.ts and test helper** [apps/simulation-server/src/rooms/GameRoom.ts:tick(), tests/game-room-host-join.test.ts]
+Pre-existing magic number with no named constant. Changing it in one place without updating the other causes test/production divergence. Extract to a named constant when the movement system is moved to game-rules in Story 3.x.
+
+---
+
 ## Deferred from: code review of 2-3-class-confirmation-and-hub-controller-transition (2026-06-24)
 
 **D-2.3-A — React Strict Mode double-mount permanently loses class-confirmation flash** [apps/host-client/src/screens/HubWorldScreen.tsx:117-181]
