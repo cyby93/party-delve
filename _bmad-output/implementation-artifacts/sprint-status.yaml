@@ -83,7 +83,7 @@ development_status:
   # FRs: FR9(Clear), FR11, FR12, FR13, FR17, FR18, FR19, FR20, FR21, FR22, FR23
   epic-3: in-progress
   3-1-xoshiro128-prng-and-planckjs-physics-world: done
-  3-2-enemy-ai-base-fsm-and-layered-difficulty-behaviors: backlog
+  3-2-enemy-ai-base-fsm-and-layered-difficulty-behaviors: ready-for-dev
   3-3-4-alpha-class-implementations-abilities-and-input-types: backlog
   3-4-combat-resolution-hitboxes-damage-and-spirit-essence-collection: backlog
   3-5-player-health-revive-timer-and-downed-state: backlog
