@@ -10,7 +10,8 @@
   },
   "dependencies": {
     "shared-types": "*",
-    "net-protocol": "*"
+    "net-protocol": "*",
+    "game-rules": "*"
   },
   "devDependencies": {
     "vitest": "^2.0.0",

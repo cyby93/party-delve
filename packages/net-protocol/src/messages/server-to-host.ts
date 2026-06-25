@@ -51,6 +51,14 @@ export type EnemyMovedDelta = {
   y: number;
 };
 
+export type EnemyStompedDelta = {
+  type: 'enemy:stomped';
+  enemyId: string;
+  x: number;
+  y: number;
+  radius: number;
+};
+
 export type BondAssignedDelta = {
   type: 'bond:assigned';
   bond: BondState;
@@ -94,6 +102,7 @@ export type DeltaEventMsg =
   | PlayerReconnectedDelta
   | EnemyKilledDelta
   | EnemyMovedDelta
+  | EnemyStompedDelta
   | BondAssignedDelta
   | EssenceDroppedDelta
   | EssenceCollectedDelta

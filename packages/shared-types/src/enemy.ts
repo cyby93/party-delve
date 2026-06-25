@@ -1,3 +1,9 @@
+export enum EnemyFSMState {
+  IDLE = 'idle',
+  CHASE = 'chase',
+  ATTACK = 'attack',
+}
+
 export enum EnemyType {
   GRUNT = 'grunt',
   RANGED = 'ranged',
@@ -20,4 +26,6 @@ export interface EnemyState {
   maxHp: number;
   difficultyTier: DifficultyTier;
   isAlive: boolean;
+  fsmState: EnemyFSMState;
+  attackCooldownTicks: number;
 }

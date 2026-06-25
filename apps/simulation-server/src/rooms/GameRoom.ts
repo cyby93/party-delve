@@ -11,7 +11,9 @@ import {
   extractPoiBeginContact, extractPoiEndContact, toMeters, toPixels,
 } from '../physics/world.js';
 import type { PoiBeginContactEvent, PoiEndContactEvent } from '../physics/world.js';
-import { createRng } from 'game-rules';
+import { createRng, tickEnemy } from 'game-rules';
+import type { BehaviorLayer, EnemyContext, EnemyAIEvent } from 'game-rules';
+import type { EnemyState } from 'shared-types';
 import { logger } from '../logger.js';
 
 // Distinct session colors assigned per player slot index
@@ -76,6 +78,8 @@ export class GameRoom extends Room {
   private lastKnownJoystick = new Map<string, { x: number; y: number }>();
   private physicsWorld!: World;
   private playerBodies = new Map<string, Body>();
+  private enemyBodies = new Map<string, Body>();
+  private enemyLayers = new Map<string, BehaviorLayer[]>();
   private prng!: () => number;
   private pendingPoiBeginContacts: Array<PoiBeginContactEvent> = [];
   private pendingPoiEndContacts:   Array<PoiEndContactEvent>   = [];
@@ -258,9 +262,36 @@ export class GameRoom extends Room {
       this.physicsWorld.destroyBody(body);
     }
     this.playerBodies.clear();
+    for (const body of this.enemyBodies.values()) {
+      this.physicsWorld.destroyBody(body);
+    }
+    this.enemyBodies.clear();
+    this.enemyLayers.clear();
     this.pendingPoiBeginContacts.length = 0;
     this.pendingPoiEndContacts.length = 0;
     logger.info({ roomId: this.roomId }, 'GameRoom disposed');
+  }
+
+  private buildEnemyContext(enemy: EnemyState): EnemyContext {
+    const dt = 1 / TICK_RATE_HZ;
+    const targetable = this.gameState.players.filter(
+      p => !p.isFrozen && !p.isDown && !p.isSpirit,
+    );
+    if (targetable.length === 0) {
+      return { nearestPlayerPos: null, nearestPlayerDistance: Infinity, dt };
+    }
+    let minDist = Infinity;
+    let nearest = targetable[0]!;
+    for (const p of targetable) {
+      const dx = p.x - enemy.x;
+      const dy = p.y - enemy.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < minDist) {
+        minDist = dist;
+        nearest = p;
+      }
+    }
+    return { nearestPlayerPos: { x: nearest.x, y: nearest.y }, nearestPlayerDistance: minDist, dt };
   }
 
   private tick(): void {
@@ -350,6 +381,34 @@ export class GameRoom extends Room {
     }
     this.pendingPoiBeginContacts.length = 0;
     this.pendingPoiEndContacts.length = 0;
+
+    // ── Enemy AI phase ──────────────────────────────────────────────────────────
+    // Loop is no-op until enemies are spawned (Story 3.3+)
+    for (const enemy of this.gameState.enemies) {
+      if (!enemy.isAlive) continue;
+
+      const ctx = this.buildEnemyContext(enemy);
+      const layers = this.enemyLayers.get(enemy.id) ?? [];
+      const result = tickEnemy(enemy, ctx, layers);
+
+      if (!result.ok) {
+        logger.debug({ roomId: this.roomId, enemyId: enemy.id, error: result.error }, 'enemy AI error — skipping');
+        continue;
+      }
+
+      for (const aiEvt of result.value) {
+        const delta: DeltaEventMsg = aiEvt;
+
+        if (aiEvt.type === 'enemy:moved') {
+          const body = this.enemyBodies.get(enemy.id);
+          if (body) {
+            body.setPosition(Vec2(toMeters(enemy.x), toMeters(enemy.y)));
+          }
+        }
+
+        this.broadcast(EventNames.DELTA, delta);
+      }
+    }
 
     // Process ability inputs — training dummy only (inline cooldown; Story 3.x moves to game-rules/balance.ts)
     const TRAINING_DUMMY_COOLDOWN_MS = 3000;

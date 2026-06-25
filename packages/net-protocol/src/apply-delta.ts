@@ -56,6 +56,8 @@ export function applyDelta(state: GameState, evt: DeltaEventMsg): GameState {
       );
       return { ...state, players };
     }
+    case 'enemy:stomped':
+      return state;  // ponytail: AoE slow applied in Story 3.4 combat system
     default:
       return state;
   }

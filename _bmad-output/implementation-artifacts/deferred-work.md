@@ -348,3 +348,25 @@ Pre-existing (already logged as D27 from Story 1.6 code review). Monotonically i
 
 **D-3.1-F — `planck` dependency in `packages/game-rules/package.json`** [packages/game-rules/package.json:15]
 `"planck": "1.5.0"` is present as a runtime dependency in game-rules even though no game-rules source imports it (ESLint restriction enforces this). Pre-planned entry from project setup; story Dev Notes explicitly defer removal to a cleanup task. Remove in a separate dependency hygiene story.
+
+---
+
+## Deferred from: code review of 3-2-enemy-ai-base-fsm-and-layered-difficulty-behaviors (2026-06-25)
+
+**D-3.2-A — Layer ordering is implicit with no validation** [packages/game-rules/src/systems/ai/fsm.ts]
+The [ChargeLayer, StompLayer] ordering for Hard difficulty is established by convention but not enforced. A caller passing [StompLayer, ChargeLayer] would produce different behavior at 80-100px range. Resolve in Story 3.3 when enemy spawn assigns layers — add a constant or factory function for each difficulty tier.
+
+**D-3.2-B — enemy:stomped apply-delta is a no-op; no host state updated** [packages/net-protocol/src/apply-delta.ts]
+`case 'enemy:stomped': return state` — the AoE slow effect on players is deferred to Story 3.4 combat system. The event round-trips correctly but clients apply no state change. Resolve when combat system is implemented.
+
+**D-3.2-C — getEnemyCount has no guard for negative or zero playerCount** [packages/game-rules/src/balance.ts]
+`Math.ceil(-1 * 1.5) = -2`. Currently only called from Story 3.3+ spawn code where playerCount >= 1. Add a guard (or assert) at the Story 3.3 call site.
+
+**D-3.2-D — ChargeLayer "charge" is fast-walking for one tick, not a committed dash** [packages/game-rules/src/systems/ai/layers/charge.ts]
+CHARGE_SPEED=400px/s at 30hz ≈ 13.3px per tick (vs CHASE_SPEED=80px/s ≈ 2.7px). The charge behavior is ~5× faster movement for a single tick with no windup or commitment. Review and tune in Story 3.4 playtesting.
+
+**D-3.2-E — BehaviorLayer cooldowns are ephemeral instance state, not serialized** [packages/game-rules/src/systems/ai/fsm.ts + apps/simulation-server/src/rooms/GameRoom.ts]
+`currentCooldown` lives on the ChargeLayer/StompLayer class instance in `enemyLayers` Map. Server restart resets all layer cooldowns to 0 (immediate charge/stomp). Resolve in Phase 5 (reconnect/persistence) by adding cooldown state to EnemyState.
+
+**D-3.2-F — StompLayer firing while fsmState=ATTACK pauses attackCooldownTicks** [packages/game-rules/src/systems/ai/fsm.ts]
+When StompLayer fires, tickAttack is skipped that tick, so attackCooldownTicks doesn't decrement. The two timers (attack cooldown, stomp cooldown) are independent. This is architecturally intentional but may produce surprising attack-cooldown freezes mid-stomp in playtesting. Review in Story 3.3 when enemies are actually spawned.

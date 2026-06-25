@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { serialize, deserialize, applyDelta, EventNames } from 'net-protocol';
 import type { SnapshotMsg, DeltaEventMsg, InputEventMsg, PlayerPoiEnteredDelta, PlayerPoiExitedDelta } from 'net-protocol';
 import type { GameState, PlayerState } from 'shared-types';
-import { PlayerClass, SessionColor } from 'shared-types';
+import { PlayerClass, SessionColor, EnemyType, DifficultyTier, EnemyFSMState } from 'shared-types';
 
 function mockGameState(): GameState {
   return {
@@ -50,9 +50,38 @@ describe('net-protocol contract tests', () => {
       const msg: SnapshotMsg = { type: 'snapshot', state };
       expect(deserialize<SnapshotMsg>(serialize(msg))).toEqual(msg);
     });
+
+    it('preserves EnemyState with fsmState and attackCooldownTicks', () => {
+      const state = mockGameState();
+      state.enemies.push({
+        id: 'e1',
+        type: EnemyType.GRUNT,
+        x: 100,
+        y: 100,
+        hp: 100,
+        maxHp: 100,
+        difficultyTier: DifficultyTier.EASY,
+        isAlive: true,
+        fsmState: EnemyFSMState.CHASE,
+        attackCooldownTicks: 0,
+      });
+      const msg: SnapshotMsg = { type: 'snapshot', state };
+      expect(deserialize<SnapshotMsg>(serialize(msg))).toEqual(msg);
+    });
   });
 
   describe('DeltaEventMsg round-trip', () => {
+    it('enemy:stomped survives serialize → deserialize', () => {
+      const delta = {
+        type: 'enemy:stomped' as const,
+        enemyId: 'e1',
+        x: 100,
+        y: 200,
+        radius: 150,
+      } satisfies DeltaEventMsg;
+      expect(deserialize<DeltaEventMsg>(serialize(delta))).toEqual(delta);
+    });
+
     it('player:moved survives serialize → deserialize', () => {
       const delta = { type: 'player:moved' as const, playerId: 'p1', x: 5, y: 10 } satisfies DeltaEventMsg;
       expect(deserialize<DeltaEventMsg>(serialize(delta))).toEqual(delta);
