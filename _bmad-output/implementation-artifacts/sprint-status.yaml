@@ -42,7 +42,7 @@
 # Phase2 legacy stories (old Phase-based keys) are tracked below under PHASE 2 STORIES.
 
 generated: 2026-06-22
-last_updated: 2026-06-25 (story 3-1 done)
+last_updated: 2026-06-25 (stories 3-3, 3-4, 3-5, 3-6, 3-7 ready-for-dev)
 project: party-delve
 project_key: NOKEY
 tracking_system: file-system
@@ -84,11 +84,11 @@ development_status:
   epic-3: in-progress
   3-1-xoshiro128-prng-and-planckjs-physics-world: done
   3-2-enemy-ai-base-fsm-and-layered-difficulty-behaviors: ready-for-dev
-  3-3-4-alpha-class-implementations-abilities-and-input-types: backlog
-  3-4-combat-resolution-hitboxes-damage-and-spirit-essence-collection: backlog
-  3-5-player-health-revive-timer-and-downed-state: backlog
-  3-6-spirit-form-downed-player-contribution-and-run-failure: backlog
-  3-7-clear-objective-and-level-completion: backlog
+  3-3-4-alpha-class-implementations-abilities-and-input-types: ready-for-dev
+  3-4-combat-resolution-hitboxes-damage-and-spirit-essence-collection: ready-for-dev
+  3-5-player-health-revive-timer-and-downed-state: ready-for-dev
+  3-6-spirit-form-downed-player-contribution-and-run-failure: ready-for-dev
+  3-7-clear-objective-and-level-completion: ready-for-dev
   epic-3-retrospective: optional
 
   # ─── E4: Procedural Dungeon & Full Run Structure ────────────────────────────
