@@ -16,6 +16,7 @@ export type PlayerDownedDelta = {
   type: 'player:downed';
   playerId: string;
   downCount: number;
+  reviveWindowMs: number;
 };
 
 export type PlayerReviveDelta = {
@@ -109,6 +110,17 @@ export type AbilityFiredDelta = {
   directionY: number;
 };
 
+export type PlayerHpUpdatedDelta = {
+  type: 'player:hp-updated';
+  playerId: string;
+  hp: number;
+};
+
+export type PlayerSpiritDelta = {
+  type: 'player:spirit';
+  playerId: string;
+};
+
 export type DeltaEventMsg =
   | PlayerMovedDelta
   | PlayerDownedDelta
@@ -126,4 +138,6 @@ export type DeltaEventMsg =
   | PlayerPoiEnteredDelta
   | PlayerPoiExitedDelta
   | PlayerClassUpdatedDelta
-  | AbilityFiredDelta;
+  | AbilityFiredDelta
+  | PlayerHpUpdatedDelta
+  | PlayerSpiritDelta;

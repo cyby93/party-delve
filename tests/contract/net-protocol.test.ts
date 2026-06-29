@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { serialize, deserialize, applyDelta, EventNames } from 'net-protocol';
-import type { SnapshotMsg, DeltaEventMsg, InputEventMsg, PlayerPoiEnteredDelta, PlayerPoiExitedDelta, AbilityFiredDelta, EnemyDamagedDelta } from 'net-protocol';
+import type { SnapshotMsg, DeltaEventMsg, InputEventMsg, PlayerPoiEnteredDelta, PlayerPoiExitedDelta, AbilityFiredDelta, EnemyDamagedDelta, PlayerDownedDelta } from 'net-protocol';
 import type { GameState, PlayerState } from 'shared-types';
 import { PlayerClass, SessionColor, EnemyType, DifficultyTier, EnemyFSMState } from 'shared-types';
 
@@ -47,6 +47,7 @@ describe('net-protocol contract tests', () => {
         downCount: 1,
         nearPoiId: null,
         essenceTotal: 0,
+        reviveTimerExpiresAt: 0,
       });
       const msg: SnapshotMsg = { type: 'snapshot', state };
       expect(deserialize<SnapshotMsg>(serialize(msg))).toEqual(msg);
@@ -121,6 +122,7 @@ describe('net-protocol contract tests', () => {
         downCount: 0,
         nearPoiId: null,
         essenceTotal: 0,
+        reviveTimerExpiresAt: 0,
         ...overrides,
       };
     }
@@ -200,6 +202,7 @@ describe('net-protocol contract tests', () => {
         downCount: 0,
         nearPoiId: null,
         essenceTotal: 0,
+        reviveTimerExpiresAt: 0,
         ...overrides,
       };
     }
@@ -260,6 +263,7 @@ describe('net-protocol contract tests', () => {
         downCount: 0,
         nearPoiId: null,
         essenceTotal: 25,
+        reviveTimerExpiresAt: 0,
       });
       const msg: SnapshotMsg = { type: 'snapshot', state };
       expect(deserialize<SnapshotMsg>(serialize(msg))).toEqual(msg);
@@ -308,6 +312,23 @@ describe('net-protocol contract tests', () => {
       state.session.levelIndex = 1;
       const msg: SnapshotMsg = { type: 'snapshot', state };
       expect(deserialize<SnapshotMsg>(serialize(msg))).toEqual(msg);
+    });
+  });
+
+  describe('Story 3.5 delta round-trips', () => {
+    it('player:hp-updated delta survives serialize → deserialize', () => {
+      const delta = { type: 'player:hp-updated' as const, playerId: 'p1', hp: 65 } satisfies DeltaEventMsg;
+      expect(deserialize<DeltaEventMsg>(serialize(delta))).toEqual(delta);
+    });
+
+    it('player:spirit delta survives serialize → deserialize', () => {
+      const delta = { type: 'player:spirit' as const, playerId: 'p1' } satisfies DeltaEventMsg;
+      expect(deserialize<DeltaEventMsg>(serialize(delta))).toEqual(delta);
+    });
+
+    it('player:downed delta with reviveWindowMs survives serialize → deserialize', () => {
+      const delta = { type: 'player:downed' as const, playerId: 'p1', downCount: 2, reviveWindowMs: 40000 } satisfies PlayerDownedDelta;
+      expect(deserialize<DeltaEventMsg>(serialize(delta))).toEqual(delta);
     });
   });
 });

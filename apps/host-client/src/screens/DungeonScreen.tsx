@@ -1,6 +1,6 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Application, Graphics } from 'pixi.js';
-import type { GameState } from 'shared-types';
+import type { GameState, PlayerState } from 'shared-types';
 import { SessionColor, CLASS_DEFINITIONS, PlayerClass } from 'shared-types';
 import type { HostSession } from '../session/host-session';
 import type { DeltaEventMsg } from 'net-protocol';
@@ -161,6 +161,12 @@ function renderFrame(
   }
 }
 
+interface ReviveDeadline {
+  deadline: number;
+  windowMs: number;
+  name: string;
+}
+
 export function DungeonScreen({ gameState, session: _session, latestTransientDelta }: DungeonScreenProps) {
   const canvasContainerRef = useRef<HTMLDivElement>(null);
   const pixiAppRef = useRef<Application | null>(null);
@@ -169,6 +175,8 @@ export function DungeonScreen({ gameState, session: _session, latestTransientDel
   const essenceFlashesRef = useRef<Map<string, EssenceFlash>>(new Map());
   const latestGameStateRef = useRef<GameState | null>(null);
   latestGameStateRef.current = gameState;
+  const reviveDeadlinesRef = useRef<Map<string, ReviveDeadline>>(new Map());
+  const [, setTimerTick] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -234,11 +242,57 @@ export function DungeonScreen({ gameState, session: _session, latestTransientDel
     }
   }, [latestTransientDelta]);
 
+  // Track revive deadlines from downed/revived/spirit deltas
+  useEffect(() => {
+    if (!latestTransientDelta) return;
+    if (latestTransientDelta.type === 'player:downed') {
+      const player = gameState?.players.find(p => p.id === latestTransientDelta.playerId);
+      reviveDeadlinesRef.current.set(latestTransientDelta.playerId, {
+        deadline: Date.now() + latestTransientDelta.reviveWindowMs,
+        windowMs: latestTransientDelta.reviveWindowMs,
+        name: player?.displayName ?? latestTransientDelta.playerId,
+      });
+    } else if (
+      latestTransientDelta.type === 'player:revived' ||
+      latestTransientDelta.type === 'player:spirit'
+    ) {
+      reviveDeadlinesRef.current.delete(latestTransientDelta.playerId);
+    }
+  }, [latestTransientDelta, gameState]);
+
+  // Reconcile revive overlays from gameState snapshot (handles reconnect)
+  useEffect(() => {
+    if (!gameState) return;
+    for (const player of gameState.players) {
+      if (!player.isDown || player.reviveTimerExpiresAt === 0) continue;
+      if (reviveDeadlinesRef.current.has(player.id)) continue;
+      const remaining = Math.max(0, player.reviveTimerExpiresAt - Date.now());
+      reviveDeadlinesRef.current.set(player.id, {
+        deadline: player.reviveTimerExpiresAt,
+        windowMs: remaining,
+        name: player.displayName,
+      });
+    }
+    for (const [id] of reviveDeadlinesRef.current) {
+      const player = gameState.players.find(p => p.id === id);
+      if (!player?.isDown) reviveDeadlinesRef.current.delete(id);
+    }
+  }, [gameState]);
+
+  // Force re-render at 100ms intervals while any revive timers are active
+  const anyTimerActive = reviveDeadlinesRef.current.size > 0;
+  useEffect(() => {
+    if (!anyTimerActive) return;
+    const id = setInterval(() => setTimerTick(t => t + 1), 100);
+    return () => clearInterval(id);
+  }, [anyTimerActive]);
+
   const players = gameState?.players ?? [];
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden' }}>
       <div ref={canvasContainerRef} style={{ position: 'absolute', inset: 0 }} />
+      {/* Player chip strip with HP pips */}
       <div
         style={{
           position: 'absolute',
@@ -246,64 +300,119 @@ export function DungeonScreen({ gameState, session: _session, latestTransientDel
           left: 0,
           right: 0,
           height: 48,
-          background: 'var(--bg-surface)',
+          background: 'rgba(15,14,16,0.6)',
+          backdropFilter: 'blur(4px)',
           display: 'flex',
           alignItems: 'center',
           gap: 8,
           padding: '0 8px',
           zIndex: 10,
           boxSizing: 'border-box',
+          pointerEvents: 'none',
         }}
       >
         {players.map(player => (
-          <PlayerChip key={player.id} name={player.displayName} isFrozen={player.isFrozen} playerClass={player.class} />
+          <PlayerChipHUD key={player.id} player={player} />
         ))}
+      </div>
+      {/* Revive timer overlay — bottom-center */}
+      <div style={{
+        position: 'absolute',
+        bottom: 16,
+        left: '50%',
+        transform: 'translateX(-50%)',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 8,
+        zIndex: 20,
+        pointerEvents: 'none',
+      }}>
+        {Array.from(reviveDeadlinesRef.current.entries()).map(([playerId, { deadline, windowMs, name }]) => {
+          const remaining = Math.max(0, deadline - Date.now());
+          const seconds = Math.ceil(remaining / 1000);
+          const fraction = windowMs > 0 ? remaining / windowMs : 0;
+          const isSafe = remaining > 10000;
+          const timerColor = isSafe ? 'var(--accent-warm)' : 'var(--corruption-blood)';
+          const haloSize = 8 + (1 - fraction) * 32;
+          return (
+            <div key={playerId} style={{
+              background: 'var(--bg-surface)',
+              border: '2px solid var(--accent-corruption)',
+              borderRadius: 6,
+              padding: '8px 16px',
+              minWidth: 280,
+              textAlign: 'center',
+              boxShadow: `0 0 ${haloSize}px var(--accent-warm)`,
+            }}>
+              <div style={{ fontFamily: 'var(--font-body)', fontWeight: 700, fontSize: 'var(--text-sm)', color: 'var(--text-primary)' }}>
+                {name}
+              </div>
+              <div style={{ fontFamily: 'var(--font-body)', fontWeight: 700, fontSize: 40, color: timerColor, lineHeight: 1 }}>
+                {seconds}
+              </div>
+              <div style={{ height: 4, background: 'var(--border)', borderRadius: 2, marginTop: 4 }}>
+                <div style={{ height: '100%', width: `${fraction * 100}%`, background: timerColor, borderRadius: 2, transition: 'width 100ms linear' }} />
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
 }
 
-function PlayerChip({ name, isFrozen, playerClass }: { name: string; isFrozen: boolean; playerClass: PlayerClass | null }) {
-  const classLabel = playerClass !== null
-    ? CLASS_DEFINITIONS[playerClass].displayName
-    : 'Class TBD';
+function PlayerChipHUD({ player }: { player: PlayerState }) {
+  const pips = [0, 1, 2, 3, 4].map(i => player.hp > i * 20);
+  const spiritGlow = player.isSpirit ? { boxShadow: '0 0 6px var(--accent-spirit)' } : {};
 
   return (
     <div
       style={{
         background: 'var(--bg-surface)',
-        border: isFrozen ? '1px dashed var(--border)' : '1px solid var(--border)',
+        border: player.isFrozen ? '1px dashed var(--border)' : '1px solid var(--border)',
         borderRadius: 6,
-        padding: '0 8px',
-        height: 36,
+        padding: '2px 8px',
+        height: 40,
         display: 'flex',
         flexDirection: 'column',
         justifyContent: 'center',
-        gap: 2,
+        gap: 3,
         minWidth: 80,
+        ...spiritGlow,
       }}
     >
       <span
         style={{
           fontFamily: 'var(--font-body)',
           fontWeight: 700,
-          fontSize: 'var(--text-base)',
-          color: isFrozen ? 'var(--text-secondary)' : 'var(--text-primary)',
-          whiteSpace: 'nowrap',
-        }}
-      >
-        {name}
-      </span>
-      <span
-        style={{
-          fontFamily: 'var(--font-body)',
-          fontWeight: 400,
           fontSize: 'var(--text-sm)',
-          color: 'var(--text-secondary)',
+          color: (player.isFrozen || player.isSpirit) ? 'var(--text-secondary)' : 'var(--text-primary)',
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          maxWidth: 80,
         }}
       >
-        {classLabel}
+        {player.displayName}
       </span>
+      {player.isSpirit ? (
+        <span style={{ fontSize: 10, color: 'var(--text-secondary)', letterSpacing: '0.05em' }}>◌◌◌◌◌</span>
+      ) : (
+        <div style={{ display: 'flex', gap: 4 }}>
+          {pips.map((filled, i) => (
+            <div
+              key={i}
+              style={{
+                width: 12,
+                height: 12,
+                borderRadius: 2,
+                background: filled ? 'var(--accent-warm)' : 'transparent',
+                border: '1px solid var(--border)',
+              }}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

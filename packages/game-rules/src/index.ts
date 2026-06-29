@@ -8,7 +8,12 @@ export {
   CHARGE_ACTIVATION_MIN, CHARGE_ACTIVATION_MAX, CHARGE_SPEED, CHARGE_COOLDOWN_TICKS,
   STOMP_ACTIVATION_RANGE, STOMP_RADIUS, STOMP_COOLDOWN_TICKS,
   getEnemyCount,
+  REVIVE_WINDOWS_MS, REVIVE_HP, REVIVE_RADIUS_PX,
+  ENEMY_MELEE_DAMAGE, ENEMY_MELEE_RANGE_PX, ENEMY_ATTACK_COOLDOWN_MS,
+  SPIRIT_ABILITY_NAMES,
 } from './balance.js';
+export { applyPlayerDamage, getReviveWindowMs } from './systems/player-health.js';
+export type { PlayerDamageResult, HealthError } from './systems/player-health.js';
 export { applyDamage, isInHitZone } from './systems/combat.js';
 export type { DamageResult, CombatError } from './systems/combat.js';
 export { tickEnemy, tickBaseFSM } from './systems/ai/fsm.js';

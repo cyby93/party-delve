@@ -39,6 +39,7 @@ function mockPlayer(overrides?: Partial<PlayerState>): PlayerState {
     downCount: 0,
     nearPoiId: null,
     essenceTotal: 0,
+    reviveTimerExpiresAt: 0,
     ...overrides,
   };
 }

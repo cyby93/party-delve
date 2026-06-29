@@ -61,7 +61,9 @@ export function applyDelta(state: GameState, evt: DeltaEventMsg): GameState {
       return {
         ...state,
         players: state.players.map(p =>
-          p.id === evt.playerId ? { ...p, isDown: true, downCount: evt.downCount } : p
+          p.id === evt.playerId
+            ? { ...p, isDown: true, downCount: evt.downCount, reviveTimerExpiresAt: Date.now() + evt.reviveWindowMs }
+            : p
         ),
       };
     }
@@ -70,7 +72,25 @@ export function applyDelta(state: GameState, evt: DeltaEventMsg): GameState {
       return {
         ...state,
         players: state.players.map(p =>
-          p.id === evt.playerId ? { ...p, isDown: false } : p
+          p.id === evt.playerId ? { ...p, isDown: false, reviveTimerExpiresAt: 0 } : p
+        ),
+      };
+    }
+    case 'player:hp-updated': {
+      if (!state.players.some(p => p.id === evt.playerId)) return state;
+      return {
+        ...state,
+        players: state.players.map(p =>
+          p.id === evt.playerId ? { ...p, hp: evt.hp } : p
+        ),
+      };
+    }
+    case 'player:spirit': {
+      if (!state.players.some(p => p.id === evt.playerId)) return state;
+      return {
+        ...state,
+        players: state.players.map(p =>
+          p.id === evt.playerId ? { ...p, isSpirit: true, isDown: false, reviveTimerExpiresAt: 0 } : p
         ),
       };
     }

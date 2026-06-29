@@ -4,8 +4,9 @@ import type { MobileSession } from '../session/mobile-session';
 import type { GameState } from 'shared-types';
 import type { ClassDef } from 'shared-types';
 import type { AbilityInputType, ClassAbilityDef } from 'shared-types';
-import { CLASS_DEFINITIONS, PlayerClass } from 'shared-types';
+import { CLASS_DEFINITIONS, PlayerClass, SessionColor } from 'shared-types';
 import type { CooldownState } from '../App';
+import { SPIRIT_ABILITY_NAMES } from 'game-rules';
 
 interface ControllerScreenProps {
   session: MobileSession | null;
@@ -483,9 +484,12 @@ interface SkillCellProps {
   badgeBorderColor: string;
   onAbilityFire: (abilityIndex: number, dirX: number, dirY: number, isContinuous: boolean) => void;
   tapFlash: boolean;
+  downedOverlay?: boolean;
+  spiritName?: string | null;
+  spiritGlowColor?: string;
 }
 
-function SkillCell({ index, ability, cooldownState: cd, isInteractive, badgeBorderColor, onAbilityFire, tapFlash }: SkillCellProps) {
+function SkillCell({ index, ability, cooldownState: cd, isInteractive, badgeBorderColor, onAbilityFire, tapFlash, downedOverlay, spiritName, spiritGlowColor }: SkillCellProps) {
   const cellRef = useRef<HTMLDivElement>(null);
   const activeTouchRef = useRef<{ id: number; originX: number; originY: number; lastDirX: number; lastDirY: number; releaseFired: boolean } | null>(null);
   const autoIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -712,15 +716,66 @@ function SkillCell({ index, ability, cooldownState: cd, isInteractive, badgeBord
           </span>
         </div>
       )}
+      {/* Downed: lock overlay for cells 0-2 */}
+      {downedOverlay && !spiritName && (
+        <div style={{
+          position: 'absolute',
+          inset: 0,
+          background: 'rgba(15,14,16,0.8)',
+          borderRadius: 6,
+          pointerEvents: 'none',
+          zIndex: 10,
+        }} />
+      )}
+      {/* Downed: spirit ability name on cell 3 */}
+      {spiritName && (
+        <div style={{
+          position: 'absolute',
+          inset: 0,
+          borderRadius: 6,
+          border: `1px solid ${spiritGlowColor ?? 'rgba(231,76,60,0.25)'}`,
+          boxShadow: `0 0 8px ${spiritGlowColor ?? 'rgba(231,76,60,0.25)'}`,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          pointerEvents: 'none',
+          zIndex: 10,
+          padding: '4px 6px',
+        }}>
+          <span style={{
+            fontFamily: 'var(--font-body)',
+            fontWeight: 700,
+            fontSize: 'var(--text-sm)',
+            color: 'var(--text-primary)',
+            textAlign: 'center',
+          }}>
+            {spiritName}
+          </span>
+        </div>
+      )}
     </div>
   );
 }
+
+const SESSION_COLOR_GLOW: Record<SessionColor, string> = {
+  [SessionColor.RED]:    'rgba(231,76,60,0.25)',
+  [SessionColor.BLUE]:   'rgba(52,152,219,0.25)',
+  [SessionColor.GREEN]:  'rgba(46,204,113,0.25)',
+  [SessionColor.YELLOW]: 'rgba(241,196,15,0.25)',
+  [SessionColor.PURPLE]: 'rgba(155,89,182,0.25)',
+  [SessionColor.ORANGE]: 'rgba(230,126,34,0.25)',
+  [SessionColor.PINK]:   'rgba(255,105,180,0.25)',
+  [SessionColor.TEAL]:   'rgba(26,188,156,0.25)',
+};
 
 export function ControllerScreen({ session, gameState, cooldowns }: ControllerScreenProps) {
   const myPlayer = gameState?.players.find(p => p.id === session?.playerId) ?? null;
   const activePoi = myPlayer?.nearPoiId ?? null;
   const confirmedClass = myPlayer?.class ?? null;
   const classDef = confirmedClass !== null ? CLASS_DEFINITIONS[confirmedClass] : null;
+  const isDown = myPlayer?.isDown ?? false;
+  const isSpirit = myPlayer?.isSpirit ?? false;
+  const hpFraction = myPlayer && myPlayer.maxHp > 0 ? myPlayer.hp / myPlayer.maxHp : 1;
   const joystickZoneRef = useRef<HTMLDivElement>(null);
 
   // Refs for values read inside event handlers — avoids stale closure issues
@@ -889,17 +944,42 @@ export function ControllerScreen({ session, gameState, cooldowns }: ControllerSc
     };
   }, [sendJoystick, stopJoystick]);
 
+  const glowColor = myPlayer ? (SESSION_COLOR_GLOW[myPlayer.sessionColor] ?? 'rgba(231,76,60,0.25)') : 'rgba(231,76,60,0.25)';
+  const rootBg = (isDown || isSpirit)
+    ? `radial-gradient(ellipse at center, ${glowColor} 0%, var(--bg-base) 60%)`
+    : 'var(--bg-base)';
+
   return (
     <div
       style={{
         position: 'relative',
         height: '100%',
         display: 'flex',
-        background: 'var(--bg-base)',
+        background: rootBg,
         touchAction: 'none',
         userSelect: 'none',
       }}
     >
+      {/* HP strip — always visible in dungeon, proportional to hp/maxHp */}
+      {inDungeon && myPlayer && (
+        <div style={{
+          position: 'absolute',
+          top: 'env(safe-area-inset-top, 0px)',
+          left: 0,
+          right: 0,
+          height: 6,
+          background: 'var(--bg-subtle)',
+          zIndex: 40,
+          pointerEvents: 'none',
+        }}>
+          <div style={{
+            height: '100%',
+            width: `${hpFraction * 100}%`,
+            background: 'var(--corruption-blood)',
+            transition: 'width 150ms ease-out',
+          }} />
+        </div>
+      )}
       <InteractButton
         visible={activePoi !== null}
         onTap={() => {
@@ -1007,12 +1087,18 @@ export function ControllerScreen({ session, gameState, cooldowns }: ControllerSc
           const cd = cooldowns[i] ?? null;
           const now = Date.now();
           const isOnCooldown = cd !== null && cd.expiresAt > now;
-          const isInteractive = (trainingDummyActive || inDungeon) && ability !== null && !isOnCooldown;
+          // Downed/spirit players cannot use abilities
+          const isInteractive = (trainingDummyActive || (inDungeon && !isDown && !isSpirit)) && ability !== null && !isOnCooldown;
           const badgeBorderColor = ability !== null
             ? (ability.inputType === 'AUTO' ? 'var(--accent-spirit)'
               : ability.inputType === 'RELEASE' ? 'var(--accent-warm)'
               : 'var(--border)')
             : 'var(--border)';
+
+          const spiritAbilityName = i === 3 && (isDown || isSpirit) && confirmedClass
+            ? SPIRIT_ABILITY_NAMES[confirmedClass]
+            : null;
+          const glowColor = SESSION_COLOR_GLOW[myPlayer?.sessionColor ?? SessionColor.RED];
 
           return (
             <SkillCell
@@ -1024,6 +1110,9 @@ export function ControllerScreen({ session, gameState, cooldowns }: ControllerSc
               badgeBorderColor={badgeBorderColor}
               onAbilityFire={handleAbilityFire}
               tapFlash={tapFlash[i] ?? false}
+              downedOverlay={(isDown || isSpirit) && i < 3}
+              spiritName={spiritAbilityName}
+              spiritGlowColor={glowColor}
             />
           );
         })}

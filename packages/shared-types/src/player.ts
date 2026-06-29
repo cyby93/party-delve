@@ -31,4 +31,5 @@ export interface PlayerState {
   downCount: number;
   nearPoiId: string | null;  // null = not near any interactive POI
   essenceTotal: number;
+  reviveTimerExpiresAt: number;  // server-epoch ms; 0 = not downed or expired
 }

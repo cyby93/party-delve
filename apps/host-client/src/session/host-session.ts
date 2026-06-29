@@ -44,7 +44,11 @@ export async function createHostSession(
       if (onTransientDelta && (
         delta.type === 'ability:fired' ||
         delta.type === 'enemy:killed' ||
-        delta.type === 'essence:dropped'
+        delta.type === 'essence:dropped' ||
+        delta.type === 'player:downed' ||
+        delta.type === 'player:revived' ||
+        delta.type === 'player:spirit' ||
+        delta.type === 'player:hp-updated'
       )) {
         onTransientDelta(delta);
       }

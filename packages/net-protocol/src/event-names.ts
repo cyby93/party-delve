@@ -7,4 +7,5 @@ export enum EventNames {
   HOST_START = 'host:start',
   CLASS_SELECT = 'class:select',
   COOLDOWN_UPDATE = 'cooldown:update',
+  SPIRIT_FORM = 'spirit:form',
 }

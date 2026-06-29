@@ -2,7 +2,7 @@ import { Room, Client, CloseCode } from 'colyseus';
 import type { GameState, PlayerState } from 'shared-types';
 import { TICK_RATE_HZ, RECONNECT_GRACE_S, SNAPSHOT_INTERVAL_S, MAX_PLAYERS, PlayerClass, SessionColor, INTERACTIVE_HUB_POIS } from 'shared-types';
 import { EventNames } from 'net-protocol';
-import type { InputEventMsg, SnapshotMsg, DeltaEventMsg, CooldownUpdateMsg } from 'net-protocol';
+import type { InputEventMsg, SnapshotMsg, DeltaEventMsg, CooldownUpdateMsg, SpiritFormMsg } from 'net-protocol';
 import { randomInt } from 'node:crypto';
 import { Vec2, Body, Contact } from 'planck';
 import type { World } from 'planck';
@@ -11,7 +11,7 @@ import {
   extractPoiBeginContact, extractPoiEndContact, extractEssenceBeginContact, toMeters, toPixels,
 } from '../physics/world.js';
 import type { PoiBeginContactEvent, PoiEndContactEvent, EssenceBeginContactEvent } from '../physics/world.js';
-import { createRng, tickEnemy, dispatchAbility, getEnemyCount, applyDamage, isInHitZone, ABILITY_HIT_RANGE_PX, ABILITY_HIT_RADIUS_PX } from 'game-rules';
+import { createRng, tickEnemy, dispatchAbility, getEnemyCount, applyDamage, isInHitZone, ABILITY_HIT_RANGE_PX, ABILITY_HIT_RADIUS_PX, applyPlayerDamage, ENEMY_MELEE_DAMAGE, ENEMY_MELEE_RANGE_PX, ENEMY_ATTACK_COOLDOWN_MS, REVIVE_RADIUS_PX, REVIVE_HP } from 'game-rules';
 import type { BehaviorLayer, EnemyContext, EnemyAIEvent } from 'game-rules';
 import { CLASS_DEFINITIONS } from 'shared-types';
 import type { EnemyState } from 'shared-types';
@@ -67,6 +67,7 @@ function createPlayer(id: string, displayName: string, slotIndex: number): Playe
     downCount: 0,
     nearPoiId: null,
     essenceTotal: 0,
+    reviveTimerExpiresAt: 0,
   };
 }
 
@@ -97,6 +98,7 @@ export class GameRoom extends Room {
   private essenceSensorBodies = new Map<string, Body>();
   private pendingEssenceBeginContacts: Array<EssenceBeginContactEvent> = [];
   private nextSlotIndex = 0;
+  private enemyAttackCooldowns = new Map<string, number>(); // enemyId → expiry epoch ms
 
   async onCreate(_options: unknown): Promise<void> {
     this.roomId = generateRoomCode();
@@ -297,6 +299,7 @@ export class GameRoom extends Room {
     }
     this.enemyBodies.clear();
     this.enemyLayers.clear();
+    this.enemyAttackCooldowns.clear();
     for (const body of this.essenceSensorBodies.values()) {
       this.physicsWorld.destroyBody(body);
     }
@@ -329,6 +332,7 @@ export class GameRoom extends Room {
       this.gameState.enemies.push(enemy);
       const body = createEnemyBody(this.physicsWorld, id, x, y);
       this.enemyBodies.set(id, body);
+      this.enemyAttackCooldowns.set(id, 0);
     }
     logger.info({ roomId: this.roomId, count }, 'enemies spawned');
   }
@@ -590,6 +594,7 @@ export class GameRoom extends Room {
               this.physicsWorld.destroyBody(enemyBody);
               this.enemyBodies.delete(enemy.id);
             }
+            this.enemyAttackCooldowns.delete(enemy.id);
 
             const drop = dmgResult.value.essenceDrop!;
             this.gameState.essenceDrops.push(drop);
@@ -608,6 +613,133 @@ export class GameRoom extends Room {
     }
 
     this.inputQueue.length = 0;
+
+    // ── Enemy melee attacks ───────────────────────────────────────────────────
+    if (this.gameState.session.phase === 'dungeon') {
+      const nowMelee = Date.now();
+
+      for (const enemy of this.gameState.enemies) {
+        if (!enemy.isAlive) continue;
+        // ponytail: only ATTACK-state enemies deal melee damage; FSM handles transitions
+        if (enemy.fsmState !== EnemyFSMState.ATTACK) continue;
+
+        const attackExpiry = this.enemyAttackCooldowns.get(enemy.id) ?? 0;
+        if (attackExpiry > nowMelee) continue;
+
+        let targetPlayer: (typeof this.gameState.players)[0] | null = null;
+        let minDist = Infinity;
+        for (const player of this.gameState.players) {
+          if (player.isDown || player.isSpirit || player.isFrozen) continue;
+          const dx = player.x - enemy.x;
+          const dy = player.y - enemy.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < ENEMY_MELEE_RANGE_PX && dist < minDist) {
+            minDist = dist;
+            targetPlayer = player;
+          }
+        }
+        if (!targetPlayer) continue;
+
+        const dmgResult = applyPlayerDamage(targetPlayer, ENEMY_MELEE_DAMAGE);
+        if (!dmgResult.ok) continue;
+
+        const pi = this.gameState.players.findIndex(p => p.id === targetPlayer!.id);
+        if (pi === -1) continue;
+        this.gameState.players[pi] = dmgResult.value.player;
+        this.enemyAttackCooldowns.set(enemy.id, nowMelee + ENEMY_ATTACK_COOLDOWN_MS);
+
+        this.broadcast(EventNames.DELTA, {
+          type: 'player:hp-updated' as const,
+          playerId: targetPlayer.id,
+          hp: dmgResult.value.player.hp,
+        } satisfies DeltaEventMsg);
+
+        if (dmgResult.value.downed) {
+          const windowMs = dmgResult.value.reviveWindowMs!;
+          this.gameState.players[pi]!.reviveTimerExpiresAt = nowMelee + windowMs;
+
+          this.broadcast(EventNames.DELTA, {
+            type: 'player:downed' as const,
+            playerId: targetPlayer.id,
+            downCount: dmgResult.value.player.downCount,
+            reviveWindowMs: windowMs,
+          } satisfies DeltaEventMsg);
+
+          // Notify mobile: downed (spirit cell visible but locked until timer expires)
+          const downedClient = this.clients.find(c => c.sessionId === targetPlayer!.id);
+          if (downedClient) {
+            downedClient.send(EventNames.SPIRIT_FORM, { type: 'spirit:form', isActive: false } satisfies SpiritFormMsg);
+          }
+
+          logger.info({ roomId: this.roomId, playerId: targetPlayer.id, downCount: dmgResult.value.player.downCount, windowMs }, 'player downed');
+        }
+      }
+    }
+
+    // ── Revive timer expiry and proximity revive ──────────────────────────────
+    if (this.gameState.session.phase === 'dungeon') {
+      const nowRevive = Date.now();
+
+      for (const player of this.gameState.players) {
+        if (!player.isDown) continue;
+
+        // Timer expiry → spirit form
+        if (player.reviveTimerExpiresAt > 0 && nowRevive >= player.reviveTimerExpiresAt) {
+          const piExpiry = this.gameState.players.findIndex(p => p.id === player.id);
+          this.gameState.players[piExpiry] = { ...this.gameState.players[piExpiry]!, isDown: false, isSpirit: true, reviveTimerExpiresAt: 0 };
+
+          this.broadcast(EventNames.DELTA, {
+            type: 'player:spirit' as const,
+            playerId: player.id,
+          } satisfies DeltaEventMsg);
+
+          const spiritClient = this.clients.find(c => c.sessionId === player.id);
+          if (spiritClient) {
+            spiritClient.send(EventNames.SPIRIT_FORM, { type: 'spirit:form', isActive: true } satisfies SpiritFormMsg);
+          }
+
+          logger.info({ roomId: this.roomId, playerId: player.id }, 'player entered spirit form (timer expired)');
+          continue;
+        }
+
+        // Proximity revive: first living teammate in range wins
+        let revivedBy: string | null = null;
+        for (const teammate of this.gameState.players) {
+          if (teammate.id === player.id) continue;
+          if (teammate.isDown || teammate.isSpirit || teammate.isFrozen) continue;
+          const dx = teammate.x - player.x;
+          const dy = teammate.y - player.y;
+          if (Math.sqrt(dx * dx + dy * dy) <= REVIVE_RADIUS_PX) {
+            revivedBy = teammate.id;
+            break;
+          }
+        }
+
+        if (revivedBy !== null) {
+          const piRevive = this.gameState.players.findIndex(p => p.id === player.id);
+          this.gameState.players[piRevive] = { ...this.gameState.players[piRevive]!, isDown: false, isSpirit: false, hp: REVIVE_HP, reviveTimerExpiresAt: 0 };
+
+          this.broadcast(EventNames.DELTA, {
+            type: 'player:revived' as const,
+            playerId: player.id,
+          } satisfies DeltaEventMsg);
+
+          this.broadcast(EventNames.DELTA, {
+            type: 'player:hp-updated' as const,
+            playerId: player.id,
+            hp: REVIVE_HP,
+          } satisfies DeltaEventMsg);
+
+          const revivedClient = this.clients.find(c => c.sessionId === player.id);
+          if (revivedClient) {
+            // isActive: false signals return to normal combat (not in spirit form)
+            revivedClient.send(EventNames.SPIRIT_FORM, { type: 'spirit:form', isActive: false } satisfies SpiritFormMsg);
+          }
+
+          logger.info({ roomId: this.roomId, playerId: player.id, revivedBy }, 'player revived by proximity');
+        }
+      }
+    }
 
     // Notify clients whose cooldowns have expired this tick
     const nowExpiry = Date.now();

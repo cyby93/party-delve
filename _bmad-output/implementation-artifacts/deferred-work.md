@@ -415,3 +415,13 @@ At low hp, the health bar renders a tiny red sliver with no visual reference for
 
 **D-3.4-E — Missing zero-damage boundary test for `applyDamage`** [tests/unit/combat.test.ts]
 `applyDamage(enemy, 0, dropId)` returns `ok: true` with hp unchanged (guard is `damage < 0`, not `<= 0`). The AC7 criterion "clamps hp to 0" is covered by the overkill test, but the exact-zero-input case is unspecified and untested. Add a test if the spec ever clarifies whether `damage === 0` should be a validation error.
+
+---
+
+## Deferred from: code review of 3-5-player-health-revive-timer-and-downed-state (2026-06-29)
+
+**D-3.5-A — Same-tick chain-revive is order-dependent** [apps/simulation-server/src/rooms/GameRoom.ts:683]
+In the proximity revive loop, players are mutated in-place. A player revived earlier in the iteration can act as reviver for subsequent downed players in the same tick. Behavior depends on array order. Deferred: need to see the revive feature fuller in order to decide — accept as designed or disallow via a `revivedThisTick` set.
+
+**D-3.5-B — `reviveTimerExpiresAt = 0` sentinel meaning undocumented** [packages/shared-types/src/player.ts]
+The field uses `0` as a sentinel for "not downed / not active". This is safe in practice (JS `Date.now()` always returns a positive value), but nothing on the field definition documents this invariant. Any future code that compares `=== 0` vs `> 0` inconsistently could introduce a subtle bug. Add a comment `// 0 = not downed` to the field definition in a cleanup pass.

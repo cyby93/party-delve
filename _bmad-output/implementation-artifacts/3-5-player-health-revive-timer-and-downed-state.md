@@ -1,10 +1,10 @@
 ---
-baseline_commit: SET_TO_HEAD_AFTER_STORY_3_4_MERGE
+baseline_commit: bd71c6523d4a1aec291dd360c62356d719645895
 ---
 
 # Story 3.5: Player Health, Revive Timer & Downed State
 
-Status: ready-for-dev
+Status: done
 
 ## CLAUDE.md Required Task Header
 
@@ -953,3 +953,82 @@ it('player:downed delta with reviveWindowMs survives serialize → deserialize',
 - Story 3.7: Clear objective (all enemies dead → `level:complete`)
 - Enemy ranged attacks (RANGED enemy type) — deferred beyond Epic 3
 ```
+
+---
+
+## Tasks / Subtasks
+
+- [x] T1: Add `reviveTimerExpiresAt` to `PlayerState` (shared-types)
+- [x] T2: Add `PlayerHpUpdatedDelta`, `PlayerSpiritDelta`, extend `PlayerDownedDelta` with `reviveWindowMs` (net-protocol)
+- [x] T3: Add `EventNames.SPIRIT_FORM` to event-names.ts
+- [x] T4: Export new delta types from net-protocol index
+- [x] T5: Update `applyDelta` — `player:hp-updated`, `player:spirit`, fix `player:revived` to reset `reviveTimerExpiresAt`
+- [x] T6: Add revive/melee balance constants + `SPIRIT_ABILITY_NAMES` to balance.ts
+- [x] T7: Create `packages/game-rules/src/systems/player-health.ts` (pure `applyPlayerDamage`, `getReviveWindowMs`)
+- [x] T8: Export new game-rules symbols from index.ts
+- [x] T9: Update GameRoom.ts — enemy melee attack block + revive timer expiry + proximity revive
+- [x] T10: Write `tests/unit/player-health.test.ts` (AC9)
+- [x] T11: Update `tests/contract/net-protocol.test.ts` — new delta round-trips + reviveTimerExpiresAt in mockPlayers (AC10)
+- [x] T12: Update mobile `ControllerScreen.tsx` — HP strip, downed background, skill overlays (AC6)
+- [x] T13: Update host `DungeonScreen.tsx` — `PlayerChipHUD` with HP pips (AC8) + revive timer overlay (AC7)
+- [x] T14: Forward new delta types in `host-session.ts` for transient delta pipeline
+
+### Review Findings
+
+- [x] [Review][Defer] Same-tick chain-revive is order-dependent via direct mutation [apps/simulation-server/src/rooms/GameRoom.ts:683] — deferred: need to see the revive feature fuller in order to decide it
+- [x] [Review][Patch] Spirit ability name on cell 3 shown only during `isDown`, not `isSpirit` — AC6 direct violation [apps/mobile-controller/src/screens/ControllerScreen.tsx:1098]
+- [x] [Review][Patch] `applyDelta player:downed` does not set `reviveTimerExpiresAt` on host state — after reconnect the host snapshot carries the field but DungeonScreen has no mechanism to reconstruct the overlay deadline from server epoch; active revive timer overlay is lost on reconnect [packages/net-protocol/src/apply-delta.ts]
+- [x] [Review][Patch] Revive blocks mutate player object directly instead of index-replace — inconsistent with enemy-melee block which uses `players[pi] = dmgResult.value.player`; the mutation pattern makes the chain-revive side effect invisible [apps/simulation-server/src/rooms/GameRoom.ts:683-743]
+- [x] [Review][Patch] Proximity revive block does not reset `isSpirit = false` server-side — `apply-delta player:revived` clears it, but the authoritative server path does not; inconsistent if ever isDown+isSpirit coexist [apps/simulation-server/src/rooms/GameRoom.ts:720]
+- [x] [Review][Patch] `isUrgent` boolean is true when >10s remain (safe state), false when ≤10s (danger state) — inverted naming; visual output is correct but any future branch on `isUrgent` (e.g. sound cue) will fire at the wrong moment [apps/host-client/src/screens/DungeonScreen.tsx:315]
+- [x] [Review][Patch] `getReviveWindowMs(0)` silently returns 2000ms via `undefined ?? 2000` fallback — unreachable from `applyPlayerDamage` today but the exported function is wrong for `downCount=0`; fix: clamp input to ≥1 [packages/game-rules/src/systems/player-health.ts:getReviveWindowMs]
+- [x] [Review][Defer] `reviveTimerExpiresAt = 0` sentinel meaning undocumented — `0` means "not downed" but this is not noted on the field definition; safe in practice (JS Date.now() always > 0) [packages/shared-types/src/player.ts] — deferred, pre-existing
+
+---
+
+## Dev Agent Record
+
+### Completion Notes
+
+Implemented story 3.5 in full. All AC1–AC11 satisfied:
+
+- **AC1**: Enemy melee block in `GameRoom.tick()` fires when `fsmState === ATTACK` and attack cooldown expired. Uses `applyPlayerDamage` pure function, broadcasts `player:hp-updated` delta.
+- **AC2**: `applyPlayerDamage` returns `downed: true` when hp→0; server sets `reviveTimerExpiresAt` and broadcasts `player:downed` with `reviveWindowMs` from escalating schedule (balance.ts).
+- **AC3**: Timer expiry loop in tick sets `isSpirit=true`, broadcasts `player:spirit`, sends `SpiritFormMsg{isActive:true}` to mobile.
+- **AC4**: Proximity revive loop finds first living teammate within `REVIVE_RADIUS_PX`, broadcasts `player:revived` + `player:hp-updated`, sends `SpiritFormMsg{isActive:false}` to signal return to normal.
+- **AC5**: `applyDelta` handles `player:hp-updated`, `player:spirit`; `player:downed` already set `isDown/downCount` from 3.3; `player:revived` now also resets `reviveTimerExpiresAt`. Exhaustiveness guard compiles.
+- **AC6**: HP strip (6px, corruption-blood fill) added to `ControllerScreen`. `isDown` derives from `myPlayer.isDown`. Session-color glow background when downed. Cells 0–2 get 80% overlay; cell 3 shows `SPIRIT_ABILITY_NAMES`. Joystick remains functional.
+- **AC7**: Revive timer overlay (bottom-center) in DungeonScreen tracks deadlines via `latestTransientDelta`. Color shifts accent-warm→corruption-blood at ≤10s, amber halo grows toward expiry.
+- **AC8**: `PlayerChipHUD` replaces `PlayerChip` with 5 HP pips (12×12px, accent-warm fill proportional to hp/20 segments). Spirit chip shows empty pips with accent-spirit glow + "◌" placeholder.
+- **AC9**: 12 unit tests in `player-health.test.ts` — all pass.
+- **AC10**: 3 new delta round-trip tests in `net-protocol.test.ts` — all pass. All 245 tests pass (e2e port-conflict pre-exists).
+- **AC11**: `npm run typecheck` — clean.
+
+Notable: `exactOptionalPropertyTypes` required conditional assignment for `reviveWindowMs` in `PlayerDamageResult`. `SpiritFormMsg.isActive` overloading noted in code — mobile derives state from `myPlayer.isDown/isSpirit` as primary source.
+
+---
+
+## File List
+
+- `packages/shared-types/src/player.ts` — added `reviveTimerExpiresAt: number`
+- `packages/net-protocol/src/messages/server-to-host.ts` — added `PlayerHpUpdatedDelta`, `PlayerSpiritDelta`; extended `PlayerDownedDelta` with `reviveWindowMs`
+- `packages/net-protocol/src/event-names.ts` — added `SPIRIT_FORM`
+- `packages/net-protocol/src/index.ts` — exported new delta types
+- `packages/net-protocol/src/apply-delta.ts` — added `player:hp-updated`, `player:spirit` cases; updated `player:revived` to reset `reviveTimerExpiresAt`
+- `packages/game-rules/src/balance.ts` — added revive constants, melee constants, `SPIRIT_ABILITY_NAMES`
+- `packages/game-rules/src/systems/player-health.ts` — NEW: `applyPlayerDamage`, `getReviveWindowMs`
+- `packages/game-rules/src/index.ts` — exported new balance constants and player-health functions
+- `apps/simulation-server/src/rooms/GameRoom.ts` — enemy melee block, revive timer+proximity revive, `enemyAttackCooldowns`, `reviveTimerExpiresAt` in `createPlayer`
+- `apps/host-client/src/session/host-session.ts` — forwarded new delta types to transient delta pipeline
+- `apps/host-client/src/screens/DungeonScreen.tsx` — `PlayerChipHUD` with HP pips, revive timer overlay
+- `apps/mobile-controller/src/screens/ControllerScreen.tsx` — HP strip, downed state bg/overlays, spirit ability cell
+- `tests/unit/player-health.test.ts` — NEW: 12 unit tests
+- `tests/contract/net-protocol.test.ts` — 3 new delta round-trip tests + `reviveTimerExpiresAt` in all mock players
+- `tests/contract/player-class-updated-delta.test.ts` — `reviveTimerExpiresAt` in mock player
+- `apps/simulation-server/tests/game-room-host-join.test.ts` — `reviveTimerExpiresAt` in mock players
+
+---
+
+## Change Log
+
+- 2026-06-29: Story 3.5 implemented — player health, downed state, revive timer, proximity revive, mobile HP strip/downed UI, host player chip pips and revive timer overlay. 245 tests pass, typecheck clean.

@@ -1,5 +1,24 @@
 import type { PlayerClass } from 'shared-types';
 
+// ── Revive system ─────────────────────────────────────────────────────────────
+// Escalating revive windows per down (1-indexed: downCount=1 → index 0 → 60s).
+export const REVIVE_WINDOWS_MS = [60000, 40000, 20000, 10000, 5000, 2000] as const;
+export const REVIVE_HP = 30;
+export const REVIVE_RADIUS_PX = 80;
+
+// ── Enemy melee attacks ───────────────────────────────────────────────────────
+export const ENEMY_MELEE_DAMAGE = 15;
+export const ENEMY_MELEE_RANGE_PX = 64;
+export const ENEMY_ATTACK_COOLDOWN_MS = 1500;
+
+// ── Spirit ability names (display only; mechanics in Story 3.6) ───────────────
+export const SPIRIT_ABILITY_NAMES: Record<PlayerClass, string> = {
+  stonehide:    'Earthen Vigil',
+  spiritcaller: 'Soul Tether',
+  souldrinker:  'Void Drain',
+  stormcaller:  'Storm Echo',
+};
+
 // ── Ability Balance ───────────────────────────────────────────────────────────
 // GDD: "core abilities fire on 1–2 second cycles; tempo never lets the player disengage."
 // AC1 requires at least one ability per class with cooldown ≤ 3000ms.

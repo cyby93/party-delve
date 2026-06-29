@@ -8,7 +8,7 @@
     "tests"
   ],
   "scripts": {
-    "dev": "concurrently --kill-others-on-fail -n sim,backend,host,mobile -c cyan,yellow,blue,green \"npm -w apps/simulation-server run dev\" \"npm -w apps/backend-platform run dev\" \"npm -w apps/host-client run dev\" \"npm -w apps/mobile-controller run dev\"",
+    "dev": "concurrently --kill-others-on-fail -n sim,backend,host,mobile -c cyan,yellow,blue,green \"npm -w apps/simulation-server run dev\" \"npm -w apps/backend-platform run dev\" \"npm -w apps/host-client run dev\" \"npm -w apps/mobile-controller run dev -- --host\"",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit -p packages/shared-types/tsconfig.json && tsc --noEmit -p packages/net-protocol/tsconfig.json && tsc --noEmit -p packages/game-rules/tsconfig.json && tsc --noEmit -p packages/telemetry/tsconfig.json && tsc --noEmit -p packages/ui-kit/tsconfig.json && tsc --noEmit -p apps/simulation-server/tsconfig.json && tsc --noEmit -p apps/host-client/tsconfig.json && tsc --noEmit -p apps/mobile-controller/tsconfig.json && tsc --noEmit -p apps/backend-platform/tsconfig.json && tsc --noEmit -p tests/tsconfig.json",
     "test": "vitest run"
