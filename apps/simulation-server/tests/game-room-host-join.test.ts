@@ -11,6 +11,7 @@ import { PlayerClass, SessionColor, TICK_RATE_HZ } from 'shared-types';
 import { serialize, EventNames } from 'net-protocol';
 import type { SnapshotMsg } from 'net-protocol';
 import { deserialize } from 'net-protocol';
+import { generateRoomCode } from '../src/rooms/GameRoom.js';
 
 // Pure helper — extracted for direct testability.
 function createEmptyGameState(roomId: string): GameState {
@@ -66,11 +67,18 @@ function simulateOnJoin(
     sessionColor: SessionColor.RED,
     downCount: 0,
     nearPoiId: null,
+    essenceTotal: 0,
   });
   gameState.session.playerCount = gameState.players.length;
   const snapshot: SnapshotMsg = { type: 'snapshot', state: gameState };
   roomBroadcast(EventNames.SNAPSHOT, serialize(snapshot));
 }
+
+describe('generateRoomCode (Story 3.8)', () => {
+  it('returns a 4-uppercase-letter string', () => {
+    expect(generateRoomCode()).toMatch(/^[A-Z]{4}$/);
+  });
+});
 
 describe('GameRoom.onJoin — host branch (Story 1.3 patch)', () => {
   let gameState: GameState;
@@ -202,6 +210,7 @@ function makePlayer(id: string): PlayerState {
     sessionColor: SessionColor.RED,
     downCount: 0,
     nearPoiId: null,
+    essenceTotal: 0,
   };
 }
 

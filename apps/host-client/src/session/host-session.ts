@@ -20,7 +20,8 @@ function decode<T>(data: unknown): T {
 
 export async function createHostSession(
   onStateUpdate: (state: GameState) => void,
-  onError: (code: number, message: string) => void
+  onError: (code: number, message: string) => void,
+  onTransientDelta?: (delta: DeltaEventMsg) => void,
 ): Promise<HostSession> {
   const client = new Colyseus.Client(SIM_URL);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -40,6 +41,13 @@ export async function createHostSession(
     if (!currentState) return;
     try {
       const delta = decode<DeltaEventMsg>(data);
+      if (onTransientDelta && (
+        delta.type === 'ability:fired' ||
+        delta.type === 'enemy:killed' ||
+        delta.type === 'essence:dropped'
+      )) {
+        onTransientDelta(delta);
+      }
       currentState = applyDelta(currentState, delta);
       onStateUpdate(currentState);
     } catch { /* ignore malformed delta */ }

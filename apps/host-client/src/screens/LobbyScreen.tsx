@@ -1,8 +1,11 @@
 import QRCode from 'react-qr-code';
+import { useState, useEffect } from 'react';
 import type { GameState } from 'shared-types';
 import { PlayerSlot } from '../components/PlayerSlot';
 
-const MOBILE_URL = import.meta.env['VITE_MOBILE_URL'] ?? 'http://localhost:5174';
+const SIM_URL = import.meta.env['VITE_SIM_URL'] ?? 'ws://localhost:2567';
+const SIM_HTTP = SIM_URL.replace(/^ws(s?):\/\//, 'http$1://');
+const MOBILE_PORT = import.meta.env['VITE_MOBILE_PORT'] ?? '5174';
 
 interface LobbyScreenProps {
   roomId: string;
@@ -11,7 +14,18 @@ interface LobbyScreenProps {
 }
 
 export function LobbyScreen({ roomId, gameState, onStartGame }: LobbyScreenProps) {
-  const mobileJoinUrl = `${MOBILE_URL}/?session=${roomId}`;
+  const [mobileHost, setMobileHost] = useState<string | null>(null);
+  useEffect(() => {
+    fetch(`${SIM_HTTP}/local-ip`)
+      .then(r => r.json())
+      .then((d: { localIp: string }) => setMobileHost(d.localIp))
+      .catch(() => {});
+  }, []);
+
+  const baseUrl = mobileHost
+    ? `http://${mobileHost}:${MOBILE_PORT}`
+    : (import.meta.env['VITE_MOBILE_URL'] ?? `http://localhost:${MOBILE_PORT}`);
+  const mobileJoinUrl = `${baseUrl}/?session=${roomId}`;
 
   const handleKick = (playerId: string) => {
     // Kick message requires KICK_PLAYER EventName + server handler (not yet implemented).

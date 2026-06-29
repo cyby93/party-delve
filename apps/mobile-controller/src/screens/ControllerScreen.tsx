@@ -487,7 +487,7 @@ interface SkillCellProps {
 
 function SkillCell({ index, ability, cooldownState: cd, isInteractive, badgeBorderColor, onAbilityFire, tapFlash }: SkillCellProps) {
   const cellRef = useRef<HTMLDivElement>(null);
-  const activeTouchRef = useRef<{ id: number; originX: number; originY: number; lastDirX: number; lastDirY: number } | null>(null);
+  const activeTouchRef = useRef<{ id: number; originX: number; originY: number; lastDirX: number; lastDirY: number; releaseFired: boolean } | null>(null);
   const autoIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const now = Date.now();
@@ -515,6 +515,7 @@ function SkillCell({ index, ability, cooldownState: cd, isInteractive, badgeBord
         originY: touch.clientY - rect.top,
         lastDirX: 0,
         lastDirY: 0,
+        releaseFired: false,
       };
       if (ability.inputType === 'AUTO') {
         autoIntervalRef.current = setInterval(() => {
@@ -551,7 +552,8 @@ function SkillCell({ index, ability, cooldownState: cd, isInteractive, badgeBord
       if (t === null) return;
       for (let i = 0; i < e.changedTouches.length; i++) {
         if (e.changedTouches[i]!.identifier === t.id) {
-          if (ability.inputType === 'RELEASE') {
+          if (ability.inputType === 'RELEASE' && !t.releaseFired) {
+            t.releaseFired = true;
             onAbilityFire(index, t.lastDirX, t.lastDirY, false);
           }
           if (autoIntervalRef.current) {
@@ -569,7 +571,8 @@ function SkillCell({ index, ability, cooldownState: cd, isInteractive, badgeBord
       if (t === null) return;
       for (let i = 0; i < e.changedTouches.length; i++) {
         if (e.changedTouches[i]!.identifier === t.id) {
-          if (ability.inputType === 'RELEASE') {
+          if (ability.inputType === 'RELEASE' && !t.releaseFired) {
+            t.releaseFired = true;
             onAbilityFire(index, t.lastDirX, t.lastDirY, false);
           }
           if (autoIntervalRef.current) {
@@ -731,6 +734,7 @@ export function ControllerScreen({ session, gameState, cooldowns }: ControllerSc
   const [joystickKnobOffset, setJoystickKnobOffset] = useState({ x: 0, y: 0 });
   const [classSelectionOpen, setClassSelectionOpen] = useState(false);
   const [trainingDummyActive, setTrainingDummyActive] = useState(false);
+  const inDungeon = gameState?.session.phase === 'dungeon';
   const [tapFlash, setTapFlash] = useState<boolean[]>([false, false, false, false]);
   const [displayTick, setDisplayTick] = useState(0);
 
@@ -994,7 +998,7 @@ export function ControllerScreen({ session, gameState, cooldowns }: ControllerSc
           gap: 4,
           padding: 8,
           boxSizing: 'border-box',
-          touchAction: trainingDummyActive ? 'none' : 'auto',
+          touchAction: (trainingDummyActive || inDungeon) ? 'none' : 'auto',
           position: 'relative',
         }}
       >
@@ -1003,7 +1007,7 @@ export function ControllerScreen({ session, gameState, cooldowns }: ControllerSc
           const cd = cooldowns[i] ?? null;
           const now = Date.now();
           const isOnCooldown = cd !== null && cd.expiresAt > now;
-          const isInteractive = trainingDummyActive && ability !== null && !isOnCooldown;
+          const isInteractive = (trainingDummyActive || inDungeon) && ability !== null && !isOnCooldown;
           const badgeBorderColor = ability !== null
             ? (ability.inputType === 'AUTO' ? 'var(--accent-spirit)'
               : ability.inputType === 'RELEASE' ? 'var(--accent-warm)'

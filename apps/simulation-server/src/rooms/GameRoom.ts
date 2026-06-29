@@ -7,13 +7,16 @@ import { randomInt } from 'node:crypto';
 import { Vec2, Body, Contact } from 'planck';
 import type { World } from 'planck';
 import {
-  createPhysicsWorld, createPlayerBody, createPoiSensorBody,
-  extractPoiBeginContact, extractPoiEndContact, toMeters, toPixels,
+  createPhysicsWorld, createPlayerBody, createPoiSensorBody, createEssenceSensorBody,
+  extractPoiBeginContact, extractPoiEndContact, extractEssenceBeginContact, toMeters, toPixels,
 } from '../physics/world.js';
-import type { PoiBeginContactEvent, PoiEndContactEvent } from '../physics/world.js';
-import { createRng, tickEnemy } from 'game-rules';
+import type { PoiBeginContactEvent, PoiEndContactEvent, EssenceBeginContactEvent } from '../physics/world.js';
+import { createRng, tickEnemy, dispatchAbility, getEnemyCount, applyDamage, isInHitZone, ABILITY_HIT_RANGE_PX, ABILITY_HIT_RADIUS_PX } from 'game-rules';
 import type { BehaviorLayer, EnemyContext, EnemyAIEvent } from 'game-rules';
+import { CLASS_DEFINITIONS } from 'shared-types';
 import type { EnemyState } from 'shared-types';
+import { EnemyType, DifficultyTier, EnemyFSMState, OFFSET_ENEMY_SPAWN } from 'shared-types';
+import { createEnemyBody } from '../physics/world.js';
 import { logger } from '../logger.js';
 
 // Distinct session colors assigned per player slot index
@@ -63,7 +66,15 @@ function createPlayer(id: string, displayName: string, slotIndex: number): Playe
     sessionColor: SESSION_COLORS[slotIndex % SESSION_COLORS.length] ?? SessionColor.RED,
     downCount: 0,
     nearPoiId: null,
+    essenceTotal: 0,
   };
+}
+
+// ponytail: 26^4 = 456,976 codes, 1 local room max — no collision check needed
+export function generateRoomCode(): string {
+  return Array.from({ length: 4 }, () =>
+    String.fromCharCode(65 + Math.floor(Math.random() * 26))
+  ).join('');
 }
 
 export class GameRoom extends Room {
@@ -83,17 +94,34 @@ export class GameRoom extends Room {
   private prng!: () => number;
   private pendingPoiBeginContacts: Array<PoiBeginContactEvent> = [];
   private pendingPoiEndContacts:   Array<PoiEndContactEvent>   = [];
+  private essenceSensorBodies = new Map<string, Body>();
+  private pendingEssenceBeginContacts: Array<EssenceBeginContactEvent> = [];
   private nextSlotIndex = 0;
 
   async onCreate(_options: unknown): Promise<void> {
+    this.roomId = generateRoomCode();
     this.maxClients = MAX_PLAYERS + 1; // +1 for the host client slot
     this.gameState = createEmptyGameState(this.roomId);
     this.gameState.session.runSeed = randomInt(0, 0x1_0000_0000);
     this.prng = createRng(this.gameState.session.runSeed);
 
-    // host:start has no server-side effect yet (deferred to Story 3.x) — register a no-op
-    // so Colyseus does not close the host connection with WITH_ERROR (4002)
-    this.onMessage(EventNames.HOST_START, () => { /* intentionally empty */ });
+    this.onMessage(EventNames.HOST_START, (client: Client) => {
+      if (client.sessionId !== this.gameState.session.hostId) return;
+      if (this.gameState.session.phase === 'dungeon') return;
+      if (this.gameState.players.length === 0) return;
+      const unready = this.gameState.players.filter(p => p.class === null);
+      if (unready.length > 0) {
+        logger.warn({ roomId: this.roomId, unready: unready.length }, 'host:start rejected — players without class');
+        return;
+      }
+      this.gameState.session.phase = 'dungeon';
+      this.gameState.session.levelIndex = 1;
+      for (const p of this.gameState.players) p.nearPoiId = null;
+      this.spawnEnemies();
+      const snapshot: SnapshotMsg = { type: 'snapshot', state: this.gameState };
+      this.broadcast(EventNames.SNAPSHOT, snapshot);
+      logger.info({ roomId: this.roomId }, 'dungeon phase started');
+    });
 
     this.onMessage(EventNames.CLASS_SELECT, (client: Client, raw: unknown) => {
       try {
@@ -150,8 +178,10 @@ export class GameRoom extends Room {
 
     // Contact listeners — capture events during world.step() for processing after
     this.physicsWorld.on('begin-contact', (contact: Contact) => {
-      const evt = extractPoiBeginContact(contact);
-      if (evt) this.pendingPoiBeginContacts.push(evt);
+      const poiEvt = extractPoiBeginContact(contact);
+      if (poiEvt) this.pendingPoiBeginContacts.push(poiEvt);
+      const essenceEvt = extractEssenceBeginContact(contact);
+      if (essenceEvt) this.pendingEssenceBeginContacts.push(essenceEvt);
     });
     this.physicsWorld.on('end-contact', (contact: Contact) => {
       const evt = extractPoiEndContact(contact);
@@ -267,9 +297,40 @@ export class GameRoom extends Room {
     }
     this.enemyBodies.clear();
     this.enemyLayers.clear();
+    for (const body of this.essenceSensorBodies.values()) {
+      this.physicsWorld.destroyBody(body);
+    }
+    this.essenceSensorBodies.clear();
     this.pendingPoiBeginContacts.length = 0;
     this.pendingPoiEndContacts.length = 0;
+    this.pendingEssenceBeginContacts.length = 0;
     logger.info({ roomId: this.roomId }, 'GameRoom disposed');
+  }
+
+  private spawnEnemies(): void {
+    const count = getEnemyCount(this.gameState.players.length, 'early');
+    const enemyPrng = createRng(this.gameState.session.runSeed ^ OFFSET_ENEMY_SPAWN);
+    for (let i = 0; i < count; i++) {
+      const id = `enemy-${i}`;
+      const x = 200 + enemyPrng() * 1520;
+      const y = 200 + enemyPrng() * 680;
+      const enemy: EnemyState = {
+        id,
+        type: EnemyType.GRUNT,
+        x,
+        y,
+        hp: 60,
+        maxHp: 60,
+        difficultyTier: DifficultyTier.EASY,
+        isAlive: true,
+        fsmState: EnemyFSMState.IDLE,
+        attackCooldownTicks: 0,
+      };
+      this.gameState.enemies.push(enemy);
+      const body = createEnemyBody(this.physicsWorld, id, x, y);
+      this.enemyBodies.set(id, body);
+    }
+    logger.info({ roomId: this.roomId, count }, 'enemies spawned');
   }
 
   private buildEnemyContext(enemy: EnemyState): EnemyContext {
@@ -357,30 +418,61 @@ export class GameRoom extends Room {
     }
 
     // ── Planck phase 4: process POI contact events from this tick's world.step() ─
-    for (const { playerId, poiId, poiType } of this.pendingPoiBeginContacts) {
-      const player = this.gameState.players.find(p => p.id === playerId);
-      if (!player || player.nearPoiId === poiId) continue;
-      player.nearPoiId = poiId;
-      const enteredDelta = {
-        type: 'player:poi-entered' as const,
-        playerId,
-        poiId,
-        poiType,
-      } satisfies DeltaEventMsg;
-      this.broadcast(EventNames.DELTA, enteredDelta);
-    }
-    for (const { playerId, poiId } of this.pendingPoiEndContacts) {
-      const player = this.gameState.players.find(p => p.id === playerId);
-      if (!player || player.nearPoiId !== poiId) continue;
-      player.nearPoiId = null;
-      const exitedDelta = {
-        type: 'player:poi-exited' as const,
-        playerId,
-      } satisfies DeltaEventMsg;
-      this.broadcast(EventNames.DELTA, exitedDelta);
+    // POI interactions only apply in hub phase — skip (but always drain) during dungeon.
+    if (this.gameState.session.phase !== 'dungeon') {
+      for (const { playerId, poiId, poiType } of this.pendingPoiBeginContacts) {
+        const player = this.gameState.players.find(p => p.id === playerId);
+        if (!player || player.nearPoiId === poiId) continue;
+        player.nearPoiId = poiId;
+        const enteredDelta = {
+          type: 'player:poi-entered' as const,
+          playerId,
+          poiId,
+          poiType,
+        } satisfies DeltaEventMsg;
+        this.broadcast(EventNames.DELTA, enteredDelta);
+      }
+      for (const { playerId, poiId } of this.pendingPoiEndContacts) {
+        const player = this.gameState.players.find(p => p.id === playerId);
+        if (!player || player.nearPoiId !== poiId) continue;
+        player.nearPoiId = null;
+        const exitedDelta = {
+          type: 'player:poi-exited' as const,
+          playerId,
+        } satisfies DeltaEventMsg;
+        this.broadcast(EventNames.DELTA, exitedDelta);
+      }
     }
     this.pendingPoiBeginContacts.length = 0;
     this.pendingPoiEndContacts.length = 0;
+
+    // ── Flush essence collection contacts ────────────────────────────────────
+    for (const { playerId, dropId } of this.pendingEssenceBeginContacts) {
+      const dropIdx = this.gameState.essenceDrops.findIndex(d => d.id === dropId);
+      if (dropIdx === -1) continue;  // already collected this tick
+
+      const drop = this.gameState.essenceDrops[dropIdx]!;
+      const player = this.gameState.players.find(p => p.id === playerId);
+      if (!player) continue;
+
+      this.gameState.essenceDrops.splice(dropIdx, 1);
+
+      const sensorBody = this.essenceSensorBodies.get(dropId);
+      if (sensorBody) {
+        this.physicsWorld.destroyBody(sensorBody);
+        this.essenceSensorBodies.delete(dropId);
+      }
+
+      player.essenceTotal += drop.amount;
+
+      this.broadcast(EventNames.DELTA, {
+        type: 'essence:collected' as const,
+        dropId,
+        byPlayerId: playerId,
+        newTotal: player.essenceTotal,
+      } satisfies DeltaEventMsg);
+    }
+    this.pendingEssenceBeginContacts.length = 0;
 
     // ── Enemy AI phase ──────────────────────────────────────────────────────────
     // Loop is no-op until enemies are spawned (Story 3.3+)
@@ -410,37 +502,109 @@ export class GameRoom extends Room {
       }
     }
 
-    // Process ability inputs — training dummy only (inline cooldown; Story 3.x moves to game-rules/balance.ts)
-    const TRAINING_DUMMY_COOLDOWN_MS = 3000;
+    // Process ability inputs — valid in dungeon phase or near training dummy
     for (const { clientId, msg } of this.inputQueue) {
       if (msg.event.type !== 'ability') continue;
-      const { abilityIndex, directionX, directionY: _dirY } = msg.event.ability;
+      const { abilityIndex, directionX, directionY } = msg.event.ability;
 
       const player = this.gameState.players.find(p => p.id === clientId);
-      if (!player) continue;
-      if (player.class === null) continue;
-      if (player.nearPoiId !== 'training-dummy') continue;
+      if (!player || player.class === null || player.isFrozen || player.isDown || player.isSpirit) continue;
+
+      const inDungeon = this.gameState.session.phase === 'dungeon';
+      const atTrainingDummy = player.nearPoiId === 'training-dummy';
+      if (!inDungeon && !atTrainingDummy) continue;
 
       const playerCooldowns = this.cooldownMap.get(clientId);
       if (!playerCooldowns) continue;
 
-      if (abilityIndex < 0 || abilityIndex > 3) continue;
-
       const nowAbility = Date.now();
-      if ((playerCooldowns[abilityIndex] ?? 0) > nowAbility) continue;
+      const result = dispatchAbility({
+        playerClass: player.class,
+        abilityIndex,
+        directionX,
+        directionY,
+        cooldownExpiresAt: playerCooldowns[abilityIndex] ?? 0,
+        nowMs: nowAbility,
+      });
 
-      playerCooldowns[abilityIndex] = nowAbility + TRAINING_DUMMY_COOLDOWN_MS;
+      if (!result.ok) continue;
+
+      const { cooldownMs, expiresAt, directionX: dirX, directionY: dirY } = result.value;
+      playerCooldowns[abilityIndex] = expiresAt;
 
       const targetClient = this.clients.find(c => c.sessionId === clientId);
       if (targetClient) {
         targetClient.send(EventNames.COOLDOWN_UPDATE, {
           type: 'cooldown:update',
           abilityIndex,
-          remainingMs: TRAINING_DUMMY_COOLDOWN_MS,
+          remainingMs: cooldownMs,
         } satisfies CooldownUpdateMsg);
       }
 
-      logger.debug({ roomId: this.roomId, clientId, abilityIndex, directionX }, 'ability fired at training dummy');
+      if (inDungeon) {
+        const abilityDelta = {
+          type: 'ability:fired' as const,
+          playerId: clientId,
+          abilityIndex,
+          directionX: dirX,
+          directionY: dirY,
+        } satisfies DeltaEventMsg;
+        this.broadcast(EventNames.DELTA, abilityDelta);
+
+        // Hit-scan: check all living enemies against this ability's hit zone
+        const abilityDef = CLASS_DEFINITIONS[player.class].abilities[abilityIndex];
+        if (!abilityDef) continue;
+        const isDirectional = abilityDef.inputType !== 'TAP';
+        const hitRange  = ABILITY_HIT_RANGE_PX[player.class][abilityIndex] ?? 0;
+        const hitRadius = ABILITY_HIT_RADIUS_PX[player.class][abilityIndex] ?? 60;
+        const damage    = result.value.damage;
+        if (damage <= 0) continue;  // ponytail: skip hit-scan for buff/heal abilities (damage=0 in balance table)
+
+        for (let ei = 0; ei < this.gameState.enemies.length; ei++) {
+          const enemy = this.gameState.enemies[ei]!;
+          if (!enemy.isAlive) continue;
+          if (!isInHitZone(player.x, player.y, dirX, dirY, enemy.x, enemy.y, hitRadius, hitRange, isDirectional)) continue;
+
+          const dropId = `drop-${this.tickCount}-${enemy.id}`;
+          const dmgResult = applyDamage(enemy, damage, dropId);
+          if (!dmgResult.ok) continue;
+
+          this.gameState.enemies[ei] = dmgResult.value.enemy;
+
+          this.broadcast(EventNames.DELTA, {
+            type: 'enemy:damaged' as const,
+            enemyId: enemy.id,
+            damage,
+            remainingHp: dmgResult.value.enemy.hp,
+          } satisfies DeltaEventMsg);
+
+          if (dmgResult.value.killed) {
+            this.broadcast(EventNames.DELTA, {
+              type: 'enemy:killed' as const,
+              enemyId: enemy.id,
+              byPlayerId: clientId,
+            } satisfies DeltaEventMsg);
+
+            const enemyBody = this.enemyBodies.get(enemy.id);
+            if (enemyBody) {
+              this.physicsWorld.destroyBody(enemyBody);
+              this.enemyBodies.delete(enemy.id);
+            }
+
+            const drop = dmgResult.value.essenceDrop!;
+            this.gameState.essenceDrops.push(drop);
+            this.broadcast(EventNames.DELTA, {
+              type: 'essence:dropped' as const,
+              drop,
+            } satisfies DeltaEventMsg);
+
+            const sensor = createEssenceSensorBody(this.physicsWorld, drop.id, drop.x, drop.y);
+            this.essenceSensorBodies.set(drop.id, sensor);
+          }
+        }
+      }
+
+      logger.debug({ roomId: this.roomId, clientId, abilityIndex, dirX, dirY }, 'ability fired');
     }
 
     this.inputQueue.length = 0;

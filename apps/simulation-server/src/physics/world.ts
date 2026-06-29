@@ -15,9 +15,10 @@ export function toPixels(meters: number): number {
 
 // Tagged union stored as body userData — lets contact listeners identify bodies without a lookup map
 export type PhysicsBodyData =
-  | { type: 'player'; playerId: string }
-  | { type: 'poi';    poiId: string; poiType: PoiType }
-  | { type: 'enemy';  enemyId: string };
+  | { type: 'player';  playerId: string }
+  | { type: 'poi';     poiId: string; poiType: PoiType }
+  | { type: 'enemy';   enemyId: string }
+  | { type: 'essence'; dropId: string };
 
 export function createPhysicsWorld(): World {
   return new World({ gravity: Vec2(0, 0) });
@@ -58,6 +59,30 @@ export function createPoiSensorBody(world: World, poi: PoiDefinition): Body {
   });
   body.setUserData({ type: 'poi', poiId: poi.id, poiType: poi.type } satisfies PhysicsBodyData);
   return body;
+}
+
+export function createEssenceSensorBody(world: World, dropId: string, x: number, y: number): Body {
+  const body = world.createBody({
+    type: 'static',
+    position: Vec2(toMeters(x), toMeters(y)),
+  });
+  body.createFixture({ shape: new Circle(toMeters(50)), isSensor: true });
+  body.setUserData({ type: 'essence', dropId } satisfies PhysicsBodyData);
+  return body;
+}
+
+export interface EssenceBeginContactEvent {
+  playerId: string;
+  dropId: string;
+}
+
+export function extractEssenceBeginContact(contact: Contact): EssenceBeginContactEvent | null {
+  const dataA = contact.getFixtureA().getBody().getUserData() as PhysicsBodyData | null;
+  const dataB = contact.getFixtureB().getBody().getUserData() as PhysicsBodyData | null;
+  const playerData  = dataA?.type === 'player'  ? dataA : dataB?.type === 'player'  ? dataB : null;
+  const essenceData = dataA?.type === 'essence' ? dataA : dataB?.type === 'essence' ? dataB : null;
+  if (!playerData || !essenceData) return null;
+  return { playerId: playerData.playerId, dropId: essenceData.dropId };
 }
 
 export interface PoiBeginContactEvent {

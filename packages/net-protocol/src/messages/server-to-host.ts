@@ -73,6 +73,14 @@ export type EssenceCollectedDelta = {
   type: 'essence:collected';
   dropId: string;
   byPlayerId: string;
+  newTotal: number;
+};
+
+export type EnemyDamagedDelta = {
+  type: 'enemy:damaged';
+  enemyId: string;
+  damage: number;
+  remainingHp: number;
 };
 
 export type PlayerPoiEnteredDelta = {
@@ -93,6 +101,14 @@ export type PlayerClassUpdatedDelta = {
   class: PlayerClass;
 };
 
+export type AbilityFiredDelta = {
+  type: 'ability:fired';
+  playerId: string;
+  abilityIndex: number;
+  directionX: number;
+  directionY: number;
+};
+
 export type DeltaEventMsg =
   | PlayerMovedDelta
   | PlayerDownedDelta
@@ -100,6 +116,7 @@ export type DeltaEventMsg =
   | PlayerLeftDelta
   | PlayerDisconnectedDelta
   | PlayerReconnectedDelta
+  | EnemyDamagedDelta
   | EnemyKilledDelta
   | EnemyMovedDelta
   | EnemyStompedDelta
@@ -108,4 +125,5 @@ export type DeltaEventMsg =
   | EssenceCollectedDelta
   | PlayerPoiEnteredDelta
   | PlayerPoiExitedDelta
-  | PlayerClassUpdatedDelta;
+  | PlayerClassUpdatedDelta
+  | AbilityFiredDelta;

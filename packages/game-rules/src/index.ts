@@ -1,12 +1,19 @@
 export { createRng } from './prng/xoshiro128.js';
 export type { Result, GameError } from './state/result.js';
 export {
+  ABILITY_COOLDOWNS_MS, ABILITY_DAMAGE,
+  ABILITY_HIT_RANGE_PX, ABILITY_HIT_RADIUS_PX,
+  ESSENCE_DROP_AMOUNT, ESSENCE_COLLECT_RADIUS_PX,
   ENEMY_CHASE_RANGE, ENEMY_ATTACK_RANGE, ENEMY_CHASE_SPEED, ENEMY_ATTACK_COOLDOWN_TICKS,
   CHARGE_ACTIVATION_MIN, CHARGE_ACTIVATION_MAX, CHARGE_SPEED, CHARGE_COOLDOWN_TICKS,
   STOMP_ACTIVATION_RANGE, STOMP_RADIUS, STOMP_COOLDOWN_TICKS,
   getEnemyCount,
 } from './balance.js';
+export { applyDamage, isInHitZone } from './systems/combat.js';
+export type { DamageResult, CombatError } from './systems/combat.js';
 export { tickEnemy, tickBaseFSM } from './systems/ai/fsm.js';
 export type { EnemyContext, BehaviorLayer, EnemyAIEvent } from './systems/ai/fsm.js';
 export { ChargeLayer } from './systems/ai/layers/charge.js';
 export { StompLayer } from './systems/ai/layers/stomp.js';
+export { dispatchAbility } from './systems/abilities.js';
+export type { AbilityDispatchContext, AbilityFiredEvent, AbilityGameError } from './systems/abilities.js';

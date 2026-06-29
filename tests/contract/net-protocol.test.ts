@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { serialize, deserialize, applyDelta, EventNames } from 'net-protocol';
-import type { SnapshotMsg, DeltaEventMsg, InputEventMsg, PlayerPoiEnteredDelta, PlayerPoiExitedDelta } from 'net-protocol';
+import type { SnapshotMsg, DeltaEventMsg, InputEventMsg, PlayerPoiEnteredDelta, PlayerPoiExitedDelta, AbilityFiredDelta, EnemyDamagedDelta } from 'net-protocol';
 import type { GameState, PlayerState } from 'shared-types';
 import { PlayerClass, SessionColor, EnemyType, DifficultyTier, EnemyFSMState } from 'shared-types';
 
@@ -46,6 +46,7 @@ describe('net-protocol contract tests', () => {
         sessionColor: SessionColor.RED,
         downCount: 1,
         nearPoiId: null,
+        essenceTotal: 0,
       });
       const msg: SnapshotMsg = { type: 'snapshot', state };
       expect(deserialize<SnapshotMsg>(serialize(msg))).toEqual(msg);
@@ -119,6 +120,7 @@ describe('net-protocol contract tests', () => {
         sessionColor: SessionColor.RED,
         downCount: 0,
         nearPoiId: null,
+        essenceTotal: 0,
         ...overrides,
       };
     }
@@ -197,6 +199,7 @@ describe('net-protocol contract tests', () => {
         sessionColor: SessionColor.RED,
         downCount: 0,
         nearPoiId: null,
+        essenceTotal: 0,
         ...overrides,
       };
     }
@@ -227,6 +230,42 @@ describe('net-protocol contract tests', () => {
     });
   });
 
+  describe('EnemyDamagedDelta round-trip', () => {
+    it('enemy:damaged delta survives serialize → deserialize', () => {
+      const delta = {
+        type: 'enemy:damaged' as const,
+        enemyId: 'e1',
+        damage: 20,
+        remainingHp: 40,
+      } satisfies EnemyDamagedDelta;
+      expect(deserialize<DeltaEventMsg>(serialize(delta))).toEqual(delta);
+    });
+  });
+
+  describe('essenceTotal in SnapshotMsg', () => {
+    it('SnapshotMsg with player essenceTotal survives serialize → deserialize', () => {
+      const state = mockGameState();
+      state.players.push({
+        id: 'p1',
+        displayName: 'Test',
+        class: PlayerClass.STONEHIDE,
+        x: 0,
+        y: 0,
+        hp: 100,
+        maxHp: 100,
+        isFrozen: false,
+        isDown: false,
+        isSpirit: false,
+        sessionColor: SessionColor.RED,
+        downCount: 0,
+        nearPoiId: null,
+        essenceTotal: 25,
+      });
+      const msg: SnapshotMsg = { type: 'snapshot', state };
+      expect(deserialize<SnapshotMsg>(serialize(msg))).toEqual(msg);
+    });
+  });
+
   describe('EventNames constants', () => {
     it('HOST_START matches the wire string expected by the server', () => {
       expect(EventNames.HOST_START).toBe('host:start');
@@ -248,6 +287,27 @@ describe('net-protocol contract tests', () => {
         event: { type: 'ability', ability: { abilityIndex: 2, directionX: 1, directionY: 0 } },
       };
       expect(deserialize<InputEventMsg>(serialize(msg))).toEqual(msg);
+    });
+  });
+
+  describe('AbilityFiredDelta round-trip', () => {
+    it('ability:fired delta survives serialize → deserialize', () => {
+      const delta = {
+        type: 'ability:fired' as const,
+        playerId: 'p1',
+        abilityIndex: 2,
+        directionX: 0.5,
+        directionY: -0.5,
+      } satisfies DeltaEventMsg;
+      expect(deserialize<AbilityFiredDelta>(serialize(delta))).toEqual(delta);
+    });
+
+    it('SnapshotMsg with dungeon phase survives serialize → deserialize', () => {
+      const state = mockGameState();
+      state.session.phase = 'dungeon';
+      state.session.levelIndex = 1;
+      const msg: SnapshotMsg = { type: 'snapshot', state };
+      expect(deserialize<SnapshotMsg>(serialize(msg))).toEqual(msg);
     });
   });
 });

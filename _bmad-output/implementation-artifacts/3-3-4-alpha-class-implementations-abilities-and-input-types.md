@@ -1,10 +1,10 @@
 ---
-baseline_commit: SET_TO_HEAD_AFTER_STORY_3_2_MERGE
+baseline_commit: d8c561c9639cc2a729ee18145fda1c3a7c8c43c0
 ---
 
 # Story 3.3: 4 Alpha Class Implementations — Abilities & Input Types
 
-Status: ready-for-dev
+Status: done
 
 ## CLAUDE.md Required Task Header
 
@@ -793,3 +793,129 @@ it('SnapshotMsg with dungeon phase survives serialize → deserialize', () => {
 - Full enemy movement in dungeon (Story 3.2's FSM tick loop becomes live when enemies are in `gameState.enemies`)
 - Difficulty selection (Epic 4); currently hard-coded to Easy tier in `spawnEnemies()`
 ```
+
+---
+
+## Tasks / Subtasks
+
+- [x] **Task 1: Extend balance.ts with ability tables** (AC1)
+  - [x] Read `packages/game-rules/src/balance.ts` before editing
+  - [x] Add `ABILITY_COOLDOWNS_MS` and `ABILITY_DAMAGE` tables per Dev Notes §balance.ts additions
+  - [x] Run `npm run typecheck` — must be clean
+
+- [x] **Task 2: Create abilities.ts pure function** (AC3, AC7)
+  - [x] Create `packages/game-rules/src/systems/abilities.ts` (see Dev Notes §abilities.ts)
+  - [x] Export `dispatchAbility`, `AbilityDispatchContext`, `AbilityFiredEvent`, `AbilityGameError` from `packages/game-rules/src/index.ts`
+  - [x] Confirm no Colyseus or planck imports in `abilities.ts`
+  - [x] Run `npm run typecheck` — must be clean
+
+- [x] **Task 3: Add AbilityFiredDelta to net-protocol** (AC3, AC6, AC8)
+  - [x] Read `packages/net-protocol/src/messages/server-to-host.ts` before editing
+  - [x] Add `AbilityFiredDelta` type and include in `DeltaEventMsg` union
+  - [x] Read `packages/net-protocol/src/apply-delta.ts` before editing
+  - [x] Add `ability:fired` no-op case + exhaustiveness guard + missing cases (player:downed, player:revived, enemy:killed, enemy:moved, bond:assigned, essence:dropped, essence:collected)
+  - [x] Export `AbilityFiredDelta` from `packages/net-protocol/src/index.ts`
+  - [x] Run `npm run typecheck` — must be clean
+
+- [x] **Task 4: Wire host:start and spawnEnemies in GameRoom.ts** (AC2)
+  - [x] Read `apps/simulation-server/src/rooms/GameRoom.ts` in full before editing
+  - [x] Replace no-op `HOST_START` handler with dungeon transition + `spawnEnemies()` call
+  - [x] Add `private spawnEnemies()` method using `createRng(runSeed ^ OFFSET_ENEMY_SPAWN)`
+  - [x] Run `npm run typecheck` — must be clean
+  - [x] Run simulation-server tests — must pass
+
+- [x] **Task 5: Replace training dummy block with general ability dispatch** (AC1, AC3)
+  - [x] Remove `TRAINING_DUMMY_COOLDOWN_MS` constant and training-dummy-only gate
+  - [x] Import and use `dispatchAbility` from `game-rules`
+  - [x] Broadcast `AbilityFiredDelta` in dungeon phase
+  - [x] Send `CooldownUpdateMsg` for both training dummy and dungeon contexts
+  - [x] Run `npm run typecheck` — must be clean
+  - [x] Run simulation-server tests — must pass
+
+- [x] **Task 6: Fix ControllerScreen** (AC4, AC5)
+  - [x] Read relevant sections of `apps/mobile-controller/src/screens/ControllerScreen.tsx`
+  - [x] Derive `inDungeon` from `gameState?.session.phase === 'dungeon'`
+  - [x] Update `isInteractive` to include dungeon phase
+  - [x] Update `touchAction` to `'none'` in dungeon phase
+  - [x] Add `releaseFired` flag to `activeTouchRef` to fix D-2.3-D double-fire
+  - [x] Run `npm run typecheck` — must be clean
+
+- [x] **Task 7: Add DungeonScreen and route dungeon in App.tsx** (AC9)
+  - [x] Read `apps/host-client/src/screens/HubWorldScreen.tsx` for PixiJS pattern
+  - [x] Create `apps/host-client/src/screens/DungeonScreen.tsx` with PixiJS canvas, enemy circles, player circles, ability flash
+  - [x] Read `apps/host-client/src/App.tsx` before editing
+  - [x] Add `latestAbilityFired` state and route dungeon phase to `DungeonScreen`
+  - [x] Run `npm run typecheck` — must be clean
+
+- [x] **Task 8: Write unit tests** (AC7)
+  - [x] Create `tests/unit/abilities.test.ts` (see Dev Notes §tests/unit/abilities.test.ts)
+  - [x] Run `npx vitest run tests/unit/abilities.test.ts` — all tests must pass (8/8 pass)
+
+- [x] **Task 9: Add contract tests** (AC8)
+  - [x] Read `tests/contract/net-protocol.test.ts` before editing
+  - [x] Add `ability:fired` round-trip test
+  - [x] Add `SnapshotMsg` with dungeon phase test
+  - [x] Run contract tests — all must pass (36/36 pass)
+
+### Review Findings
+
+- [x] [Review][Patch] HOST_START handler: add hostId auth check + phase idempotency guard + zero-players guard — any client can trigger dungeon; double-call spawns enemies twice; zero-player guard absent at protocol level (UI guards with `players.length > 0` but server does not) [apps/simulation-server/src/rooms/GameRoom.ts:96]
+- [x] [Review][Patch] Ability dispatch guard missing `player.isDown` and `player.isSpirit` checks — downed/spirit players can fire abilities; compare movement loop at line 317 which correctly checks all three [apps/simulation-server/src/rooms/GameRoom.ts:461]
+- [x] [Review][Patch] `latestAbilityFired` in App.tsx never cleared — stale `AbilityFiredDelta` can re-trigger DungeonScreen flash on reconnect-induced remount [apps/host-client/src/App.tsx:19]
+- [x] [Review][Patch] Remove unused `Text` and `TextStyle` imports from DungeonScreen.tsx [apps/host-client/src/screens/DungeonScreen.tsx:2]
+- [x] [Review][Defer] AUTO ability fires with direction (0,0) when player taps cell without moving — `lastDirX/lastDirY` start at 0 and only update past 6px deadzone; cosmetic now, silent misdirection in Story 3.4 combat — deferred, design decision for 3.4
+- [x] [Review][Defer] RELEASE ability silently drops when `isInteractive` flips false mid-hold — `useEffect` cleanup nulls `activeTouchRef` before touchend fires; pre-existing pattern (see D-2.4-B), new manifestation in dungeon phase — deferred, pre-existing pattern
+- [x] [Review][Defer] DungeonScreen canvas orphan if PixiJS `app.init()` throws after canvas append but before `pixiAppRef.current = app` — cleanup cannot find the app to destroy; very low probability in production — deferred, pre-existing
+
+---
+
+## Dev Agent Record
+
+### Debug Log
+
+- `ABILITY_COOLDOWNS_MS` tuple indexing required cast to `0|1|2|3` since abilityIndex is `number`; added after TS error, validation already guards the range.
+- `getEnemyCount` signature in 3.2 uses `'early'|'mid'|'late'` not a numeric tier — story spec had `0`; used `'early'` for first dungeon level.
+- Used `createRng(runSeed ^ OFFSET_ENEMY_SPAWN)` per constants.ts usage comment (XOR into seed for independent stream) rather than story's advance-N-steps approach.
+- Added `onAbilityFired` optional callback to `createHostSession` so `App.tsx` can track `latestAbilityFired` state for DungeonScreen.
+- Added `player:downed`, `player:revived` with state updates to `applyDelta`; added no-op cases for `enemy:killed`, `enemy:moved`, `bond:assigned`, `essence:dropped`, `essence:collected` to satisfy exhaustiveness guard.
+- `DungeonScreen` reuses `PlayerChip` component locally (same as HubWorldScreen) — considered extracting to ui-kit but YAGNI.
+
+### Completion Notes
+
+- AC1: `ABILITY_COOLDOWNS_MS` and `ABILITY_DAMAGE` in balance.ts; all classes have ≥1 ability ≤3000ms; `TRAINING_DUMMY_COOLDOWN_MS` removed from GameRoom.ts.
+- AC2: `host:start` now transitions `session.phase` to `'dungeon'`, sets `levelIndex=1`, spawns enemies via `getEnemyCount('early')` with PRNG from `runSeed ^ OFFSET_ENEMY_SPAWN`, broadcasts snapshot.
+- AC3: `dispatchAbility` used in tick loop; `CooldownUpdateMsg` sent to mobile; `AbilityFiredDelta` broadcast in dungeon phase.
+- AC4: `inDungeon` flag derived from `gameState?.session.phase === 'dungeon'`; used for `isInteractive` and `touchAction: 'none'` in ControllerScreen.
+- AC5: `releaseFired` flag on `activeTouchRef` prevents double-fire on lift inside cell bounds (element handler sets flag, document handler checks it).
+- AC6: `applyDelta` default branch has `satisfies never` exhaustiveness guard; all 16 delta types covered.
+- AC7: 8/8 unit tests pass; no Colyseus/planck in abilities.ts.
+- AC8: 36/36 contract tests pass including new `ability:fired` and dungeon phase snapshot tests.
+- AC9: `DungeonScreen` renders PixiJS canvas with enemy circles (red, r=20) and player circles; ability flash on player circle (300ms opacity pulse); `App.tsx` routes to `DungeonScreen` when `session.phase === 'dungeon'`.
+- AC10: `npm run typecheck` clean across all packages.
+
+---
+
+## File List
+
+- `packages/game-rules/src/balance.ts` — modified (added ABILITY_COOLDOWNS_MS, ABILITY_DAMAGE)
+- `packages/game-rules/src/systems/abilities.ts` — new
+- `packages/game-rules/src/index.ts` — modified (export new ability symbols)
+- `packages/net-protocol/src/messages/server-to-host.ts` — modified (AbilityFiredDelta + DeltaEventMsg union)
+- `packages/net-protocol/src/apply-delta.ts` — modified (ability:fired case + exhaustiveness guard + missing cases)
+- `packages/net-protocol/src/index.ts` — modified (export AbilityFiredDelta)
+- `apps/simulation-server/src/rooms/GameRoom.ts` — modified (host:start, spawnEnemies, general ability dispatch)
+- `apps/host-client/src/session/host-session.ts` — modified (onAbilityFired callback)
+- `apps/host-client/src/App.tsx` — modified (latestAbilityFired state, dungeon routing)
+- `apps/host-client/src/screens/DungeonScreen.tsx` — new
+- `apps/mobile-controller/src/screens/ControllerScreen.tsx` — modified (inDungeon, releaseFired fix)
+- `tests/unit/abilities.test.ts` — new
+- `tests/contract/net-protocol.test.ts` — modified (AbilityFiredDelta + dungeon snapshot tests)
+
+---
+
+## Change Log
+
+| Date | Change |
+|---|---|
+| 2026-06-25 | Story started — baseline_commit set |
+| 2026-06-25 | Full implementation complete — all ACs satisfied, all tests green |

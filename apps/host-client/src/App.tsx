@@ -1,10 +1,12 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { MainMenuScreen } from './screens/MainMenuScreen';
 import { LobbyScreen } from './screens/LobbyScreen';
 import { HubWorldScreen } from './screens/HubWorldScreen';
+import { DungeonScreen } from './screens/DungeonScreen';
 import { createHostSession } from './session/host-session';
 import type { HostSession } from './session/host-session';
 import type { GameState } from 'shared-types';
+import type { DeltaEventMsg } from 'net-protocol';
 
 type AppScreen = 'main-menu' | 'lobby' | 'hub-world';
 
@@ -14,6 +16,7 @@ export function App() {
   const [session, setSession] = useState<HostSession | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
+  const [latestTransientDelta, setLatestTransientDelta] = useState<DeltaEventMsg | null>(null);
 
   const handleCreateSession = useCallback(async () => {
     if (isCreating) return;
@@ -22,7 +25,7 @@ export function App() {
     try {
       const s = await createHostSession(setGameState, (code, msg) => {
         setError(`Connection error ${code}: ${msg}`);
-      });
+      }, setLatestTransientDelta);
       setSession(s);
       setScreen('lobby');
     } catch (err) {
@@ -32,10 +35,15 @@ export function App() {
     }
   }, [isCreating]);
 
+  useEffect(() => {
+    if (!latestTransientDelta) return;
+    const timer = setTimeout(() => setLatestTransientDelta(null), 400);
+    return () => clearTimeout(timer);
+  }, [latestTransientDelta]);
+
   const handleStartGame = useCallback(() => {
-    session?.sendStartGame();
     setScreen('hub-world');
-  }, [session]);
+  }, []);
 
   if (screen === 'main-menu') {
     return (
@@ -54,6 +62,9 @@ export function App() {
         onStartGame={handleStartGame}
       />
     );
+  }
+  if (gameState?.session.phase === 'dungeon') {
+    return <DungeonScreen gameState={gameState} session={session} latestTransientDelta={latestTransientDelta} />;
   }
   return <HubWorldScreen gameState={gameState} session={session} />;
 }

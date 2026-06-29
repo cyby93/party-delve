@@ -105,7 +105,7 @@ function renderFrame(
   }
 }
 
-export function HubWorldScreen({ gameState, session: _session }: HubWorldScreenProps) {
+export function HubWorldScreen({ gameState, session }: HubWorldScreenProps) {
   const canvasContainerRef = useRef<HTMLDivElement>(null);
   const pixiAppRef = useRef<Application | null>(null);
   const playerGraphicsRef = useRef<Map<string, PlayerEntry>>(new Map());
@@ -186,6 +186,7 @@ export function HubWorldScreen({ gameState, session: _session }: HubWorldScreenP
   }, [gameState]);
 
   const players = gameState?.players ?? [];
+  const allClassesConfirmed = players.length > 0 && players.every(p => p.class !== null);
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden' }}>
@@ -214,6 +215,26 @@ export function HubWorldScreen({ gameState, session: _session }: HubWorldScreenP
         {players.map(player => (
           <PlayerChip key={player.id} name={player.displayName} isFrozen={player.isFrozen} playerClass={player.class} />
         ))}
+        <div style={{ marginLeft: 'auto' }}>
+          <button
+            onClick={() => session?.sendStartGame()}
+            disabled={!allClassesConfirmed}
+            style={{
+              background: allClassesConfirmed ? 'var(--interactive)' : 'var(--bg-surface)',
+              color: allClassesConfirmed ? 'var(--bg-base)' : 'var(--text-secondary)',
+              border: allClassesConfirmed ? 'none' : '1px solid var(--border)',
+              fontFamily: 'var(--font-body)',
+              fontWeight: 700,
+              fontSize: 'var(--text-sm)',
+              borderRadius: 6,
+              height: 32,
+              padding: '0 12px',
+              cursor: allClassesConfirmed ? 'pointer' : 'not-allowed',
+            }}
+          >
+            {allClassesConfirmed ? 'Start Dungeon' : 'Waiting for classes…'}
+          </button>
+        </div>
       </div>
     </div>
   );

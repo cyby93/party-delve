@@ -370,3 +370,48 @@ CHARGE_SPEED=400px/s at 30hz ≈ 13.3px per tick (vs CHASE_SPEED=80px/s ≈ 2.7p
 
 **D-3.2-F — StompLayer firing while fsmState=ATTACK pauses attackCooldownTicks** [packages/game-rules/src/systems/ai/fsm.ts]
 When StompLayer fires, tickAttack is skipped that tick, so attackCooldownTicks doesn't decrement. The two timers (attack cooldown, stomp cooldown) are independent. This is architecturally intentional but may produce surprising attack-cooldown freezes mid-stomp in playtesting. Review in Story 3.3 when enemies are actually spawned.
+
+---
+
+## Deferred from: code review of 3-3-4-alpha-class-implementations-abilities-and-input-types (2026-06-28)
+
+**D-3.3-A — AUTO ability fires with direction (0,0) when no prior drag** [packages/game-rules/src/systems/abilities.ts / apps/mobile-controller/src/screens/ControllerScreen.tsx]
+AUTO abilities pass through `ctx.directionX/Y` unchanged. On the mobile client, `lastDirX/lastDirY` initialize to `0,0` and only update once a touch moves past the 6px deadzone. If the player taps an AUTO cell without dragging, the direction sent is `(0,0)`, which `dispatchAbility` accepts and broadcasts as `AbilityFiredDelta(dirX=0, dirY=0)`. No crash or user-visible issue in Story 3.3 (no damage yet), but in Story 3.4 when directional AoE is applied, the ability will always fire "nowhere" on an untouched cell. Design decision needed: AUTO cells should likely default to the player's last movement direction. Address before Story 3.4 combat resolution.
+
+**D-3.3-B — RELEASE ability silently drops if `isInteractive` flips false while cell is held** [apps/mobile-controller/src/screens/ControllerScreen.tsx]
+The `SkillCell` `useEffect` cleanup (which runs when `isInteractive` changes) clears `activeTouchRef.current` without firing RELEASE. If a player holds a RELEASE cell while the session phase transitions (e.g., dungeon ends, AC6/run-complete), the ability is silently discarded. Pre-existing pattern (D-2.4-B covered the training-dummy variant). New manifestation: dungeon-phase `inDungeon` flag can change server-side during an active hold. Low frequency in current story scope; address in Story 3.7 (clear objective / level completion) when phase transitions from dungeon are intentional.
+
+**D-3.3-C — DungeonScreen PixiJS canvas orphan on mid-init exception** [apps/host-client/src/screens/DungeonScreen.tsx]
+If `app.canvas` is appended to the DOM but `pixiAppRef.current = app` is not yet reached when a synchronous exception fires (e.g., `resizeTo`, ticker setup), the cleanup function finds `pixiAppRef.current === null` and cannot destroy the app or remove the canvas. Very low probability in production WebGL environments. Address if test environments report phantom canvas elements, or before Phase 5 stress testing.
+
+---
+
+## Deferred from: code review of 3-8-login-flow-update (2026-06-29)
+
+**D-3.8-A — useEffect `/local-ip` fetch has no retry or user-visible failure feedback** [apps/host-client/src/screens/LobbyScreen.tsx:17]
+`.catch(() => {})` silently swallows errors; `mobileHost` stays `null` and the QR encodes `localhost` for the session with no indication to the user. Extremely low probability in practice (WS connection on same port 2567 guarantees the HTTP server is up when LobbyScreen renders), so not blocking for Phase 3. Add a visible warning or retry if fetch failure rate becomes observable.
+
+**D-3.8-B — `SIM_HTTP` regex silently fails for bare-hostname `VITE_SIM_URL`** [apps/host-client/src/screens/LobbyScreen.tsx:5]
+`SIM_URL.replace(/^ws(s?):\/\//, 'http$1://')` is a no-op if `VITE_SIM_URL` is set to a hostname without a `ws://` prefix — the fetch URL becomes malformed. Misconfiguration case only; the default `ws://localhost:2567` transforms correctly. Add validation or a comment when the env var documentation is formalized.
+
+**D-3.8-C — `getLocalIp()` returns `'localhost'` silently on IPv6-only or dual-stack hosts** [apps/simulation-server/src/index.ts:12]
+Hard-filters `iface.family === 'IPv4'`; on an IPv6-only LAN the fallback kicks in with no log. Rare for Phase 3 local couch play. Add a `logger.warn` in the fallback path and revisit in Phase 5 cloud deployment where network topology is more varied.
+
+---
+
+## Deferred from: code review of 3-4-combat-resolution-hitboxes-damage-and-spirit-essence-collection (2026-06-29)
+
+**D-3.4-A — Direction vector not normalized before `isInHitZone`** [apps/simulation-server/src/rooms/GameRoom.ts]
+`isInHitZone` uses `dirX * hitRangePx` to project the hit circle center. If the player's joystick direction has sub-unit magnitude (e.g., a light touch), the effective range is proportionally shorter. Currently masked by alpha balance values being rough placeholders. Normalize the direction before calling `isInHitZone`, or normalize inside the function, when balance tuning begins in earnest.
+
+**D-3.4-B — React state batching may swallow `enemy:killed` transient delta** [apps/host-client/src/App.tsx, apps/host-client/src/session/host-session.ts]
+If `enemy:killed` and `essence:dropped` are delivered in the same WebSocket event loop task and `setLatestTransientDelta` is called twice synchronously, React 18 batches the updates and only the last value (essence:dropped) survives. The kill-fade effect on `DungeonScreen` is silently dropped. In practice, separate WebSocket frames arrive as separate event queue tasks, making this very unlikely. Fix with a callback-per-event-type or a delta queue if kill fades become visually important.
+
+**D-3.4-C — Kill fade raceable against periodic snapshot reconciliation** [apps/host-client/src/screens/DungeonScreen.tsx]
+A periodic snapshot `applyDelta` removes the enemy from `state.enemies`; `renderFrame` then hits the `!enemy` branch and destroys the Graphics immediately, bypassing the kill fade. The kill delta is broadcast in the same tick as the snapshot but may be ordered after it on the client. In practice the snapshot interval is 2 seconds and the kill delta fires in real time, making the race window extremely narrow. Add a `isRemovedServer` flag or check `deadUntil` before hard-removing in the snapshot reconciliation path if fade fidelity matters.
+
+**D-3.4-D — Health bar has no backing track** [apps/host-client/src/screens/DungeonScreen.tsx]
+At low hp, the health bar renders a tiny red sliver with no visual reference for the bar's full extent. Add a dark-grey backing rect (`rect(-15, -32, 30, 4)`) beneath the red fill for readability on the couch screen. Visual polish — defer to the UX polish pass.
+
+**D-3.4-E — Missing zero-damage boundary test for `applyDamage`** [tests/unit/combat.test.ts]
+`applyDamage(enemy, 0, dropId)` returns `ok: true` with hp unchanged (guard is `damage < 0`, not `<= 0`). The AC7 criterion "clamps hp to 0" is covered by the overkill test, but the exact-zero-input case is unspecified and untested. Add a test if the spec ever clarifies whether `damage === 0` should be a validation error.

@@ -1,3 +1,23 @@
+import type { PlayerClass } from 'shared-types';
+
+// ── Ability Balance ───────────────────────────────────────────────────────────
+// GDD: "core abilities fire on 1–2 second cycles; tempo never lets the player disengage."
+// AC1 requires at least one ability per class with cooldown ≤ 3000ms.
+export const ABILITY_COOLDOWNS_MS: Record<PlayerClass, readonly [number, number, number, number]> = {
+  stonehide:    [2000, 4000, 6000, 1000],  // Stone Wall, Tremor Stomp, Iron Skin, Avalanche(AUTO)
+  spiritcaller: [1500, 5000, 4000, 6000],  // Ancestor's Voice(AUTO), Spirit Nova, Soul Mend, Warding Cry
+  souldrinker:  [1000, 3000, 5000, 4000],  // Blood Draw(AUTO), Crimson Lash, Dark Pact, Void Pulse
+  stormcaller:  [1000, 3000, 5000, 2000],  // Lightning Arc(AUTO), Tempest Hurl, Thunder Clap, Storm Eye(AUTO)
+};
+
+// Base damage per ability per class (applied in Story 3.4; defined here for balance).
+export const ABILITY_DAMAGE: Record<PlayerClass, readonly [number, number, number, number]> = {
+  stonehide:    [15, 35,  0, 50],  // Stone Wall(no dmg), Tremor AoE, Iron Skin(buff), Avalanche
+  spiritcaller: [ 0, 40,  0,  0],  // Ancestor's Voice(heal), Spirit Nova(burst heal), Soul Mend, Warding Cry(buff)
+  souldrinker:  [12, 30,  0, 25],  // Blood Draw drain, Crimson Lash, Dark Pact(debuff), Void Pulse
+  stormcaller:  [18, 40, 45,  0],  // Lightning Arc, Tempest Hurl, Thunder Clap AoE, Storm Eye(field)
+};
+
 // ── Enemy AI ──────────────────────────────────────────────────────────────────
 export const ENEMY_CHASE_RANGE = 300;         // pixels — triggers IDLE→CHASE
 export const ENEMY_ATTACK_RANGE = 60;         // pixels — triggers CHASE→ATTACK
@@ -13,6 +33,27 @@ export const CHARGE_COOLDOWN_TICKS = 180;     // 6 seconds at 30hz
 export const STOMP_ACTIVATION_RANGE = 80;     // pixels — player must be this close
 export const STOMP_RADIUS = 150;              // pixels — AoE radius of stomp effect
 export const STOMP_COOLDOWN_TICKS = 240;      // 8 seconds at 30hz
+
+// ── Ability hit zones (alpha tuning values) ───────────────────────────────────
+// Directional abilities: hit circle at (player + direction * hitRange), radius = hitRadius
+// TAP abilities: hit circle at player position, radius = hitRadius (hitRange unused)
+export const ABILITY_HIT_RANGE_PX: Record<PlayerClass, readonly [number, number, number, number]> = {
+  stonehide:    [  0, 160,   0, 200],
+  spiritcaller: [180,   0, 200,   0],
+  souldrinker:  [150, 180,   0,   0],
+  stormcaller:  [160, 200,   0, 160],
+};
+
+export const ABILITY_HIT_RADIUS_PX: Record<PlayerClass, readonly [number, number, number, number]> = {
+  stonehide:    [100, 60, 120,  50],
+  spiritcaller: [ 50, 90,  60,  90],
+  souldrinker:  [ 50, 65,  80,  80],
+  stormcaller:  [ 60, 70, 110,  80],
+};
+
+// ── Spirit Essence ────────────────────────────────────────────────────────────
+export const ESSENCE_DROP_AMOUNT = 10;
+export const ESSENCE_COLLECT_RADIUS_PX = 50;
 
 // ── Enemy Count Scaling ───────────────────────────────────────────────────────
 // Enemy count scales with player count only — difficulty tier does NOT affect count (FR22)
