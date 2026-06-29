@@ -148,5 +148,37 @@ export function App() {
       />
     );
   }
+  if (gameState?.session.phase === 'post-run') {
+    return (
+      <div style={{
+        width: '100%',
+        height: '100%',
+        background: 'var(--corruption-blood)',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 16,
+      }}>
+        <div style={{
+          fontFamily: 'var(--font-body)',
+          fontWeight: 700,
+          fontSize: 'var(--text-xl)',
+          color: 'var(--text-primary)',
+          textAlign: 'center',
+        }}>
+          Run Failed
+        </div>
+        <div style={{
+          fontFamily: 'var(--font-body)',
+          fontWeight: 400,
+          fontSize: 'var(--text-sm)',
+          color: 'var(--text-secondary)',
+        }}>
+          Return to Camp — coming soon.
+        </div>
+      </div>
+    );
+  }
   return <ControllerScreen session={session} gameState={gameState} cooldowns={cooldowns} />;
 }

@@ -11,6 +11,7 @@ export {
   REVIVE_WINDOWS_MS, REVIVE_HP, REVIVE_RADIUS_PX,
   ENEMY_MELEE_DAMAGE, ENEMY_MELEE_RANGE_PX, ENEMY_ATTACK_COOLDOWN_MS,
   SPIRIT_ABILITY_NAMES,
+  SPIRIT_ABILITY_COOLDOWN_MS,
 } from './balance.js';
 export { applyPlayerDamage, getReviveWindowMs } from './systems/player-health.js';
 export type { PlayerDamageResult, HealthError } from './systems/player-health.js';

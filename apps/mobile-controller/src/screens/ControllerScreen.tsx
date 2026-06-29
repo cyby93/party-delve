@@ -775,6 +775,7 @@ export function ControllerScreen({ session, gameState, cooldowns }: ControllerSc
   const classDef = confirmedClass !== null ? CLASS_DEFINITIONS[confirmedClass] : null;
   const isDown = myPlayer?.isDown ?? false;
   const isSpirit = myPlayer?.isSpirit ?? false;
+  const isFrozen = myPlayer?.isFrozen ?? false;
   const hpFraction = myPlayer && myPlayer.maxHp > 0 ? myPlayer.hp / myPlayer.maxHp : 1;
   const joystickZoneRef = useRef<HTMLDivElement>(null);
 
@@ -1083,12 +1084,18 @@ export function ControllerScreen({ session, gameState, cooldowns }: ControllerSc
         }}
       >
         {[0, 1, 2, 3].map(i => {
-          const ability = classDef?.abilities[i] ?? null;
+          const isSpiritCell = isSpirit && i === 3;
+          const baseAbility = classDef?.abilities[i] ?? null;
+          // Spirit cell fires as TAP regardless of the class ability's input type
+          const ability: ClassAbilityDef | null = (isSpiritCell && baseAbility !== null)
+            ? { ...baseAbility, inputType: 'TAP' }
+            : baseAbility;
           const cd = cooldowns[i] ?? null;
           const now = Date.now();
           const isOnCooldown = cd !== null && cd.expiresAt > now;
-          // Downed/spirit players cannot use abilities
-          const isInteractive = (trainingDummyActive || (inDungeon && !isDown && !isSpirit)) && ability !== null && !isOnCooldown;
+          const isInteractive = isSpiritCell
+            ? !isOnCooldown && !isFrozen
+            : (trainingDummyActive || (inDungeon && !isDown && !isSpirit)) && ability !== null && !isOnCooldown;
           const badgeBorderColor = ability !== null
             ? (ability.inputType === 'AUTO' ? 'var(--accent-spirit)'
               : ability.inputType === 'RELEASE' ? 'var(--accent-warm)'

@@ -425,3 +425,19 @@ In the proximity revive loop, players are mutated in-place. A player revived ear
 
 **D-3.5-B — `reviveTimerExpiresAt = 0` sentinel meaning undocumented** [packages/shared-types/src/player.ts]
 The field uses `0` as a sentinel for "not downed / not active". This is safe in practice (JS `Date.now()` always returns a positive value), but nothing on the field definition documents this invariant. Any future code that compares `=== 0` vs `> 0` inconsistently could introduce a subtle bug. Add a comment `// 0 = not downed` to the field definition in a cleanup pass.
+
+---
+
+## Deferred from code review of 3-6-spirit-form-downed-player-contribution-and-run-failure (2026-06-29)
+
+**D-3.6-A — `--text-muted` CSS token undefined; sub-note using `--text-secondary`** [packages/ui-kit/src/tokens.css]
+AC7 specified `var(--text-muted)` for the post-run overlay sub-note but the token doesn't exist in tokens.css. Implementation uses `--text-secondary` as the nearest alternative. Deferred: not sure about --text-muted use case, might be useful later. Define `--text-muted` as a distinct dimmer text color when the design system needs it.
+
+**D-3.6-B — Spirit ability fires on same tick as run failure** [apps/simulation-server/src/rooms/GameRoom.ts:621]
+Spirit dispatch runs before the run-failure check in `tick()`. An existing-spirit player with a queued input can fire their spirit ability in the same tick that the last player transitions from downed to spirit and triggers the run-failure broadcast. The spirit ability flash is immediately covered by the post-run overlay. Cosmetically harmless tick-ordering artifact — reordering adds complexity for zero gameplay impact.
+
+**D-3.6-B — `partialEssence` field in `RunFailedDelta` unused in `apply-delta.ts`** [packages/net-protocol/src/apply-delta.ts]
+`apply-delta` sets `phase='post-run'` for `run:failed` but ignores `partialEssence`. The host overlay recomputes essence independently from `gameState.players`, which is consistent. Field is an architectural placeholder for the Epic 4 post-run summary screen where per-player breakdowns will need this value.
+
+**D-3.6-C — Slots 0–2 spurious `COOLDOWN_UPDATE { remainingMs: 0 }` for spirit players** [apps/simulation-server/src/rooms/GameRoom.ts]
+When a spirit player's class ability cooldown expires, the regular expiry loop sends `COOLDOWN_UPDATE` for slots 0–2 to the mobile. Spirit players cannot use those slots, so the messages clear irrelevant UI state. Harmless but slightly wasteful. Can be eliminated by skipping the expiry notification when `player.isSpirit` in the cooldown expiry loop.

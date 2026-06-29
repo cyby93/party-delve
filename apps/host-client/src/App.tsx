@@ -63,7 +63,7 @@ export function App() {
       />
     );
   }
-  if (gameState?.session.phase === 'dungeon') {
+  if (gameState?.session.phase === 'dungeon' || gameState?.session.phase === 'post-run') {
     return <DungeonScreen gameState={gameState} session={session} latestTransientDelta={latestTransientDelta} />;
   }
   return <HubWorldScreen gameState={gameState} session={session} />;

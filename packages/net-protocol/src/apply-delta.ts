@@ -125,6 +125,10 @@ export function applyDelta(state: GameState, evt: DeltaEventMsg): GameState {
       return state;  // ponytail: bond display in Story 3.6
     case 'ability:fired':
       return state;  // ponytail: no-op on state — visual effect only; DungeonScreen reads raw delta
+    case 'spirit-ability:fired':
+      return state;  // ponytail: visual only — no GameState mutation
+    case 'run:failed':
+      return { ...state, session: { ...state.session, phase: 'post-run' } };
     default: {
       // Exhaustiveness guard: adding a new DeltaEventMsg variant without a case here causes a TS error.
       const _exhaustive: never = evt;

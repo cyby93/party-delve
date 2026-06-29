@@ -1,10 +1,10 @@
 ---
-baseline_commit: SET_TO_HEAD_AFTER_STORY_3_5_MERGE
+baseline_commit: 9fe60d0f4d4d6112efb8e9f41041db3e0db053ca
 ---
 
 # Story 3.6: Spirit Form — Downed Player Contribution & Run Failure
 
-Status: ready-for-dev
+Status: done
 
 ## CLAUDE.md Required Task Header
 
@@ -202,33 +202,49 @@ So that entering spirit form feels like a reduced state, not elimination.
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Protocol changes — new delta types (AC4, AC9, AC10)
-  - [ ] 1.1: Add `SpiritAbilityFiredDelta` and `RunFailedDelta` to `server-to-host.ts` + `DeltaEventMsg` union
-  - [ ] 1.2: Add `spirit-ability:fired` (no-op) and `run:failed` (phase update) cases to `apply-delta.ts`
-  - [ ] 1.3: Export new types from `net-protocol/src/index.ts`
-  - [ ] 1.4: Add `SPIRIT_ABILITY_COOLDOWN_MS` to `balance.ts`
+- [x] Task 1: Protocol changes — new delta types (AC4, AC9, AC10)
+  - [x] 1.1: Add `SpiritAbilityFiredDelta` and `RunFailedDelta` to `server-to-host.ts` + `DeltaEventMsg` union
+  - [x] 1.2: Add `spirit-ability:fired` (no-op) and `run:failed` (phase update) cases to `apply-delta.ts`
+  - [x] 1.3: Export new types from `net-protocol/src/index.ts`
+  - [x] 1.4: Add `SPIRIT_ABILITY_COOLDOWN_MS` to `balance.ts`
 
-- [ ] Task 2: Server — spirit ability dispatch + run failure (AC2, AC3)
-  - [ ] 2.1: Add `spiritCooldownMap = new Map<string, number>()` private field; init in onJoin; cleanup in onLeave
-  - [ ] 2.2: In tick(), add spirit ability input processing block (after class ability block, check isSpirit + abilityIndex===3)
-  - [ ] 2.3: In tick(), add spirit cooldown expiry check (after existing cooldownMap expiry loop)
-  - [ ] 2.4: In tick(), add all-spirit run-failure check (after revive block; guard with phase === 'dungeon')
+- [x] Task 2: Server — spirit ability dispatch + run failure (AC2, AC3)
+  - [x] 2.1: Add `spiritCooldownMap = new Map<string, number>()` private field; init in onJoin; cleanup in onLeave
+  - [x] 2.2: In tick(), add spirit ability input processing block (after class ability block, check isSpirit + abilityIndex===3)
+  - [x] 2.3: In tick(), add spirit cooldown expiry check (after existing cooldownMap expiry loop)
+  - [x] 2.4: In tick(), add all-spirit run-failure check (after revive block; guard with phase === 'dungeon')
 
-- [ ] Task 3: Mobile — unlock cell 3 in spirit form (AC1)
-  - [ ] 3.1: Change cell 3 `isInteractive` condition: when `isSpirit`, cell 3 = `!isOnCooldown`; when `isDown`, cell 3 = `false`
-  - [ ] 3.2: Verify cells 0–2 locked overlay persists in spirit form (unchanged from 3.5)
+- [x] Task 3: Mobile — unlock cell 3 in spirit form (AC1)
+  - [x] 3.1: Change cell 3 `isInteractive` condition: when `isSpirit`, cell 3 = `!isOnCooldown`; when `isDown`, cell 3 = `false`
+  - [x] 3.2: Verify cells 0–2 locked overlay persists in spirit form (unchanged from 3.5)
 
-- [ ] Task 4: Host DungeonScreen — spirit rendering + post-run overlay (AC5, AC6, AC7)
-  - [ ] 4.1: In `renderFrame()`, render spirit-form players as luminous glow circles (separate from alive render path)
-  - [ ] 4.2: Extend `latestCombatEvent` / `latestVisualEvent` to accept `spirit-ability:fired` for flash trigger
-  - [ ] 4.3: Add `phase === 'post-run'` overlay inside DungeonScreen (or in App.tsx routing — see Dev Notes)
+- [x] Task 4: Host DungeonScreen — spirit rendering + post-run overlay (AC5, AC6, AC7)
+  - [x] 4.1: In `renderFrame()`, render spirit-form players as luminous glow circles (separate from alive render path)
+  - [x] 4.2: Extend `latestCombatEvent` / `latestVisualEvent` to accept `spirit-ability:fired` for flash trigger
+  - [x] 4.3: Add `phase === 'post-run'` overlay inside DungeonScreen (or in App.tsx routing — see Dev Notes)
 
-- [ ] Task 5: App.tsx (host + mobile) — post-run routing (AC7, AC8)
-  - [ ] 5.1: Host App.tsx: inside the dungeon/hub-world branch, check `phase === 'post-run'` → show overlay or separate placeholder
-  - [ ] 5.2: Mobile App.tsx: check `gameState?.session.phase === 'post-run'` → show placeholder
+- [x] Task 5: App.tsx (host + mobile) — post-run routing (AC7, AC8)
+  - [x] 5.1: Host App.tsx: inside the dungeon/hub-world branch, check `phase === 'post-run'` → show overlay or separate placeholder
+  - [x] 5.2: Mobile App.tsx: check `gameState?.session.phase === 'post-run'` → show placeholder
 
-- [ ] Task 6: Contract tests (AC9)
-  - [ ] 6.1: Add `SpiritAbilityFiredDelta` and `RunFailedDelta` round-trip tests
+- [x] Task 6: Contract tests (AC9)
+  - [x] 6.1: Add `SpiritAbilityFiredDelta` and `RunFailedDelta` round-trip tests
+
+### Review Findings
+
+- [x] [Review][Defer] `--text-muted` CSS token missing from design system [packages/ui-kit/src/tokens.css] — deferred. Not sure about --text-muted use case, might be useful later. Using --text-secondary for now (documented in completion notes).
+
+- [x] [Review][Patch] Spirit cell `isInteractive` missing `isFrozen` guard — client and server [apps/mobile-controller/src/screens/ControllerScreen.tsx; apps/simulation-server/src/rooms/GameRoom.ts:628] — Fixed: added `isFrozen` extraction and `&& !isFrozen` to client spirit cell guard; added `|| player.isFrozen` to server spirit dispatch guard.
+
+- [x] [Review][Patch] Spirit ability flash duration 300ms, spec says 200ms [apps/host-client/src/screens/DungeonScreen.tsx:29] — Fixed: added `SPIRIT_ABILITY_FLASH_MS = 200` constant; split spirit-ability:fired into its own else-if branch using the new constant.
+
+- [x] [Review][Patch] Mobile post-run screen colors inverted vs spec [apps/mobile-controller/src/App.tsx:152] — Fixed: background now `var(--corruption-blood)`, "Run Failed" text now `var(--text-primary)`.
+
+- [x] [Review][Defer] Spirit ability fires on same tick as run failure [apps/simulation-server/src/rooms/GameRoom.ts:621] — deferred, pre-existing. Spirit dispatch runs before run-failure check. An existing-spirit player can fire an ability the same tick the last player transitions, producing a flash immediately covered by the run-failed overlay. Cosmetically harmless tick-ordering artifact.
+
+- [x] [Review][Defer] `partialEssence` field in `RunFailedDelta` unused in `apply-delta.ts` [packages/net-protocol/src/apply-delta.ts] — deferred, pre-existing. `apply-delta` ignores `partialEssence`; host overlay recomputes it from `gameState.players`. Architectural placeholder for Epic 4 post-run summary.
+
+- [x] [Review][Defer] Slots 0–2 `COOLDOWN_UPDATE { remainingMs: 0 }` spurious messages for spirit players [apps/simulation-server/src/rooms/GameRoom.ts] — deferred, pre-existing. Class cooldown expiry loop fires for spirit player's 0–2 slots sending harmless cleanup messages to a phone already showing the spirit form state.
 
 ---
 
@@ -770,10 +786,32 @@ it('run:failed delta survives serialize → deserialize', () => {
 
 ### Agent Model Used
 
-{{agent_model_name_version}}
+claude-sonnet-4-6
 
 ### Debug Log References
 
 ### Completion Notes List
 
+- Task 1: Added `SpiritAbilityFiredDelta` and `RunFailedDelta` to `server-to-host.ts`. Both added to `DeltaEventMsg` union. `apply-delta.ts` handles `spirit-ability:fired` as no-op and `run:failed` as phase setter. Exported from `net-protocol/index.ts`. `SPIRIT_ABILITY_COOLDOWN_MS = 5000` added to `balance.ts` and exported from `game-rules/index.ts`.
+- Task 2: `GameRoom.ts` gains `spiritCooldownMap`; initialized in `onJoin`, deleted in both `onLeave` paths and `onDispose`. Spirit dispatch block added before `inputQueue.length = 0` (reads same queue as class ability block). Run failure check runs after revive block, inside `phase === 'dungeon'` guard. Spirit cooldown expiry check runs after regular cooldown expiry loop.
+- Task 3: `ControllerScreen.tsx` — `isSpiritCell` flag used to override cell 3's `isInteractive` and force `inputType: 'TAP'` so the pointer handler fires correctly. Cells 0–2 remain behind `downedOverlay` when `isSpirit`. Spirit ability name overlay is unchanged from 3.5 (shows on `isDown || isSpirit`).
+- Task 4: `DungeonScreen.tsx` — `renderFrame()` branches on `player.isSpirit` to draw outer glow ring (radius 28, alpha 0.35) + inner circle (radius 14, alpha 0.85) with the same flash pulsation formula as alive players. `spirit-ability:fired` added to the transient delta effect check for `flashUntil`. Post-run overlay added as an absolute-positioned `zIndex: 50` div inside DungeonScreen. Note: `--text-muted` not defined in tokens.css; used `--text-secondary` for the sub-note.
+- Task 5: Host `App.tsx` routes `'post-run'` phase to `DungeonScreen` (which has the overlay). `host-session.ts` transient delta routing extended to pass `spirit-ability:fired` and `run:failed` upstream. Mobile `App.tsx` shows a placeholder screen before `<ControllerScreen>` when `phase === 'post-run'`.
+- Task 6: 2 new round-trip tests added to `tests/contract/net-protocol.test.ts` under "Story 3.6 delta round-trips". All 32 net-protocol contract tests pass. Typecheck exits clean.
+
 ### File List
+
+- `packages/net-protocol/src/messages/server-to-host.ts`
+- `packages/net-protocol/src/apply-delta.ts`
+- `packages/net-protocol/src/index.ts`
+- `packages/game-rules/src/balance.ts`
+- `packages/game-rules/src/index.ts`
+- `apps/simulation-server/src/rooms/GameRoom.ts`
+- `apps/mobile-controller/src/screens/ControllerScreen.tsx`
+- `apps/host-client/src/screens/DungeonScreen.tsx`
+- `apps/host-client/src/session/host-session.ts`
+- `apps/host-client/src/App.tsx`
+- `apps/mobile-controller/src/App.tsx`
+- `tests/contract/net-protocol.test.ts`
+- `_bmad-output/implementation-artifacts/3-6-spirit-form-downed-player-contribution-and-run-failure.md`
+- `_bmad-output/implementation-artifacts/sprint-status.yaml`

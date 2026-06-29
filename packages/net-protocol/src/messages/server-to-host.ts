@@ -121,6 +121,17 @@ export type PlayerSpiritDelta = {
   playerId: string;
 };
 
+export type SpiritAbilityFiredDelta = {
+  type: 'spirit-ability:fired';
+  playerId: string;
+  class: PlayerClass;
+};
+
+export type RunFailedDelta = {
+  type: 'run:failed';
+  partialEssence: number;
+};
+
 export type DeltaEventMsg =
   | PlayerMovedDelta
   | PlayerDownedDelta
@@ -140,4 +151,6 @@ export type DeltaEventMsg =
   | PlayerClassUpdatedDelta
   | AbilityFiredDelta
   | PlayerHpUpdatedDelta
-  | PlayerSpiritDelta;
+  | PlayerSpiritDelta
+  | SpiritAbilityFiredDelta
+  | RunFailedDelta;

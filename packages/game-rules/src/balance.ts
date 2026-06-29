@@ -11,7 +11,11 @@ export const ENEMY_MELEE_DAMAGE = 15;
 export const ENEMY_MELEE_RANGE_PX = 64;
 export const ENEMY_ATTACK_COOLDOWN_MS = 1500;
 
-// ── Spirit ability names (display only; mechanics in Story 3.6) ───────────────
+// ── Spirit ability ─────────────────────────────────────────────────────────────
+// ponytail: uniform cooldown for all classes in alpha; per-class values when spirit mechanics are fully designed
+export const SPIRIT_ABILITY_COOLDOWN_MS = 5000;
+
+// ── Spirit ability names (display only) ──────────────────────────────────────
 export const SPIRIT_ABILITY_NAMES: Record<PlayerClass, string> = {
   stonehide:    'Earthen Vigil',
   spiritcaller: 'Soul Tether',

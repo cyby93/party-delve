@@ -315,6 +315,25 @@ describe('net-protocol contract tests', () => {
     });
   });
 
+  describe('Story 3.6 delta round-trips', () => {
+    it('spirit-ability:fired delta survives serialize → deserialize', () => {
+      const delta = {
+        type: 'spirit-ability:fired' as const,
+        playerId: 'p1',
+        class: PlayerClass.STORMCALLER,
+      } satisfies DeltaEventMsg;
+      expect(deserialize<DeltaEventMsg>(serialize(delta))).toEqual(delta);
+    });
+
+    it('run:failed delta survives serialize → deserialize', () => {
+      const delta = {
+        type: 'run:failed' as const,
+        partialEssence: 120,
+      } satisfies DeltaEventMsg;
+      expect(deserialize<DeltaEventMsg>(serialize(delta))).toEqual(delta);
+    });
+  });
+
   describe('Story 3.5 delta round-trips', () => {
     it('player:hp-updated delta survives serialize → deserialize', () => {
       const delta = { type: 'player:hp-updated' as const, playerId: 'p1', hp: 65 } satisfies DeltaEventMsg;

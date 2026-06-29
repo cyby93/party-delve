@@ -27,6 +27,7 @@ const ENEMY_RADIUS = 20;
 const VIRTUAL_W = 1920;
 const VIRTUAL_H = 1080;
 const ABILITY_FLASH_MS = 300;
+const SPIRIT_ABILITY_FLASH_MS = 200;
 const KILL_FADE_MS = 300;
 const ESSENCE_FLASH_MS = 400;
 
@@ -76,16 +77,23 @@ function renderFrame(
       playerGraphics.set(player.id, entry);
     }
     const { circle } = entry;
-    if (!player.isFrozen && entry.flashUntil > 0 && now < entry.flashUntil) {
-      const progress = (entry.flashUntil - now) / ABILITY_FLASH_MS;
-      circle.alpha = 0.2 + 0.8 * Math.abs(Math.cos(Math.PI * progress));
-    } else {
-      circle.alpha = player.isFrozen ? 0.3 : 1;
-    }
     const color = SESSION_COLOR_HEX[player.sessionColor] ?? 0xffffff;
+    const isFlashing = !player.isFrozen && entry.flashUntil > 0 && now < entry.flashUntil;
     circle.position.set(player.x, player.y);
     circle.clear();
-    circle.circle(0, 0, PLAYER_RADIUS).fill({ color });
+    if (player.isSpirit) {
+      // Luminous spirit form: outer glow ring + inner circle
+      circle.alpha = isFlashing
+        ? 0.2 + 0.8 * Math.abs(Math.cos(Math.PI * (entry.flashUntil - now) / ABILITY_FLASH_MS))
+        : 1;
+      circle.circle(0, 0, 28).fill({ color, alpha: 0.35 });
+      circle.circle(0, 0, 14).fill({ color, alpha: 0.85 });
+    } else {
+      circle.alpha = isFlashing
+        ? 0.2 + 0.8 * Math.abs(Math.cos(Math.PI * (entry.flashUntil - now) / ABILITY_FLASH_MS))
+        : (player.isFrozen ? 0.3 : 1);
+      circle.circle(0, 0, PLAYER_RADIUS).fill({ color });
+    }
   }
 
   // ── Enemies ───────────────────────────────────────────────────────────────────
@@ -229,6 +237,9 @@ export function DungeonScreen({ gameState, session: _session, latestTransientDel
     if (latestTransientDelta.type === 'ability:fired') {
       const entry = playerGraphicsRef.current.get(latestTransientDelta.playerId);
       if (entry) entry.flashUntil = Date.now() + ABILITY_FLASH_MS;
+    } else if (latestTransientDelta.type === 'spirit-ability:fired') {
+      const entry = playerGraphicsRef.current.get(latestTransientDelta.playerId);
+      if (entry) entry.flashUntil = Date.now() + SPIRIT_ABILITY_FLASH_MS;
     } else if (latestTransientDelta.type === 'enemy:killed') {
       const entry = enemyGraphicsRef.current.get(latestTransientDelta.enemyId);
       if (entry && entry.deadUntil === 0) entry.deadUntil = Date.now() + KILL_FADE_MS;
@@ -315,6 +326,46 @@ export function DungeonScreen({ gameState, session: _session, latestTransientDel
           <PlayerChipHUD key={player.id} player={player} />
         ))}
       </div>
+      {/* Post-run failure overlay */}
+      {gameState?.session.phase === 'post-run' && (
+        <div style={{
+          position: 'absolute',
+          inset: 0,
+          background: 'rgba(0,0,0,0.85)',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 16,
+          zIndex: 50,
+        }}>
+          <div style={{
+            fontFamily: 'var(--font-body)',
+            fontWeight: 700,
+            fontSize: 'var(--text-xl)',
+            color: 'var(--text-secondary)',
+            textAlign: 'center',
+          }}>
+            The run ends here.
+          </div>
+          <div style={{
+            fontFamily: 'var(--font-body)',
+            fontWeight: 700,
+            fontSize: 'var(--text-lg)',
+            color: 'var(--accent-warm)',
+          }}>
+            Spirit Essence carried: {gameState.players.reduce((sum, p) => sum + (p.essenceTotal ?? 0), 0)}
+          </div>
+          <div style={{
+            fontFamily: 'var(--font-body)',
+            fontWeight: 400,
+            fontSize: 'var(--text-sm)',
+            color: 'var(--text-secondary)',
+          }}>
+            Full run summary coming in Epic 4.
+          </div>
+        </div>
+      )}
       {/* Revive timer overlay — bottom-center */}
       <div style={{
         position: 'absolute',

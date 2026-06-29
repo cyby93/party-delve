@@ -11,7 +11,7 @@ import {
   extractPoiBeginContact, extractPoiEndContact, extractEssenceBeginContact, toMeters, toPixels,
 } from '../physics/world.js';
 import type { PoiBeginContactEvent, PoiEndContactEvent, EssenceBeginContactEvent } from '../physics/world.js';
-import { createRng, tickEnemy, dispatchAbility, getEnemyCount, applyDamage, isInHitZone, ABILITY_HIT_RANGE_PX, ABILITY_HIT_RADIUS_PX, applyPlayerDamage, ENEMY_MELEE_DAMAGE, ENEMY_MELEE_RANGE_PX, ENEMY_ATTACK_COOLDOWN_MS, REVIVE_RADIUS_PX, REVIVE_HP } from 'game-rules';
+import { createRng, tickEnemy, dispatchAbility, getEnemyCount, applyDamage, isInHitZone, ABILITY_HIT_RANGE_PX, ABILITY_HIT_RADIUS_PX, applyPlayerDamage, ENEMY_MELEE_DAMAGE, ENEMY_MELEE_RANGE_PX, ENEMY_ATTACK_COOLDOWN_MS, REVIVE_RADIUS_PX, REVIVE_HP, SPIRIT_ABILITY_COOLDOWN_MS } from 'game-rules';
 import type { BehaviorLayer, EnemyContext, EnemyAIEvent } from 'game-rules';
 import { CLASS_DEFINITIONS } from 'shared-types';
 import type { EnemyState } from 'shared-types';
@@ -87,6 +87,7 @@ export class GameRoom extends Room {
   // Array index = abilityIndex (0–3). Value 0 = no cooldown active.
   // NOT part of GameState — purely server-local, not snapshotted.
   private cooldownMap = new Map<string, number[]>();
+  private spiritCooldownMap = new Map<string, number>(); // playerId → spirit ability expiry epoch (0 = ready)
   private lastKnownJoystick = new Map<string, { x: number; y: number }>();
   private physicsWorld!: World;
   private playerBodies = new Map<string, Body>();
@@ -217,6 +218,7 @@ export class GameRoom extends Room {
     this.gameState.players.push(player);
     this.gameState.session.playerCount = this.gameState.players.length;
     this.cooldownMap.set(client.sessionId, [0, 0, 0, 0]);
+    this.spiritCooldownMap.set(client.sessionId, 0);
 
     // Create physics body at this player's spawn position
     const body = createPlayerBody(this.physicsWorld, client.sessionId, player.x, player.y);
@@ -236,6 +238,7 @@ export class GameRoom extends Room {
       this.gameState.players = this.gameState.players.filter(p => p.id !== client.sessionId);
       this.gameState.session.playerCount = this.gameState.players.length;
       this.cooldownMap.delete(client.sessionId);
+      this.spiritCooldownMap.delete(client.sessionId);
       this.lastKnownJoystick.delete(client.sessionId);
       const leaveBody = this.playerBodies.get(client.sessionId);
       if (leaveBody) {
@@ -273,6 +276,7 @@ export class GameRoom extends Room {
       this.gameState.players = this.gameState.players.filter(p => p.id !== client.sessionId);
       this.gameState.session.playerCount = this.gameState.players.length;
       this.cooldownMap.delete(client.sessionId);
+      this.spiritCooldownMap.delete(client.sessionId);
       this.lastKnownJoystick.delete(client.sessionId);
       const expireBody = this.playerBodies.get(client.sessionId);
       if (expireBody) {
@@ -300,6 +304,7 @@ export class GameRoom extends Room {
     this.enemyBodies.clear();
     this.enemyLayers.clear();
     this.enemyAttackCooldowns.clear();
+    this.spiritCooldownMap.clear();
     for (const body of this.essenceSensorBodies.values()) {
       this.physicsWorld.destroyBody(body);
     }
@@ -612,6 +617,40 @@ export class GameRoom extends Room {
       logger.debug({ roomId: this.roomId, clientId, abilityIndex, dirX, dirY }, 'ability fired');
     }
 
+    // ── Spirit ability dispatch ───────────────────────────────────────────────
+    if (this.gameState.session.phase === 'dungeon') {
+      const nowSpirit = Date.now();
+      for (const { clientId, msg } of this.inputQueue) {
+        if (msg.event.type !== 'ability') continue;
+        if (msg.event.ability.abilityIndex !== 3) continue;
+
+        const player = this.gameState.players.find(p => p.id === clientId);
+        if (!player || !player.isSpirit || player.class === null || player.isFrozen) continue;
+
+        const spiritExpiry = this.spiritCooldownMap.get(clientId) ?? 0;
+        if (spiritExpiry > nowSpirit) continue;
+
+        this.spiritCooldownMap.set(clientId, nowSpirit + SPIRIT_ABILITY_COOLDOWN_MS);
+
+        this.broadcast(EventNames.DELTA, {
+          type: 'spirit-ability:fired' as const,
+          playerId: clientId,
+          class: player.class,
+        } satisfies DeltaEventMsg);
+
+        const targetClient = this.clients.find(c => c.sessionId === clientId);
+        if (targetClient) {
+          targetClient.send(EventNames.COOLDOWN_UPDATE, {
+            type: 'cooldown:update',
+            abilityIndex: 3,
+            remainingMs: SPIRIT_ABILITY_COOLDOWN_MS,
+          } satisfies CooldownUpdateMsg);
+        }
+
+        logger.debug({ roomId: this.roomId, clientId, class: player.class }, 'spirit ability fired');
+      }
+    }
+
     this.inputQueue.length = 0;
 
     // ── Enemy melee attacks ───────────────────────────────────────────────────
@@ -741,6 +780,20 @@ export class GameRoom extends Room {
       }
     }
 
+    // ── Run failure: all players in spirit form → phase 'post-run' ───────────
+    if (this.gameState.session.phase === 'dungeon') {
+      const players = this.gameState.players;
+      if (players.length > 0 && players.every(p => p.isSpirit)) {
+        const partialEssence = players.reduce((sum, p) => sum + (p.essenceTotal ?? 0), 0);
+        this.gameState.session.phase = 'post-run';
+        this.broadcast(EventNames.DELTA, {
+          type: 'run:failed' as const,
+          partialEssence,
+        } satisfies DeltaEventMsg);
+        logger.info({ roomId: this.roomId, partialEssence }, 'run failed — all players in spirit form');
+      }
+    }
+
     // Notify clients whose cooldowns have expired this tick
     const nowExpiry = Date.now();
     for (const [clientId, cooldowns] of this.cooldownMap) {
@@ -756,6 +809,22 @@ export class GameRoom extends Room {
               remainingMs: 0,
             } satisfies CooldownUpdateMsg);
           }
+        }
+      }
+    }
+
+    // Check spirit ability cooldown expiries
+    const nowSpiritExpiry = Date.now();
+    for (const [clientId, expiry] of this.spiritCooldownMap) {
+      if (expiry > 0 && nowSpiritExpiry >= expiry) {
+        this.spiritCooldownMap.set(clientId, 0);
+        const targetClient = this.clients.find(c => c.sessionId === clientId);
+        if (targetClient) {
+          targetClient.send(EventNames.COOLDOWN_UPDATE, {
+            type: 'cooldown:update',
+            abilityIndex: 3,
+            remainingMs: 0,
+          } satisfies CooldownUpdateMsg);
         }
       }
     }
