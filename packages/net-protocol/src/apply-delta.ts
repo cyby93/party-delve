@@ -129,6 +129,10 @@ export function applyDelta(state: GameState, evt: DeltaEventMsg): GameState {
       return state;  // ponytail: visual only — no GameState mutation
     case 'run:failed':
       return { ...state, session: { ...state.session, phase: 'post-run' } };
+    case 'level:complete':
+      return state;  // ponytail: visual only — canvas flash handled in DungeonScreen on event receipt
+    case 'run:complete':
+      return { ...state, session: { ...state.session, phase: 'post-run' } };
     default: {
       // Exhaustiveness guard: adding a new DeltaEventMsg variant without a case here causes a TS error.
       const _exhaustive: never = evt;

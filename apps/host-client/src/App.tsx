@@ -17,6 +17,7 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [latestTransientDelta, setLatestTransientDelta] = useState<DeltaEventMsg | null>(null);
+  const [runOutcome, setRunOutcome] = useState<'complete' | 'failed' | null>(null);
 
   const handleCreateSession = useCallback(async () => {
     if (isCreating) return;
@@ -37,6 +38,8 @@ export function App() {
 
   useEffect(() => {
     if (!latestTransientDelta) return;
+    if (latestTransientDelta.type === 'run:complete') setRunOutcome('complete');
+    else if (latestTransientDelta.type === 'run:failed') setRunOutcome('failed');
     const timer = setTimeout(() => setLatestTransientDelta(null), 400);
     return () => clearTimeout(timer);
   }, [latestTransientDelta]);
@@ -64,7 +67,7 @@ export function App() {
     );
   }
   if (gameState?.session.phase === 'dungeon' || gameState?.session.phase === 'post-run') {
-    return <DungeonScreen gameState={gameState} session={session} latestTransientDelta={latestTransientDelta} />;
+    return <DungeonScreen gameState={gameState} session={session} latestTransientDelta={latestTransientDelta} runOutcome={runOutcome} />;
   }
   return <HubWorldScreen gameState={gameState} session={session} />;
 }

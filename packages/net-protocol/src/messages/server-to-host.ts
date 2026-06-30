@@ -132,6 +132,16 @@ export type RunFailedDelta = {
   partialEssence: number;
 };
 
+export type LevelCompleteDelta = {
+  type: 'level:complete';
+  levelIndex: number;
+};
+
+export type RunCompleteDelta = {
+  type: 'run:complete';
+  totalEssence: number;
+};
+
 export type DeltaEventMsg =
   | PlayerMovedDelta
   | PlayerDownedDelta
@@ -153,4 +163,6 @@ export type DeltaEventMsg =
   | PlayerHpUpdatedDelta
   | PlayerSpiritDelta
   | SpiritAbilityFiredDelta
-  | RunFailedDelta;
+  | RunFailedDelta
+  | LevelCompleteDelta
+  | RunCompleteDelta;

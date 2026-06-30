@@ -42,7 +42,7 @@
 # Phase2 legacy stories (old Phase-based keys) are tracked below under PHASE 2 STORIES.
 
 generated: 2026-06-22
-last_updated: 2026-06-29 (3-6 done)
+last_updated: 2026-06-29 (3-7 done)
 project: party-delve
 project_key: NOKEY
 tracking_system: file-system
@@ -88,7 +88,7 @@ development_status:
   3-4-combat-resolution-hitboxes-damage-and-spirit-essence-collection: done
   3-5-player-health-revive-timer-and-downed-state: done
   3-6-spirit-form-downed-player-contribution-and-run-failure: done
-  3-7-clear-objective-and-level-completion: ready-for-dev
+  3-7-clear-objective-and-level-completion: done
   3-8-login-flow-update: done
   epic-3-retrospective: optional
 

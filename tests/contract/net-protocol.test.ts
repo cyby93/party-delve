@@ -315,6 +315,36 @@ describe('net-protocol contract tests', () => {
     });
   });
 
+  describe('Story 3.7 delta round-trips', () => {
+    it('level:complete delta survives serialize → deserialize', () => {
+      const delta = {
+        type: 'level:complete' as const,
+        levelIndex: 0,
+      } satisfies DeltaEventMsg;
+      expect(deserialize<DeltaEventMsg>(serialize(delta))).toEqual(delta);
+    });
+
+    it('run:complete delta survives serialize → deserialize', () => {
+      const delta = {
+        type: 'run:complete' as const,
+        totalEssence: 240,
+      } satisfies DeltaEventMsg;
+      expect(deserialize<DeltaEventMsg>(serialize(delta))).toEqual(delta);
+    });
+
+    it('applyDelta level:complete returns state unchanged', () => {
+      const state: GameState = mockGameState();
+      const next = applyDelta(state, { type: 'level:complete', levelIndex: 0 });
+      expect(next).toBe(state);
+    });
+
+    it('applyDelta run:complete sets phase to post-run', () => {
+      const state: GameState = { ...mockGameState(), session: { ...mockGameState().session, phase: 'dungeon' } };
+      const next = applyDelta(state, { type: 'run:complete', totalEssence: 100 });
+      expect(next.session.phase).toBe('post-run');
+    });
+  });
+
   describe('Story 3.6 delta round-trips', () => {
     it('spirit-ability:fired delta survives serialize → deserialize', () => {
       const delta = {

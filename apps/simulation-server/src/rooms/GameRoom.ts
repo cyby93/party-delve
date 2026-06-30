@@ -11,7 +11,7 @@ import {
   extractPoiBeginContact, extractPoiEndContact, extractEssenceBeginContact, toMeters, toPixels,
 } from '../physics/world.js';
 import type { PoiBeginContactEvent, PoiEndContactEvent, EssenceBeginContactEvent } from '../physics/world.js';
-import { createRng, tickEnemy, dispatchAbility, getEnemyCount, applyDamage, isInHitZone, ABILITY_HIT_RANGE_PX, ABILITY_HIT_RADIUS_PX, applyPlayerDamage, ENEMY_MELEE_DAMAGE, ENEMY_MELEE_RANGE_PX, ENEMY_ATTACK_COOLDOWN_MS, REVIVE_RADIUS_PX, REVIVE_HP, SPIRIT_ABILITY_COOLDOWN_MS } from 'game-rules';
+import { createRng, tickEnemy, dispatchAbility, getEnemyCount, applyDamage, isInHitZone, ABILITY_HIT_RANGE_PX, ABILITY_HIT_RADIUS_PX, applyPlayerDamage, ENEMY_MELEE_DAMAGE, ENEMY_MELEE_RANGE_PX, ENEMY_ATTACK_COOLDOWN_MS, REVIVE_RADIUS_PX, REVIVE_HP, SPIRIT_ABILITY_COOLDOWN_MS, getReviveWindowMs } from 'game-rules';
 import type { BehaviorLayer, EnemyContext, EnemyAIEvent } from 'game-rules';
 import { CLASS_DEFINITIONS } from 'shared-types';
 import type { EnemyState } from 'shared-types';
@@ -791,6 +791,36 @@ export class GameRoom extends Room {
           partialEssence,
         } satisfies DeltaEventMsg);
         logger.info({ roomId: this.roomId, partialEssence }, 'run failed — all players in spirit form');
+      }
+    }
+
+    // ── Level clear: all enemies defeated → level:complete + run:complete ────
+    if (this.gameState.session.phase === 'dungeon') {
+      const enemies = this.gameState.enemies;
+      if (enemies.length > 0 && enemies.every(e => !e.isAlive)) {
+        const levelIndex = this.gameState.session.levelIndex;
+        this.gameState.session.phase = 'post-run';
+
+        this.broadcast(EventNames.DELTA, {
+          type: 'level:complete' as const,
+          levelIndex,
+        } satisfies DeltaEventMsg);
+
+        // ponytail: silent reset; E4 will broadcast a new player:downed when the next level loads
+        const nowClear = Date.now();
+        for (const player of this.gameState.players) {
+          if (player.isDown) {
+            player.reviveTimerExpiresAt = nowClear + getReviveWindowMs(player.downCount);
+          }
+        }
+
+        const totalEssence = this.gameState.players.reduce((sum, p) => sum + (p.essenceTotal ?? 0), 0);
+        this.broadcast(EventNames.DELTA, {
+          type: 'run:complete' as const,
+          totalEssence,
+        } satisfies DeltaEventMsg);
+
+        logger.info({ roomId: this.roomId, levelIndex, totalEssence }, 'level clear — run complete');
       }
     }
 

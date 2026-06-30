@@ -441,3 +441,22 @@ Spirit dispatch runs before the run-failure check in `tick()`. An existing-spiri
 
 **D-3.6-C — Slots 0–2 spurious `COOLDOWN_UPDATE { remainingMs: 0 }` for spirit players** [apps/simulation-server/src/rooms/GameRoom.ts]
 When a spirit player's class ability cooldown expires, the regular expiry loop sends `COOLDOWN_UPDATE` for slots 0–2 to the mobile. Spirit players cannot use those slots, so the messages clear irrelevant UI state. Harmless but slightly wasteful. Can be eliminated by skipping the expiry notification when `player.isSpirit` in the cooldown expiry loop.
+
+---
+
+## Deferred from: code review of 3-7-clear-objective-and-level-completion (2026-06-29)
+
+**D-3.7-A — `runOutcome` never resets between sessions** [apps/host-client/src/App.tsx, apps/mobile-controller/src/App.tsx]
+`runOutcome` is set on `run:complete` or `run:failed` delta receipt but never cleared. If the app stays mounted across a session transition (e.g. E4 return-to-hub), `runOutcome` will carry stale state from the previous run. Fix: reset `runOutcome` to `null` on `phase` transitioning back to `hub` or `lobby`. Deferred to E4 when return-to-hub is implemented.
+
+**D-3.7-B — Consecutive `level:complete`→`run:complete` delta overwrites `latestTransientDelta`** [apps/host-client/src/session/host-session.ts]
+Both deltas are routed to `latestTransientDelta` in `App.tsx`. React 18 should process them as separate renders (separate WS message handlers), but if they arrive in the same microtask batch the second overwrites the first and the canvas flash might be skipped. Colyseus delivers room messages in order; revisit if E4 introduces higher-frequency delta bursts where batching becomes visible.
+
+**D-3.7-C — Server keeps dead enemies (`isAlive=false`), client removes them via `filter`** [packages/net-protocol/src/apply-delta.ts line 106]
+`applyDelta('enemy:killed')` uses `.filter()`, so killed enemies are absent from `state.enemies` on the client. The server's `gameState.enemies` retains them with `isAlive=false`. Any future client-side level-clear predicate using `enemies.every(e => !e.isAlive)` would fail (vacuously passes if all killed, fails the `length > 0` guard). Document and address in E4 if client-side clear logic is needed.
+
+**D-3.7-D — Revive timer display stale during post-run transition** [apps/host-client/src/screens/DungeonScreen.tsx]
+On level clear with a downed player, `reviveTimerExpiresAt` is reset server-side before `run:complete` is broadcast, but the client's timer display reads from snapshot state which may lag by up to `SNAPSHOT_INTERVAL_S`. Cosmetic: the post-run overlay covers the HUD immediately. Address in E4 when per-level timer resets get explicit `player:downed` re-broadcasts.
+
+**D-3.7-E — `enemies.length > 0` guard silently blocks clear on empty level** [apps/simulation-server/src/rooms/GameRoom.ts]
+The level-clear predicate guards on `enemies.length > 0` to avoid a vacuous clear on dungeon start. If a future `getEnemyCount` configuration returns 0 (e.g. a boss-only room with no grunt spawns), the clear condition can never fire. Add a fallback or log warning if `enemies.length === 0` and phase is still `dungeon` after N ticks.

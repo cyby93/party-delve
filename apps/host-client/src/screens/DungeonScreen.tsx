@@ -9,6 +9,7 @@ interface DungeonScreenProps {
   gameState: GameState | null;
   session: HostSession | null;
   latestTransientDelta: DeltaEventMsg | null;
+  runOutcome: 'complete' | 'failed' | null;
 }
 
 const SESSION_COLOR_HEX: Record<SessionColor, number> = {
@@ -175,7 +176,7 @@ interface ReviveDeadline {
   name: string;
 }
 
-export function DungeonScreen({ gameState, session: _session, latestTransientDelta }: DungeonScreenProps) {
+export function DungeonScreen({ gameState, session: _session, latestTransientDelta, runOutcome }: DungeonScreenProps) {
   const canvasContainerRef = useRef<HTMLDivElement>(null);
   const pixiAppRef = useRef<Application | null>(null);
   const playerGraphicsRef = useRef<Map<string, PlayerEntry>>(new Map());
@@ -185,6 +186,7 @@ export function DungeonScreen({ gameState, session: _session, latestTransientDel
   latestGameStateRef.current = gameState;
   const reviveDeadlinesRef = useRef<Map<string, ReviveDeadline>>(new Map());
   const [, setTimerTick] = useState(0);
+  const [levelClearFlash, setLevelClearFlash] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -229,12 +231,16 @@ export function DungeonScreen({ gameState, session: _session, latestTransientDel
     };
   }, []);
 
-  // Handle transient delta visuals: ability flash, enemy kill fade, essence drop flash
+  // Handle transient delta visuals: ability flash, enemy kill fade, essence drop flash, level-complete flash
   useEffect(() => {
     if (!latestTransientDelta) return;
     const app = pixiAppRef.current;
 
-    if (latestTransientDelta.type === 'ability:fired') {
+    if (latestTransientDelta.type === 'level:complete') {
+      setLevelClearFlash(true);
+      const flashTimer = setTimeout(() => setLevelClearFlash(false), 300);
+      return () => clearTimeout(flashTimer);
+    } else if (latestTransientDelta.type === 'ability:fired') {
       const entry = playerGraphicsRef.current.get(latestTransientDelta.playerId);
       if (entry) entry.flashUntil = Date.now() + ABILITY_FLASH_MS;
     } else if (latestTransientDelta.type === 'spirit-ability:fired') {
@@ -325,9 +331,32 @@ export function DungeonScreen({ gameState, session: _session, latestTransientDel
         {players.map(player => (
           <PlayerChipHUD key={player.id} player={player} />
         ))}
+        {/* ponytail: hardcoded; add objectiveType to SessionState when E4 introduces Survive the Waves */}
+        {gameState?.session.phase === 'dungeon' && (
+          <div style={{
+            marginLeft: 'auto',
+            fontFamily: 'var(--font-body)',
+            fontWeight: 700,
+            fontSize: 'var(--text-sm)',
+            color: 'var(--text-primary)',
+          }}>
+            Clear
+          </div>
+        )}
       </div>
+      {/* Level-complete canvas flash */}
+      {levelClearFlash && (
+        <div style={{
+          position: 'absolute',
+          inset: 0,
+          background: 'white',
+          opacity: 0.3,
+          zIndex: 20,
+          pointerEvents: 'none',
+        }} />
+      )}
       {/* Post-run failure overlay */}
-      {gameState?.session.phase === 'post-run' && (
+      {gameState?.session.phase === 'post-run' && runOutcome === 'failed' && (
         <div style={{
           position: 'absolute',
           inset: 0,
@@ -363,6 +392,62 @@ export function DungeonScreen({ gameState, session: _session, latestTransientDel
             color: 'var(--text-secondary)',
           }}>
             Full run summary coming in Epic 4.
+          </div>
+        </div>
+      )}
+      {/* Post-run success overlay */}
+      {gameState?.session.phase === 'post-run' && runOutcome === 'complete' && (
+        <div style={{
+          position: 'absolute',
+          inset: 0,
+          background: 'rgba(0,0,0,0.8)',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 16,
+          zIndex: 50,
+        }}>
+          <div style={{
+            fontFamily: 'var(--font-body)',
+            fontWeight: 700,
+            fontSize: 'var(--text-xl)',
+            color: 'var(--accent-spirit)',
+            textAlign: 'center',
+          }}>
+            Level Clear.
+          </div>
+          <div style={{
+            fontFamily: 'var(--font-body)',
+            fontWeight: 700,
+            fontSize: 'var(--text-lg)',
+            color: 'var(--accent-warm)',
+          }}>
+            Spirit Essence carried: {gameState.players.reduce((sum, p) => sum + (p.essenceTotal ?? 0), 0)}
+          </div>
+          <div style={{
+            fontFamily: 'var(--font-body)',
+            fontWeight: 400,
+            fontSize: 'var(--text-sm)',
+            color: 'var(--text-muted)',
+          }}>
+            Full run summary coming in Epic 4.
+          </div>
+        </div>
+      )}
+      {/* Post-run fallback: outcome delta not yet received (packet loss / reconnect) */}
+      {gameState?.session.phase === 'post-run' && runOutcome === null && (
+        <div style={{
+          position: 'absolute',
+          inset: 0,
+          background: 'rgba(0,0,0,0.8)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 50,
+        }}>
+          <div style={{ fontFamily: 'var(--font-body)', fontWeight: 400, fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>
+            Run ended.
           </div>
         </div>
       )}

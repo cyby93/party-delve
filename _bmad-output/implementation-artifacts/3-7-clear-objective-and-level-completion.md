@@ -1,10 +1,10 @@
 ---
-baseline_commit: SET_TO_HEAD_AFTER_STORY_3_6_MERGE
+baseline_commit: 7531f85ec80a1d42dfff32af37660f84effd7a43
 ---
 
 # Story 3.7: Clear Objective & Level Completion
 
-Status: ready-for-dev
+Status: done
 
 ## CLAUDE.md Required Task Header
 
@@ -214,30 +214,41 @@ so that the dungeon run has a clear moment of victory and forward progression.
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Protocol — two new delta types (AC5, AC9, AC10)
-  - [ ] 1.1: Add `LevelCompleteDelta` and `RunCompleteDelta` to `server-to-host.ts` and `DeltaEventMsg` union
-  - [ ] 1.2: Add `level:complete` (no-op) and `run:complete` (phase update) cases to `apply-delta.ts`
-  - [ ] 1.3: Export new types from `net-protocol/src/index.ts`
+- [x] Task 1: Protocol — two new delta types (AC5, AC9, AC10)
+  - [x] 1.1: Add `LevelCompleteDelta` and `RunCompleteDelta` to `server-to-host.ts` and `DeltaEventMsg` union
+  - [x] 1.2: Add `level:complete` (no-op) and `run:complete` (phase update) cases to `apply-delta.ts`
+  - [x] 1.3: Export new types from `net-protocol/src/index.ts`
 
-- [ ] Task 2: Server — level-clear detection and run completion (AC2, AC4)
-  - [ ] 2.1: Add all-enemies-dead check in `tick()` after the run-failure check from story 3.6
-  - [ ] 2.2: On detect: reset downed-player revive timers; broadcast LevelCompleteDelta then RunCompleteDelta; set phase
+- [x] Task 2: Server — level-clear detection and run completion (AC2, AC4)
+  - [x] 2.1: Add all-enemies-dead check in `tick()` after the run-failure check from story 3.6
+  - [x] 2.2: On detect: reset downed-player revive timers; broadcast LevelCompleteDelta then RunCompleteDelta; set phase
 
-- [ ] Task 3: Host — Clear label + level-complete flash (AC1, AC3)
-  - [ ] 3.1: Add "Clear" objective label to `DungeonScreen`'s top strip HTML overlay
-  - [ ] 3.2: Add LevelCompleteDelta handling in DungeonScreen → trigger 300ms white canvas flash
+- [x] Task 3: Host — Clear label + level-complete flash (AC1, AC3)
+  - [x] 3.1: Add "Clear" objective label to `DungeonScreen`'s top strip HTML overlay
+  - [x] 3.2: Add LevelCompleteDelta handling in DungeonScreen → trigger 300ms white canvas flash
 
-- [ ] Task 4: Host — runOutcome tracking + run-complete overlay (AC6, AC7)
-  - [ ] 4.1: Add `runOutcome` state to `App.tsx`; set on run:complete and run:failed delta receipt
-  - [ ] 4.2: Update story 3.6 failure overlay guard to include `runOutcome === 'failed'`
-  - [ ] 4.3: Add run-complete overlay in DungeonScreen (or App.tsx — same pattern as failure overlay)
+- [x] Task 4: Host — runOutcome tracking + run-complete overlay (AC6, AC7)
+  - [x] 4.1: Add `runOutcome` state to `App.tsx`; set on run:complete and run:failed delta receipt
+  - [x] 4.2: Update story 3.6 failure overlay guard to include `runOutcome === 'failed'`
+  - [x] 4.3: Add run-complete overlay in DungeonScreen (or App.tsx — same pattern as failure overlay)
 
-- [ ] Task 5: Mobile — run-complete placeholder + refactor failure guard (AC8)
-  - [ ] 5.1: Add `runOutcome` tracking in mobile `App.tsx` (same pattern as host)
-  - [ ] 5.2: Update story 3.6 failure check; add run-complete placeholder
+- [x] Task 5: Mobile — run-complete placeholder + refactor failure guard (AC8)
+  - [x] 5.1: Add `runOutcome` tracking in mobile `App.tsx` (same pattern as host)
+  - [x] 5.2: Update story 3.6 failure check; add run-complete placeholder
 
-- [ ] Task 6: Contract tests (AC9)
-  - [ ] 6.1: Add `LevelCompleteDelta` and `RunCompleteDelta` round-trip tests
+- [x] Task 6: Contract tests (AC9)
+  - [x] 6.1: Add `LevelCompleteDelta` and `RunCompleteDelta` round-trip tests
+
+### Review Findings (AI) — 2026-06-29
+
+- [x] [Review][Patch] AC4: revive timer reset happens before both broadcasts, not between them [apps/simulation-server/src/rooms/GameRoom.ts]
+- [x] [Review][Patch] Blank unrecoverable host screen when `phase='post-run'` and `runOutcome=null` (missed delta / packet loss) [apps/host-client/src/screens/DungeonScreen.tsx]
+- [x] [Review][Patch] `setTimeout` flash teardown not cleaned up — no `clearTimeout` in useEffect [apps/host-client/src/screens/DungeonScreen.tsx]
+- [x] [Review][Defer] `runOutcome` never resets — stale state if session restarts without page reload [apps/host-client/src/App.tsx, apps/mobile-controller/src/App.tsx] — deferred, E4 return-to-hub flow will handle session reset
+- [x] [Review][Defer] Consecutive `level:complete`→`run:complete` delta overwrite on `latestTransientDelta` — theoretical fragility [apps/host-client/src/session/host-session.ts] — deferred, Colyseus guarantees message ordering; revisit if multi-batch delivery observed
+- [x] [Review][Defer] Server keeps dead enemies (`isAlive=false`), client removes them via filter — divergent `GameState.enemies` shapes — deferred, pre-existing; E4 note for client-side clear logic
+- [x] [Review][Defer] Revive timer cosmetic display stale during post-run transition — deferred, cosmetic; covered by post-run overlay in practice
+- [x] [Review][Defer] `enemies.length > 0` guard silently blocks clear on empty level — deferred, not reachable with current `getEnemyCount` logic
 
 ---
 
@@ -652,14 +663,40 @@ it('run:complete delta survives serialize → deserialize', () => {
 
 ---
 
+## Change Log
+
+- 2026-06-29: Implemented story 3.7 — Clear objective label, level-clear detection, LevelCompleteDelta + RunCompleteDelta protocol, runOutcome tracking on host and mobile, contract tests. All ACs satisfied, typecheck clean.
+
 ## Dev Agent Record
 
 ### Agent Model Used
 
-{{agent_model_name_version}}
+claude-sonnet-4-6
 
 ### Debug Log References
 
 ### Completion Notes List
 
+- Implemented two new delta types (`LevelCompleteDelta`, `RunCompleteDelta`) in `server-to-host.ts`, added to `DeltaEventMsg` union, exported from package index.
+- Added `level:complete` (no-op) and `run:complete` (phase→'post-run') cases to `apply-delta.ts` before the exhaustiveness guard.
+- Added `getReviveWindowMs` to GameRoom's game-rules import; inserted level-clear detection block after the run-failure check — guards on `phase === 'dungeon'` and `enemies.length > 0 && enemies.every(e => !e.isAlive)`.
+- Silent revive timer reset for downed players before phase transition (ponytail comment preserved as specified).
+- Added `level:complete` and `run:complete` to the transient delta allowlist in `host-session.ts` so they reach DungeonScreen.
+- Host `App.tsx`: added `runOutcome` state; `useEffect` on `latestTransientDelta` sets it on `run:complete`/`run:failed`; passed as prop to `DungeonScreen`.
+- `DungeonScreen.tsx`: added `runOutcome` prop; "Clear" label in top strip (hardcoded, `marginLeft: auto`); 300ms CSS white flash on `level:complete`; failure overlay now guarded by `runOutcome === 'failed'`; new success overlay guarded by `runOutcome === 'complete'`.
+- Mobile `App.tsx`: `runOutcome` state set directly in `handleDelta`; failure placeholder now guarded by `runOutcome === 'failed'`; new success placeholder for `runOutcome === 'complete'` with `--accent-spirit` and `--bg-base`.
+- Contract tests: 4 new tests added (2 round-trips + 2 `applyDelta` behavior). All 36 contract tests pass. Typecheck clean.
+
 ### File List
+
+- packages/net-protocol/src/messages/server-to-host.ts
+- packages/net-protocol/src/apply-delta.ts
+- packages/net-protocol/src/index.ts
+- apps/simulation-server/src/rooms/GameRoom.ts
+- apps/host-client/src/session/host-session.ts
+- apps/host-client/src/App.tsx
+- apps/host-client/src/screens/DungeonScreen.tsx
+- apps/mobile-controller/src/App.tsx
+- tests/contract/net-protocol.test.ts
+- _bmad-output/implementation-artifacts/3-7-clear-objective-and-level-completion.md
+- _bmad-output/implementation-artifacts/sprint-status.yaml
