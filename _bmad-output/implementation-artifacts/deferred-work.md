@@ -67,6 +67,19 @@ This package attempts a Redis connection on import. In Phase 1 local mode, no Re
 
 ---
 
+## Deferred from: code review of dev-1-mobile-controller-network-binding (2026-06-30)
+
+**D18 — Hostname fallback wrong for multi-machine setups** (`apps/mobile-controller/src/session/mobile-session.ts`)
+`window.location.hostname` is the correct fallback when Vite and the sim server share the same dev machine. If they run on different machines, the fallback silently points to the wrong host. By design — `VITE_SIM_URL` is the override for non-standard topologies. Not a regression from the old behavior.
+
+**D19 — `LobbyScreen.tsx` has its own `SIM_URL` constant** (`apps/host-client/src/screens/LobbyScreen.tsx`)
+Separate `const SIM_URL` in the host client used for the `/local-ip` HTTP fetch. Intentional — host client always runs on the same machine as the sim server, so `localhost` is correct there. Undocumented duplication; a future rename could miss it.
+
+**D20 — `SIM_URL` module-level constant goes stale if phone roams mid-session** (`apps/mobile-controller/src/session/mobile-session.ts`)
+Evaluated once at import time. If a phone changes network mid-session the stored URL becomes unreachable. Inherent limitation; the reconnect token is also invalidated at that point, so the failure mode is not worse than the existing reconnect path.
+
+---
+
 ## Deferred from: code review of 1-2-simulation-server-session-lifecycle-and-30hz-tick-loop (2026-06-22)
 
 **D18 — onLeave re-entrant during 30s grace window** (`GameRoom.ts:onLeave`)

@@ -42,7 +42,7 @@
 # Phase2 legacy stories (old Phase-based keys) are tracked below under PHASE 2 STORIES.
 
 generated: 2026-06-22
-last_updated: 2026-06-29 (3-7 done)
+last_updated: 2026-06-30 (dev-1 created)
 project: party-delve
 project_key: NOKEY
 tracking_system: file-system
@@ -91,6 +91,9 @@ development_status:
   3-7-clear-objective-and-level-completion: done
   3-8-login-flow-update: done
   epic-3-retrospective: optional
+
+  # ─── Dev infra fixes (no epic) ──────────────────────────────────────────────
+  dev-1-mobile-controller-network-binding: done
 
   # ─── E4: Procedural Dungeon & Full Run Structure ────────────────────────────
   # Vote to start a run, 3 procedural levels, deterministic seed system,
