@@ -42,7 +42,7 @@
 # Phase2 legacy stories (old Phase-based keys) are tracked below under PHASE 2 STORIES.
 
 generated: 2026-06-22
-last_updated: 2026-06-30 (dev-1 created)
+last_updated: 2026-06-30 (4-6 ready-for-dev)
 project: party-delve
 project_key: NOKEY
 tracking_system: file-system
@@ -98,8 +98,14 @@ development_status:
   # ─── E4: Procedural Dungeon & Full Run Structure ────────────────────────────
   # Vote to start a run, 3 procedural levels, deterministic seed system,
   # Survive the Waves objective, post-run summary.
-  # Stories: not yet defined — run gds-create-epics-and-stories for E4
-  epic-4: backlog
+  # FRs: FR6, FR7, FR8, FR9 (Survive Waves), FR10, FR19, FR29, FR30, FR34
+  epic-4: in-progress
+  4-1-deterministic-seed-system-and-floor-layout-generator: ready-for-dev
+  4-2-dungeon-entrance-vote-and-run-initialisation: ready-for-dev
+  4-3-3-level-run-structure-and-level-transitions: ready-for-dev
+  4-4-survive-the-waves-objective: ready-for-dev
+  4-5-post-run-summary-screen: ready-for-dev
+  4-6-end-to-end-run-e2e-test-and-latency-baseline: ready-for-dev
   epic-4-retrospective: optional
 
   # ─── E5: Spirit Bond System ─────────────────────────────────────────────────
