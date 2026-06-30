@@ -24,16 +24,20 @@ interface SessionCodeEntryScreenProps {
   initialCode?: string;
 }
 
+function sanitizeCode(raw: string) {
+  return raw.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 4);
+}
+
 export function SessionCodeEntryScreen({ onJoin, initialCode }: SessionCodeEntryScreenProps) {
   const urlCode = new URLSearchParams(window.location.search).get('session') ?? '';
-  const [sessionCode, setSessionCode] = useState(initialCode ?? urlCode);
+  const [sessionCode, setSessionCode] = useState(() => sanitizeCode(initialCode ?? urlCode));
   const [playerName, setPlayerName] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const isSubmittingRef = useRef(false);
 
-  const isDisabled = sessionCode.trim().length === 0 || playerName.trim().length === 0 || isLoading || isSuccess;
+  const isDisabled = sessionCode.length < 4 || playerName.trim().length === 0 || isLoading || isSuccess;
 
   const handleJoinClick = async () => {
     if (isSubmittingRef.current) return;
@@ -151,8 +155,10 @@ export function SessionCodeEntryScreen({ onJoin, initialCode }: SessionCodeEntry
             id="session-code-field"
             style={codeFieldStyle}
             value={sessionCode}
-            onChange={e => setSessionCode(e.target.value)}
-            placeholder="Session code"
+            onChange={e => setSessionCode(sanitizeCode(e.target.value))}
+            placeholder="e.g. ABCD"
+            maxLength={4}
+            inputMode="text"
             autoComplete="off"
           />
           {errorMessage && (

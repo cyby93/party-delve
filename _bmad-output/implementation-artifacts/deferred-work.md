@@ -67,6 +67,19 @@ This package attempts a Redis connection on import. In Phase 1 local mode, no Re
 
 ---
 
+## Deferred from: code review of dev-1-mobile-controller-network-binding (2026-06-30)
+
+**D18 — Hostname fallback wrong for multi-machine setups** (`apps/mobile-controller/src/session/mobile-session.ts`)
+`window.location.hostname` is the correct fallback when Vite and the sim server share the same dev machine. If they run on different machines, the fallback silently points to the wrong host. By design — `VITE_SIM_URL` is the override for non-standard topologies. Not a regression from the old behavior.
+
+**D19 — `LobbyScreen.tsx` has its own `SIM_URL` constant** (`apps/host-client/src/screens/LobbyScreen.tsx`)
+Separate `const SIM_URL` in the host client used for the `/local-ip` HTTP fetch. Intentional — host client always runs on the same machine as the sim server, so `localhost` is correct there. Undocumented duplication; a future rename could miss it.
+
+**D20 — `SIM_URL` module-level constant goes stale if phone roams mid-session** (`apps/mobile-controller/src/session/mobile-session.ts`)
+Evaluated once at import time. If a phone changes network mid-session the stored URL becomes unreachable. Inherent limitation; the reconnect token is also invalidated at that point, so the failure mode is not worse than the existing reconnect path.
+
+---
+
 ## Deferred from: code review of 1-2-simulation-server-session-lifecycle-and-30hz-tick-loop (2026-06-22)
 
 **D18 — onLeave re-entrant during 30s grace window** (`GameRoom.ts:onLeave`)
@@ -326,3 +339,137 @@ For RELEASE-type abilities, both the element-level `onTouchEnd` handler and the 
 
 **D-2.3-E — player:class-updated delta silently dropped if received before join snapshot** [packages/net-protocol/src/apply-delta.ts:53]
 If a `player:class-updated` delta arrives at a client before the join-triggered snapshot has been processed (network reordering or rapid message delivery), `applyDelta` returns the unchanged state because the player does not yet exist in `state.players`. The class change is lost until the next periodic snapshot (every `SNAPSHOT_INTERVAL_S` seconds) restores the correct state. Acceptable for hub-mode class display; revisit if class state is load-bearing in Story 3.x combat.
+
+---
+
+## Deferred from: code review of 3-1-xoshiro128-prng-and-planckjs-physics-world (2026-06-25)
+
+**D-3.1-A — `onLeave` catch block runs after room disposal** [apps/simulation-server/src/rooms/GameRoom.ts:onLeave]
+Pre-existing architecture from Stories 1.2 and 1.6 (logged as D19). The `destroyBody` call in Story 3.1 follows the same cleanup pattern as existing mutations. Planck world is never destroyed in `onDispose` so the call is safe. Full fix requires a `disposed` flag; address in Phase 5 server hardening.
+
+**D-3.1-B — O(n) player scan in POI contact flush loops** [apps/simulation-server/src/rooms/GameRoom.ts:tick()]
+`gameState.players.find(p => p.id === playerId)` runs linearly inside the POI begin/end contact flush loops. Acceptable for ≤8 players with at most 2 active POI sensors. Replace with a `Map<string, PlayerState>` lookup if player cap grows.
+
+**D-3.1-C — No boundary walls; `linearDamping:0` with zero gravity** [apps/simulation-server/src/physics/world.ts]
+Dynamic bodies receive no clamping to the virtual world rect. A planck impulse from a player-player or player-enemy collision can send players off-map with no recovery. Bounds clamping is explicitly non-goal for Story 3.1 (deferred to 3.x per non-goals section).
+
+**D-3.1-D — Player-player contact callbacks fire without filter bits** [apps/simulation-server/src/physics/world.ts]
+Player and enemy fixtures have no `filterCategory`/`filterMask`, so planck fires `begin-contact`/`end-contact` for every player-player and player-enemy pair. `extractPoiBeginContact` returns null for these correctly, keeping pending arrays clean. O(n²) contact overhead will compound when enemies are added. Set filterCategory/filterMask on player and POI fixtures in Story 3.x.
+
+**D-3.1-E — `nextSlotIndex` never recycled — overflow spawn at center** [apps/simulation-server/src/rooms/GameRoom.ts]
+Pre-existing (already logged as D27 from Story 1.6 code review). Monotonically increasing slot index; SPAWN_POSITIONS falls back to center for indices ≥ 8. Bounded by MAX_PLAYERS concurrent limit within a session; revisit with a free-slot recycling map in Phase 2 spawn positioning work.
+
+**D-3.1-F — `planck` dependency in `packages/game-rules/package.json`** [packages/game-rules/package.json:15]
+`"planck": "1.5.0"` is present as a runtime dependency in game-rules even though no game-rules source imports it (ESLint restriction enforces this). Pre-planned entry from project setup; story Dev Notes explicitly defer removal to a cleanup task. Remove in a separate dependency hygiene story.
+
+---
+
+## Deferred from: code review of 3-2-enemy-ai-base-fsm-and-layered-difficulty-behaviors (2026-06-25)
+
+**D-3.2-A — Layer ordering is implicit with no validation** [packages/game-rules/src/systems/ai/fsm.ts]
+The [ChargeLayer, StompLayer] ordering for Hard difficulty is established by convention but not enforced. A caller passing [StompLayer, ChargeLayer] would produce different behavior at 80-100px range. Resolve in Story 3.3 when enemy spawn assigns layers — add a constant or factory function for each difficulty tier.
+
+**D-3.2-B — enemy:stomped apply-delta is a no-op; no host state updated** [packages/net-protocol/src/apply-delta.ts]
+`case 'enemy:stomped': return state` — the AoE slow effect on players is deferred to Story 3.4 combat system. The event round-trips correctly but clients apply no state change. Resolve when combat system is implemented.
+
+**D-3.2-C — getEnemyCount has no guard for negative or zero playerCount** [packages/game-rules/src/balance.ts]
+`Math.ceil(-1 * 1.5) = -2`. Currently only called from Story 3.3+ spawn code where playerCount >= 1. Add a guard (or assert) at the Story 3.3 call site.
+
+**D-3.2-D — ChargeLayer "charge" is fast-walking for one tick, not a committed dash** [packages/game-rules/src/systems/ai/layers/charge.ts]
+CHARGE_SPEED=400px/s at 30hz ≈ 13.3px per tick (vs CHASE_SPEED=80px/s ≈ 2.7px). The charge behavior is ~5× faster movement for a single tick with no windup or commitment. Review and tune in Story 3.4 playtesting.
+
+**D-3.2-E — BehaviorLayer cooldowns are ephemeral instance state, not serialized** [packages/game-rules/src/systems/ai/fsm.ts + apps/simulation-server/src/rooms/GameRoom.ts]
+`currentCooldown` lives on the ChargeLayer/StompLayer class instance in `enemyLayers` Map. Server restart resets all layer cooldowns to 0 (immediate charge/stomp). Resolve in Phase 5 (reconnect/persistence) by adding cooldown state to EnemyState.
+
+**D-3.2-F — StompLayer firing while fsmState=ATTACK pauses attackCooldownTicks** [packages/game-rules/src/systems/ai/fsm.ts]
+When StompLayer fires, tickAttack is skipped that tick, so attackCooldownTicks doesn't decrement. The two timers (attack cooldown, stomp cooldown) are independent. This is architecturally intentional but may produce surprising attack-cooldown freezes mid-stomp in playtesting. Review in Story 3.3 when enemies are actually spawned.
+
+---
+
+## Deferred from: code review of 3-3-4-alpha-class-implementations-abilities-and-input-types (2026-06-28)
+
+**D-3.3-A — AUTO ability fires with direction (0,0) when no prior drag** [packages/game-rules/src/systems/abilities.ts / apps/mobile-controller/src/screens/ControllerScreen.tsx]
+AUTO abilities pass through `ctx.directionX/Y` unchanged. On the mobile client, `lastDirX/lastDirY` initialize to `0,0` and only update once a touch moves past the 6px deadzone. If the player taps an AUTO cell without dragging, the direction sent is `(0,0)`, which `dispatchAbility` accepts and broadcasts as `AbilityFiredDelta(dirX=0, dirY=0)`. No crash or user-visible issue in Story 3.3 (no damage yet), but in Story 3.4 when directional AoE is applied, the ability will always fire "nowhere" on an untouched cell. Design decision needed: AUTO cells should likely default to the player's last movement direction. Address before Story 3.4 combat resolution.
+
+**D-3.3-B — RELEASE ability silently drops if `isInteractive` flips false while cell is held** [apps/mobile-controller/src/screens/ControllerScreen.tsx]
+The `SkillCell` `useEffect` cleanup (which runs when `isInteractive` changes) clears `activeTouchRef.current` without firing RELEASE. If a player holds a RELEASE cell while the session phase transitions (e.g., dungeon ends, AC6/run-complete), the ability is silently discarded. Pre-existing pattern (D-2.4-B covered the training-dummy variant). New manifestation: dungeon-phase `inDungeon` flag can change server-side during an active hold. Low frequency in current story scope; address in Story 3.7 (clear objective / level completion) when phase transitions from dungeon are intentional.
+
+**D-3.3-C — DungeonScreen PixiJS canvas orphan on mid-init exception** [apps/host-client/src/screens/DungeonScreen.tsx]
+If `app.canvas` is appended to the DOM but `pixiAppRef.current = app` is not yet reached when a synchronous exception fires (e.g., `resizeTo`, ticker setup), the cleanup function finds `pixiAppRef.current === null` and cannot destroy the app or remove the canvas. Very low probability in production WebGL environments. Address if test environments report phantom canvas elements, or before Phase 5 stress testing.
+
+---
+
+## Deferred from: code review of 3-8-login-flow-update (2026-06-29)
+
+**D-3.8-A — useEffect `/local-ip` fetch has no retry or user-visible failure feedback** [apps/host-client/src/screens/LobbyScreen.tsx:17]
+`.catch(() => {})` silently swallows errors; `mobileHost` stays `null` and the QR encodes `localhost` for the session with no indication to the user. Extremely low probability in practice (WS connection on same port 2567 guarantees the HTTP server is up when LobbyScreen renders), so not blocking for Phase 3. Add a visible warning or retry if fetch failure rate becomes observable.
+
+**D-3.8-B — `SIM_HTTP` regex silently fails for bare-hostname `VITE_SIM_URL`** [apps/host-client/src/screens/LobbyScreen.tsx:5]
+`SIM_URL.replace(/^ws(s?):\/\//, 'http$1://')` is a no-op if `VITE_SIM_URL` is set to a hostname without a `ws://` prefix — the fetch URL becomes malformed. Misconfiguration case only; the default `ws://localhost:2567` transforms correctly. Add validation or a comment when the env var documentation is formalized.
+
+**D-3.8-C — `getLocalIp()` returns `'localhost'` silently on IPv6-only or dual-stack hosts** [apps/simulation-server/src/index.ts:12]
+Hard-filters `iface.family === 'IPv4'`; on an IPv6-only LAN the fallback kicks in with no log. Rare for Phase 3 local couch play. Add a `logger.warn` in the fallback path and revisit in Phase 5 cloud deployment where network topology is more varied.
+
+---
+
+## Deferred from: code review of 3-4-combat-resolution-hitboxes-damage-and-spirit-essence-collection (2026-06-29)
+
+**D-3.4-A — Direction vector not normalized before `isInHitZone`** [apps/simulation-server/src/rooms/GameRoom.ts]
+`isInHitZone` uses `dirX * hitRangePx` to project the hit circle center. If the player's joystick direction has sub-unit magnitude (e.g., a light touch), the effective range is proportionally shorter. Currently masked by alpha balance values being rough placeholders. Normalize the direction before calling `isInHitZone`, or normalize inside the function, when balance tuning begins in earnest.
+
+**D-3.4-B — React state batching may swallow `enemy:killed` transient delta** [apps/host-client/src/App.tsx, apps/host-client/src/session/host-session.ts]
+If `enemy:killed` and `essence:dropped` are delivered in the same WebSocket event loop task and `setLatestTransientDelta` is called twice synchronously, React 18 batches the updates and only the last value (essence:dropped) survives. The kill-fade effect on `DungeonScreen` is silently dropped. In practice, separate WebSocket frames arrive as separate event queue tasks, making this very unlikely. Fix with a callback-per-event-type or a delta queue if kill fades become visually important.
+
+**D-3.4-C — Kill fade raceable against periodic snapshot reconciliation** [apps/host-client/src/screens/DungeonScreen.tsx]
+A periodic snapshot `applyDelta` removes the enemy from `state.enemies`; `renderFrame` then hits the `!enemy` branch and destroys the Graphics immediately, bypassing the kill fade. The kill delta is broadcast in the same tick as the snapshot but may be ordered after it on the client. In practice the snapshot interval is 2 seconds and the kill delta fires in real time, making the race window extremely narrow. Add a `isRemovedServer` flag or check `deadUntil` before hard-removing in the snapshot reconciliation path if fade fidelity matters.
+
+**D-3.4-D — Health bar has no backing track** [apps/host-client/src/screens/DungeonScreen.tsx]
+At low hp, the health bar renders a tiny red sliver with no visual reference for the bar's full extent. Add a dark-grey backing rect (`rect(-15, -32, 30, 4)`) beneath the red fill for readability on the couch screen. Visual polish — defer to the UX polish pass.
+
+**D-3.4-E — Missing zero-damage boundary test for `applyDamage`** [tests/unit/combat.test.ts]
+`applyDamage(enemy, 0, dropId)` returns `ok: true` with hp unchanged (guard is `damage < 0`, not `<= 0`). The AC7 criterion "clamps hp to 0" is covered by the overkill test, but the exact-zero-input case is unspecified and untested. Add a test if the spec ever clarifies whether `damage === 0` should be a validation error.
+
+---
+
+## Deferred from: code review of 3-5-player-health-revive-timer-and-downed-state (2026-06-29)
+
+**D-3.5-A — Same-tick chain-revive is order-dependent** [apps/simulation-server/src/rooms/GameRoom.ts:683]
+In the proximity revive loop, players are mutated in-place. A player revived earlier in the iteration can act as reviver for subsequent downed players in the same tick. Behavior depends on array order. Deferred: need to see the revive feature fuller in order to decide — accept as designed or disallow via a `revivedThisTick` set.
+
+**D-3.5-B — `reviveTimerExpiresAt = 0` sentinel meaning undocumented** [packages/shared-types/src/player.ts]
+The field uses `0` as a sentinel for "not downed / not active". This is safe in practice (JS `Date.now()` always returns a positive value), but nothing on the field definition documents this invariant. Any future code that compares `=== 0` vs `> 0` inconsistently could introduce a subtle bug. Add a comment `// 0 = not downed` to the field definition in a cleanup pass.
+
+---
+
+## Deferred from code review of 3-6-spirit-form-downed-player-contribution-and-run-failure (2026-06-29)
+
+**D-3.6-A — `--text-muted` CSS token undefined; sub-note using `--text-secondary`** [packages/ui-kit/src/tokens.css]
+AC7 specified `var(--text-muted)` for the post-run overlay sub-note but the token doesn't exist in tokens.css. Implementation uses `--text-secondary` as the nearest alternative. Deferred: not sure about --text-muted use case, might be useful later. Define `--text-muted` as a distinct dimmer text color when the design system needs it.
+
+**D-3.6-B — Spirit ability fires on same tick as run failure** [apps/simulation-server/src/rooms/GameRoom.ts:621]
+Spirit dispatch runs before the run-failure check in `tick()`. An existing-spirit player with a queued input can fire their spirit ability in the same tick that the last player transitions from downed to spirit and triggers the run-failure broadcast. The spirit ability flash is immediately covered by the post-run overlay. Cosmetically harmless tick-ordering artifact — reordering adds complexity for zero gameplay impact.
+
+**D-3.6-B — `partialEssence` field in `RunFailedDelta` unused in `apply-delta.ts`** [packages/net-protocol/src/apply-delta.ts]
+`apply-delta` sets `phase='post-run'` for `run:failed` but ignores `partialEssence`. The host overlay recomputes essence independently from `gameState.players`, which is consistent. Field is an architectural placeholder for the Epic 4 post-run summary screen where per-player breakdowns will need this value.
+
+**D-3.6-C — Slots 0–2 spurious `COOLDOWN_UPDATE { remainingMs: 0 }` for spirit players** [apps/simulation-server/src/rooms/GameRoom.ts]
+When a spirit player's class ability cooldown expires, the regular expiry loop sends `COOLDOWN_UPDATE` for slots 0–2 to the mobile. Spirit players cannot use those slots, so the messages clear irrelevant UI state. Harmless but slightly wasteful. Can be eliminated by skipping the expiry notification when `player.isSpirit` in the cooldown expiry loop.
+
+---
+
+## Deferred from: code review of 3-7-clear-objective-and-level-completion (2026-06-29)
+
+**D-3.7-A — `runOutcome` never resets between sessions** [apps/host-client/src/App.tsx, apps/mobile-controller/src/App.tsx]
+`runOutcome` is set on `run:complete` or `run:failed` delta receipt but never cleared. If the app stays mounted across a session transition (e.g. E4 return-to-hub), `runOutcome` will carry stale state from the previous run. Fix: reset `runOutcome` to `null` on `phase` transitioning back to `hub` or `lobby`. Deferred to E4 when return-to-hub is implemented.
+
+**D-3.7-B — Consecutive `level:complete`→`run:complete` delta overwrites `latestTransientDelta`** [apps/host-client/src/session/host-session.ts]
+Both deltas are routed to `latestTransientDelta` in `App.tsx`. React 18 should process them as separate renders (separate WS message handlers), but if they arrive in the same microtask batch the second overwrites the first and the canvas flash might be skipped. Colyseus delivers room messages in order; revisit if E4 introduces higher-frequency delta bursts where batching becomes visible.
+
+**D-3.7-C — Server keeps dead enemies (`isAlive=false`), client removes them via `filter`** [packages/net-protocol/src/apply-delta.ts line 106]
+`applyDelta('enemy:killed')` uses `.filter()`, so killed enemies are absent from `state.enemies` on the client. The server's `gameState.enemies` retains them with `isAlive=false`. Any future client-side level-clear predicate using `enemies.every(e => !e.isAlive)` would fail (vacuously passes if all killed, fails the `length > 0` guard). Document and address in E4 if client-side clear logic is needed.
+
+**D-3.7-D — Revive timer display stale during post-run transition** [apps/host-client/src/screens/DungeonScreen.tsx]
+On level clear with a downed player, `reviveTimerExpiresAt` is reset server-side before `run:complete` is broadcast, but the client's timer display reads from snapshot state which may lag by up to `SNAPSHOT_INTERVAL_S`. Cosmetic: the post-run overlay covers the HUD immediately. Address in E4 when per-level timer resets get explicit `player:downed` re-broadcasts.
+
+**D-3.7-E — `enemies.length > 0` guard silently blocks clear on empty level** [apps/simulation-server/src/rooms/GameRoom.ts]
+The level-clear predicate guards on `enemies.length > 0` to avoid a vacuous clear on dungeon start. If a future `getEnemyCount` configuration returns 0 (e.g. a boss-only room with no grunt spawns), the clear condition can never fire. Add a fallback or log warning if `enemies.length === 0` and phase is still `dungeon` after N ticks.

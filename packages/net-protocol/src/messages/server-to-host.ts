@@ -16,6 +16,7 @@ export type PlayerDownedDelta = {
   type: 'player:downed';
   playerId: string;
   downCount: number;
+  reviveWindowMs: number;
 };
 
 export type PlayerReviveDelta = {
@@ -51,6 +52,14 @@ export type EnemyMovedDelta = {
   y: number;
 };
 
+export type EnemyStompedDelta = {
+  type: 'enemy:stomped';
+  enemyId: string;
+  x: number;
+  y: number;
+  radius: number;
+};
+
 export type BondAssignedDelta = {
   type: 'bond:assigned';
   bond: BondState;
@@ -65,6 +74,14 @@ export type EssenceCollectedDelta = {
   type: 'essence:collected';
   dropId: string;
   byPlayerId: string;
+  newTotal: number;
+};
+
+export type EnemyDamagedDelta = {
+  type: 'enemy:damaged';
+  enemyId: string;
+  damage: number;
+  remainingHp: number;
 };
 
 export type PlayerPoiEnteredDelta = {
@@ -85,6 +102,46 @@ export type PlayerClassUpdatedDelta = {
   class: PlayerClass;
 };
 
+export type AbilityFiredDelta = {
+  type: 'ability:fired';
+  playerId: string;
+  abilityIndex: number;
+  directionX: number;
+  directionY: number;
+};
+
+export type PlayerHpUpdatedDelta = {
+  type: 'player:hp-updated';
+  playerId: string;
+  hp: number;
+};
+
+export type PlayerSpiritDelta = {
+  type: 'player:spirit';
+  playerId: string;
+};
+
+export type SpiritAbilityFiredDelta = {
+  type: 'spirit-ability:fired';
+  playerId: string;
+  class: PlayerClass;
+};
+
+export type RunFailedDelta = {
+  type: 'run:failed';
+  partialEssence: number;
+};
+
+export type LevelCompleteDelta = {
+  type: 'level:complete';
+  levelIndex: number;
+};
+
+export type RunCompleteDelta = {
+  type: 'run:complete';
+  totalEssence: number;
+};
+
 export type DeltaEventMsg =
   | PlayerMovedDelta
   | PlayerDownedDelta
@@ -92,11 +149,20 @@ export type DeltaEventMsg =
   | PlayerLeftDelta
   | PlayerDisconnectedDelta
   | PlayerReconnectedDelta
+  | EnemyDamagedDelta
   | EnemyKilledDelta
   | EnemyMovedDelta
+  | EnemyStompedDelta
   | BondAssignedDelta
   | EssenceDroppedDelta
   | EssenceCollectedDelta
   | PlayerPoiEnteredDelta
   | PlayerPoiExitedDelta
-  | PlayerClassUpdatedDelta;
+  | PlayerClassUpdatedDelta
+  | AbilityFiredDelta
+  | PlayerHpUpdatedDelta
+  | PlayerSpiritDelta
+  | SpiritAbilityFiredDelta
+  | RunFailedDelta
+  | LevelCompleteDelta
+  | RunCompleteDelta;

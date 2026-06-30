@@ -3,7 +3,7 @@ import { EventNames, deserialize } from 'net-protocol';
 import type { SnapshotMsg, DeltaEventMsg, InputEventMsg, ClassSelectMsg, CooldownUpdateMsg } from 'net-protocol';
 import type { GameState } from 'shared-types';
 
-const SIM_URL = import.meta.env['VITE_SIM_URL'] ?? 'ws://localhost:2567';
+const SIM_URL = import.meta.env['VITE_SIM_URL'] ?? `ws://${window.location.hostname || 'localhost'}:2567`;
 const SESSION_STORAGE_KEY = 'party-delve-session';
 
 interface PersistedSession {

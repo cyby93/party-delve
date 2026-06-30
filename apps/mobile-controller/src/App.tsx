@@ -24,6 +24,7 @@ export function App() {
   const [session, setSession] = useState<MobileSession | null>(null);
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [cooldowns, setCooldowns] = useState<(CooldownState | null)[]>([null, null, null, null]);
+  const [runOutcome, setRunOutcome] = useState<'complete' | 'failed' | null>(null);
   const [reconnectRoomId, setReconnectRoomId] = useState<string>('');
   const [sessionEntryInitialCode, setSessionEntryInitialCode] = useState<string | undefined>(undefined);
   // Ref keeps handleDelta dep-free while always reading the live playerId.
@@ -48,6 +49,8 @@ export function App() {
     ) {
       return;
     }
+    if (delta.type === 'run:complete') setRunOutcome('complete');
+    else if (delta.type === 'run:failed') setRunOutcome('failed');
     setGameState(prev => prev !== null ? applyDelta(prev, delta) : prev);
   }, []);
 
@@ -146,6 +149,70 @@ export function App() {
         onReconnect={handleReconnect}
         onGiveUp={handleGiveUp}
       />
+    );
+  }
+  if (gameState?.session.phase === 'post-run' && runOutcome === 'failed') {
+    return (
+      <div style={{
+        width: '100%',
+        height: '100%',
+        background: 'var(--corruption-blood)',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 16,
+      }}>
+        <div style={{
+          fontFamily: 'var(--font-body)',
+          fontWeight: 700,
+          fontSize: 'var(--text-xl)',
+          color: 'var(--text-primary)',
+          textAlign: 'center',
+        }}>
+          Run Failed
+        </div>
+        <div style={{
+          fontFamily: 'var(--font-body)',
+          fontWeight: 400,
+          fontSize: 'var(--text-sm)',
+          color: 'var(--text-secondary)',
+        }}>
+          Return to Camp — coming soon.
+        </div>
+      </div>
+    );
+  }
+  if (gameState?.session.phase === 'post-run' && runOutcome === 'complete') {
+    return (
+      <div style={{
+        width: '100%',
+        height: '100%',
+        background: 'var(--bg-base)',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 16,
+      }}>
+        <div style={{
+          fontFamily: 'var(--font-body)',
+          fontWeight: 700,
+          fontSize: 'var(--text-xl)',
+          color: 'var(--accent-spirit)',
+          textAlign: 'center',
+        }}>
+          Level Clear!
+        </div>
+        <div style={{
+          fontFamily: 'var(--font-body)',
+          fontWeight: 400,
+          fontSize: 'var(--text-sm)',
+          color: 'var(--text-muted)',
+        }}>
+          Return to Camp — coming soon.
+        </div>
+      </div>
     );
   }
   return <ControllerScreen session={session} gameState={gameState} cooldowns={cooldowns} />;

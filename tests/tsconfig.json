@@ -6,5 +6,5 @@
     "module": "NodeNext",
     "moduleResolution": "NodeNext"
   },
-  "include": ["contract/**/*", "e2e/**/*"]
+  "include": ["contract/**/*", "e2e/**/*", "unit/**/*"]
 }

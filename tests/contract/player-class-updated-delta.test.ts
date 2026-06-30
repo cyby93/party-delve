@@ -38,6 +38,8 @@ function mockPlayer(overrides?: Partial<PlayerState>): PlayerState {
     sessionColor: SessionColor.RED,
     downCount: 0,
     nearPoiId: null,
+    essenceTotal: 0,
+    reviveTimerExpiresAt: 0,
     ...overrides,
   };
 }
