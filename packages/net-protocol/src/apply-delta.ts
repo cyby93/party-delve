@@ -119,8 +119,13 @@ export function applyDelta(state: GameState, evt: DeltaEventMsg): GameState {
     }
     case 'enemy:stomped':
       return state;  // ponytail: AoE slow applied in Story 3.5+
-    case 'enemy:moved':
-      return state;  // ponytail: enemy positions read from snapshot; delta used for host animation
+    case 'enemy:moved': {
+      if (!state.enemies.some(e => e.id === evt.enemyId)) return state;
+      const enemies = state.enemies.map(e =>
+        e.id === evt.enemyId ? { ...e, x: evt.x, y: evt.y } : e
+      );
+      return { ...state, enemies };
+    }
     case 'bond:assigned':
       return state;  // ponytail: bond display in Story 3.6
     case 'ability:fired':
