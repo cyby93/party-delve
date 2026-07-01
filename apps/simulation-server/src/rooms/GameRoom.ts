@@ -2,7 +2,7 @@ import { Room, Client, CloseCode } from 'colyseus';
 import type { GameState, PlayerState } from 'shared-types';
 import { TICK_RATE_HZ, RECONNECT_GRACE_S, SNAPSHOT_INTERVAL_S, MAX_PLAYERS, PlayerClass, SessionColor, INTERACTIVE_HUB_POIS } from 'shared-types';
 import { EventNames } from 'net-protocol';
-import type { InputEventMsg, SnapshotMsg, DeltaEventMsg, CooldownUpdateMsg, SpiritFormMsg } from 'net-protocol';
+import type { InputEventMsg, SnapshotMsg, DeltaEventMsg, CooldownUpdateMsg, SpiritFormMsg, RunProposeMsg, VoteMsg } from 'net-protocol';
 import { randomInt } from 'node:crypto';
 import { Vec2, Body, Contact } from 'planck';
 import type { World } from 'planck';
@@ -41,6 +41,7 @@ function createEmptyGameState(roomId: string): GameState {
       maxPlayers: 8,
       runSeed: 0,
       levelIndex: 0,
+      difficulty: null,
     },
     players: [],
     enemies: [],
@@ -48,6 +49,7 @@ function createEmptyGameState(roomId: string): GameState {
     essenceDrops: [],
     tick: 0,
     floorLayout: null,
+    runProposal: null,
   };
 }
 
@@ -101,6 +103,7 @@ export class GameRoom extends Room {
   private pendingEssenceBeginContacts: Array<EssenceBeginContactEvent> = [];
   private nextSlotIndex = 0;
   private enemyAttackCooldowns = new Map<string, number>(); // enemyId → expiry epoch ms
+  private runVotes = new Map<string, 'accept' | 'decline'>();
 
   async onCreate(_options: unknown): Promise<void> {
     this.roomId = generateRoomCode();
@@ -118,16 +121,59 @@ export class GameRoom extends Room {
         logger.warn({ roomId: this.roomId, unready: unready.length }, 'host:start rejected — players without class');
         return;
       }
-      this.gameState.session.phase = 'dungeon';
-      this.gameState.session.levelIndex = 1;
-      for (const p of this.gameState.players) p.nearPoiId = null;
-      const floorRng = createRng(this.gameState.session.runSeed ^ OFFSET_FLOOR_LAYOUT);
-      const roomRng  = createRng(this.gameState.session.runSeed ^ OFFSET_ROOM_POOL);
-      this.gameState.floorLayout = generateFloorLayout(floorRng, roomRng, 'early', GRASSLAND_ROOM_POOL);
-      this.spawnEnemies();
-      const snapshot: SnapshotMsg = { type: 'snapshot', state: this.gameState };
-      this.broadcast(EventNames.SNAPSHOT, snapshot);
-      logger.info({ roomId: this.roomId }, 'dungeon phase started');
+      this.startDungeon(DifficultyTier.EASY);
+    });
+
+    this.onMessage(EventNames.RUN_PROPOSE, (client: Client, raw: unknown) => {
+      try {
+        const msg = (typeof raw === 'string' ? JSON.parse(raw) : raw) as RunProposeMsg;
+        // ponytail: server never transitions lobby→hub (LobbyScreen "Start Game" is UI-only); allow both
+        if (this.gameState.session.phase === 'dungeon' || this.gameState.session.phase === 'post-run') return;
+        if (this.gameState.runProposal !== null) return;
+        const player = this.gameState.players.find(p => p.id === client.sessionId);
+        if (!player || player.isFrozen) return;
+        if (msg.biome !== 'grassland') {
+          logger.warn({ clientId: client.sessionId, roomId: this.roomId }, 'RUN_PROPOSE invalid biome — discarded');
+          return;
+        }
+        if (!Object.values(DifficultyTier).includes(msg.difficulty as DifficultyTier)) {
+          logger.warn({ clientId: client.sessionId, roomId: this.roomId }, 'RUN_PROPOSE invalid difficulty — discarded');
+          return;
+        }
+
+        this.runVotes.clear();
+        this.gameState.runProposal = { biome: msg.biome, difficulty: msg.difficulty, proposedBy: client.sessionId };
+        const delta: DeltaEventMsg = { type: 'run:proposed', biome: msg.biome, difficulty: msg.difficulty, proposedBy: client.sessionId };
+        this.broadcast(EventNames.DELTA, delta);
+        logger.info({ roomId: this.roomId, proposedBy: client.sessionId, difficulty: msg.difficulty }, 'run proposed');
+      } catch {
+        logger.warn({ clientId: client.sessionId, roomId: this.roomId }, 'failed to parse RUN_PROPOSE — discarded');
+      }
+    });
+
+    this.onMessage(EventNames.VOTE, (client: Client, raw: unknown) => {
+      try {
+        const msg = (typeof raw === 'string' ? JSON.parse(raw) : raw) as VoteMsg;
+        if (this.gameState.session.phase === 'dungeon' || this.gameState.session.phase === 'post-run') return;
+        if (this.gameState.runProposal === null) return;
+        const player = this.gameState.players.find(p => p.id === client.sessionId);
+        if (!player || player.isFrozen) return;
+
+        if (!msg.accept) {
+          this.gameState.runProposal = null;
+          this.runVotes.clear();
+          const snapshot: SnapshotMsg = { type: 'snapshot', state: this.gameState };
+          this.broadcast(EventNames.SNAPSHOT, snapshot);
+          logger.info({ roomId: this.roomId, declinedBy: client.sessionId }, 'run proposal declined');
+          return;
+        }
+
+        this.runVotes.set(client.sessionId, 'accept');
+
+        this.resolveVoteIfComplete();
+      } catch {
+        logger.warn({ clientId: client.sessionId, roomId: this.roomId }, 'failed to parse VOTE — discarded');
+      }
     });
 
     this.onMessage(EventNames.CLASS_SELECT, (client: Client, raw: unknown) => {
@@ -263,6 +309,8 @@ export class GameRoom extends Room {
     } satisfies DeltaEventMsg;
     this.broadcast(EventNames.DELTA, disconnectDelta);
     logger.info({ roomId: this.roomId, clientId: client.sessionId }, 'player disconnected — grace period started');
+    // Freezing this player may unblock a unanimous vote that was waiting on them.
+    this.resolveVoteIfComplete();
 
     try {
       const reconnectedClient = await this.allowReconnection(client, RECONNECT_GRACE_S);
@@ -290,6 +338,8 @@ export class GameRoom extends Room {
       const delta = { type: 'player:left' as const, playerId: client.sessionId } satisfies DeltaEventMsg;
       this.broadcast(EventNames.DELTA, delta);
       logger.info({ roomId: this.roomId, clientId: client.sessionId }, 'reconnect grace expired — player removed');
+      // Removing this player may unblock a unanimous vote that was waiting on them.
+      this.resolveVoteIfComplete();
     }
   }
 
@@ -319,7 +369,35 @@ export class GameRoom extends Room {
     logger.info({ roomId: this.roomId }, 'GameRoom disposed');
   }
 
-  private spawnEnemies(): void {
+  private resolveVoteIfComplete(): void {
+    if (this.gameState.runProposal === null) return;
+    const activePlayers = this.gameState.players.filter(p => !p.isFrozen);
+    if (activePlayers.length === 0) return;
+    if (activePlayers.some(p => p.class === null)) return;
+    if (!activePlayers.every(p => this.runVotes.get(p.id) === 'accept')) return;
+    const proposal = this.gameState.runProposal;
+    const startDelta: DeltaEventMsg = { type: 'run:starting', biome: proposal.biome, difficulty: proposal.difficulty };
+    this.broadcast(EventNames.DELTA, startDelta);
+    this.startDungeon(proposal.difficulty);
+    logger.info({ roomId: this.roomId, difficulty: proposal.difficulty }, 'run starting — unanimous accept');
+  }
+
+  private startDungeon(difficulty: DifficultyTier): void {
+    this.gameState.session.phase = 'dungeon';
+    this.gameState.session.levelIndex = 1;
+    this.gameState.session.difficulty = difficulty;
+    this.gameState.runProposal = null;
+    for (const p of this.gameState.players) p.nearPoiId = null;
+    const floorRng = createRng(this.gameState.session.runSeed ^ OFFSET_FLOOR_LAYOUT);
+    const roomRng  = createRng(this.gameState.session.runSeed ^ OFFSET_ROOM_POOL);
+    this.gameState.floorLayout = generateFloorLayout(floorRng, roomRng, 'early', GRASSLAND_ROOM_POOL);
+    this.spawnEnemies(difficulty);
+    const snapshot: SnapshotMsg = { type: 'snapshot', state: this.gameState };
+    this.broadcast(EventNames.SNAPSHOT, snapshot);
+    logger.info({ roomId: this.roomId, difficulty }, 'dungeon phase started');
+  }
+
+  private spawnEnemies(difficulty: DifficultyTier = DifficultyTier.EASY): void {
     const count = getEnemyCount(this.gameState.players.length, 'early');
     const enemyPrng = createRng(this.gameState.session.runSeed ^ OFFSET_ENEMY_SPAWN);
     for (let i = 0; i < count; i++) {
@@ -333,7 +411,7 @@ export class GameRoom extends Room {
         y,
         hp: 60,
         maxHp: 60,
-        difficultyTier: DifficultyTier.EASY,
+        difficultyTier: difficulty,
         isAlive: true,
         fsmState: EnemyFSMState.IDLE,
         attackCooldownTicks: 0,
@@ -343,7 +421,7 @@ export class GameRoom extends Room {
       this.enemyBodies.set(id, body);
       this.enemyAttackCooldowns.set(id, 0);
     }
-    logger.info({ roomId: this.roomId, count }, 'enemies spawned');
+    logger.info({ roomId: this.roomId, count, difficulty }, 'enemies spawned');
   }
 
   private buildEnemyContext(enemy: EnemyState): EnemyContext {

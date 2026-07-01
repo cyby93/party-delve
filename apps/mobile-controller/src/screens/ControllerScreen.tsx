@@ -4,7 +4,8 @@ import type { MobileSession } from '../session/mobile-session';
 import type { GameState } from 'shared-types';
 import type { ClassDef } from 'shared-types';
 import type { AbilityInputType, ClassAbilityDef } from 'shared-types';
-import { CLASS_DEFINITIONS, PlayerClass, SessionColor } from 'shared-types';
+import { CLASS_DEFINITIONS, PlayerClass, SessionColor, DifficultyTier } from 'shared-types';
+import type { RunProposal } from 'shared-types';
 import type { CooldownState } from '../App';
 import { SPIRIT_ABILITY_NAMES } from 'game-rules';
 
@@ -476,6 +477,122 @@ function ClassSelectionScreen({ onBack, onPickClass }: ClassSelectionScreenProps
   );
 }
 
+interface DungeonEntranceScreenProps {
+  session: MobileSession | null;
+  onBack: () => void;
+}
+
+function DungeonEntranceScreen({ session, onBack }: DungeonEntranceScreenProps) {
+  const [selectedDifficulty, setSelectedDifficulty] = useState<DifficultyTier>(DifficultyTier.NORMAL);
+
+  const difficulties: Array<{ id: DifficultyTier; label: string }> = [
+    { id: DifficultyTier.EASY,   label: 'Easy'   },
+    { id: DifficultyTier.NORMAL, label: 'Normal' },
+    { id: DifficultyTier.HARD,   label: 'Hard'   },
+  ];
+
+  function handlePropose() {
+    if (!session) return;
+    session.sendRunPropose({ type: 'run:propose', biome: 'grassland', difficulty: selectedDifficulty });
+    onBack();
+  }
+
+  return (
+    <div style={{ position: 'absolute', inset: 0, background: 'var(--bg-base)', zIndex: 50,
+      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 24, padding: 24 }}>
+      <div>
+        <div style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 2 }}>
+          Biome
+        </div>
+        <div style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--text-md)', color: 'var(--text-primary)',
+          border: '2px solid var(--accent-spirit)', borderRadius: 8, padding: '12px 24px',
+          boxShadow: '0 0 12px rgba(110,168,216,0.3)' }}>
+          Grassland
+        </div>
+      </div>
+      <div>
+        <div style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 2 }}>
+          Difficulty
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          {difficulties.map(d => (
+            <button
+              key={d.id}
+              onPointerDown={e => { e.preventDefault(); setSelectedDifficulty(d.id); }}
+              style={{
+                fontFamily: 'var(--font-body)', fontWeight: 700, fontSize: 'var(--text-sm)',
+                minWidth: 80, minHeight: 44, borderRadius: 8, border: 'none', cursor: 'pointer',
+                background: selectedDifficulty === d.id ? 'var(--interactive)' : 'var(--bg-surface)',
+                color: selectedDifficulty === d.id ? 'var(--bg-base)' : 'var(--text-secondary)',
+              }}
+            >
+              {d.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <button
+        onPointerDown={e => { e.preventDefault(); handlePropose(); }}
+        style={{ fontFamily: 'var(--font-body)', fontWeight: 700, fontSize: 'var(--text-md)',
+          width: '100%', minHeight: 56, borderRadius: 8, border: 'none', cursor: 'pointer',
+          background: 'var(--interactive)', color: 'var(--bg-base)',
+          boxShadow: '0 0 16px rgba(110,168,216,0.4)', touchAction: 'manipulation' }}
+      >
+        Propose Run
+      </button>
+      <button
+        onPointerDown={e => { e.preventDefault(); onBack(); }}
+        style={{ fontFamily: 'var(--font-body)', fontWeight: 400, fontSize: 'var(--text-sm)',
+          background: 'none', border: 'none', color: 'var(--text-secondary)',
+          cursor: 'pointer', minHeight: 44, touchAction: 'manipulation' }}
+      >
+        Back
+      </button>
+    </div>
+  );
+}
+
+interface VotePopupProps {
+  proposal: RunProposal;
+  onAccept: () => void;
+  onDecline: () => void;
+}
+
+function VotePopup({ proposal, onAccept, onDecline }: VotePopupProps) {
+  const difficultyLabel: Record<string, string> = { easy: 'Easy', normal: 'Normal', hard: 'Hard' };
+  return (
+    <div style={{ position: 'absolute', inset: 0, background: 'rgba(15,14,16,0.85)', zIndex: 60,
+      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, padding: 24 }}>
+      <div style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--text-xl)', color: 'var(--text-primary)' }}>
+        Run Proposed
+      </div>
+      <div style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', textAlign: 'center' }}>
+        Grassland · {difficultyLabel[proposal.difficulty] ?? proposal.difficulty}
+      </div>
+      <div style={{ display: 'flex', gap: 12, width: '100%' }}>
+        <button
+          onPointerDown={e => { e.preventDefault(); onDecline(); }}
+          style={{ flex: 1, minHeight: 56, borderRadius: 8, border: '1px solid var(--border)',
+            background: 'var(--bg-surface)', color: 'var(--text-secondary)',
+            fontFamily: 'var(--font-body)', fontWeight: 700, fontSize: 'var(--text-sm)',
+            cursor: 'pointer', touchAction: 'manipulation' }}
+        >
+          Decline
+        </button>
+        <button
+          onPointerDown={e => { e.preventDefault(); onAccept(); }}
+          style={{ flex: 1, minHeight: 56, borderRadius: 8, border: 'none',
+            background: 'var(--interactive)', color: 'var(--bg-base)',
+            fontFamily: 'var(--font-body)', fontWeight: 700, fontSize: 'var(--text-sm)',
+            cursor: 'pointer', touchAction: 'manipulation', boxShadow: '0 0 16px rgba(110,168,216,0.4)' }}
+        >
+          Accept
+        </button>
+      </div>
+    </div>
+  );
+}
+
 interface SkillCellProps {
   index: number;
   ability: ClassAbilityDef | null;
@@ -790,6 +907,7 @@ export function ControllerScreen({ session, gameState, cooldowns }: ControllerSc
   const [joystickKnobOffset, setJoystickKnobOffset] = useState({ x: 0, y: 0 });
   const [classSelectionOpen, setClassSelectionOpen] = useState(false);
   const [trainingDummyActive, setTrainingDummyActive] = useState(false);
+  const [dungeonEntranceOpen, setDungeonEntranceOpen] = useState(false);
   const inDungeon = gameState?.session.phase === 'dungeon';
   const [tapFlash, setTapFlash] = useState<boolean[]>([false, false, false, false]);
   const [displayTick, setDisplayTick] = useState(0);
@@ -805,6 +923,19 @@ export function ControllerScreen({ session, gameState, cooldowns }: ControllerSc
       setTrainingDummyActive(false);
     }
   }, [activePoi]);
+
+  useEffect(() => {
+    if (activePoi !== 'dungeon-entrance') {
+      setDungeonEntranceOpen(false);
+    }
+  }, [activePoi]);
+
+  // Close dungeon entrance screen when a vote starts so the VotePopup is never blocked.
+  useEffect(() => {
+    if (gameState?.runProposal != null) {
+      setDungeonEntranceOpen(false);
+    }
+  }, [gameState?.runProposal]);
 
   // Force re-render while any cooldown is active, to update countdown displays
   const anyCooldownActive = cooldowns.some(cd => cd !== null && cd.expiresAt > Date.now());
@@ -986,6 +1117,7 @@ export function ControllerScreen({ session, gameState, cooldowns }: ControllerSc
         onTap={() => {
           if (activePoi === 'class-select') setClassSelectionOpen(true);
           if (activePoi === 'training-dummy' && confirmedClass !== null) setTrainingDummyActive(true);
+          if (activePoi === 'dungeon-entrance') setDungeonEntranceOpen(true);
         }}
       />
       {/* Left zone — floating joystick (40% width) */}
@@ -1124,6 +1256,23 @@ export function ControllerScreen({ session, gameState, cooldowns }: ControllerSc
           );
         })}
       </div>
+
+      {/* Vote popup — shown to all players when a run is proposed */}
+      {!inDungeon && (gameState?.runProposal ?? null) !== null && !dungeonEntranceOpen && (
+        <VotePopup
+          proposal={gameState!.runProposal!}
+          onAccept={() => session?.sendVote({ type: 'run:vote', accept: true })}
+          onDecline={() => session?.sendVote({ type: 'run:vote', accept: false })}
+        />
+      )}
+
+      {/* Dungeon entrance screen */}
+      {dungeonEntranceOpen && (
+        <DungeonEntranceScreen
+          session={session}
+          onBack={() => setDungeonEntranceOpen(false)}
+        />
+      )}
 
       {/* Class selection overlay */}
       {classSelectionOpen && (

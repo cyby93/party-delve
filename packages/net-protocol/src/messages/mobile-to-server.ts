@@ -1,4 +1,4 @@
-import type { InputEvent, JoinRequest, PlayerClass } from 'shared-types';
+import type { InputEvent, JoinRequest, PlayerClass, DifficultyTier } from 'shared-types';
 
 export interface InputEventMsg {
   type: 'input';
@@ -13,4 +13,15 @@ export interface JoinRequestMsg {
 export interface ClassSelectMsg {
   type: 'class:select';
   classId: PlayerClass;
+}
+
+export interface RunProposeMsg {
+  type: 'run:propose';
+  biome: 'grassland';
+  difficulty: DifficultyTier;
+}
+
+export interface VoteMsg {
+  type: 'run:vote';
+  accept: boolean;
 }

@@ -3,6 +3,7 @@ import type { EnemyState } from './enemy.js';
 import type { BondState } from './bond.js';
 import type { SessionState } from './session.js';
 import type { FloorLayout } from './floor-layout.js';
+import type { RunProposal } from './run-proposal.js';
 
 export interface EssenceDrop {
   id: string;
@@ -19,4 +20,5 @@ export interface GameState {
   essenceDrops: EssenceDrop[];
   tick: number;
   floorLayout: FloorLayout | null;
+  runProposal: RunProposal | null;
 }

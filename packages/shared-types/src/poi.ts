@@ -20,7 +20,5 @@ export const HUB_POIS: ReadonlyArray<PoiDefinition> = [
   { id: 'dungeon-entrance', x: 960,  y: 180, radius: 120, type: PoiType.DUNGEON_ENTRANCE },
 ];
 
-// Subset of HUB_POIS that send proximity events. Dungeon entrance is excluded until Epic 4.
-export const INTERACTIVE_HUB_POIS: ReadonlyArray<PoiDefinition> = HUB_POIS.filter(
-  p => p.type !== PoiType.DUNGEON_ENTRANCE,
-);
+// All POIs send proximity events (DUNGEON_ENTRANCE enabled in Epic 4).
+export const INTERACTIVE_HUB_POIS: ReadonlyArray<PoiDefinition> = HUB_POIS;

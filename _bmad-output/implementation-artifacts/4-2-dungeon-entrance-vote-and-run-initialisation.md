@@ -4,7 +4,7 @@ baseline_commit: 04ebbfa
 
 # Story 4.2: Dungeon Entrance Vote & Run Initialisation
 
-Status: ready-for-dev
+Status: done
 
 ## CLAUDE.md Required Task Header
 
@@ -894,6 +894,29 @@ This story touches 4 ownership areas (Protocol Architect, Simulation Engineer, H
 
 ---
 
+## Review Findings
+
+- [x] [Review][Patch] Vote livelock — last holdout freezes after others voted [GameRoom.ts:165] — FIXED
+  — Extracted `resolveVoteIfComplete()` private method. Called from `onLeave` both after setting `isFrozen=true` and after grace-period expiry removal. Method checks active (non-frozen) players, class readiness, and vote map before triggering start.
+
+- [x] [Review][Patch] Missing class-selection gate on vote path [GameRoom.ts:163] — FIXED
+  — Added `activePlayers.some(p => p.class === null)` guard inside `resolveVoteIfComplete()`, scoped to non-frozen players (frozen players can't select a class and shouldn't block the vote).
+
+- [x] [Review][Patch] VotePopup suppressed when DungeonEntranceScreen is open [ControllerScreen.tsx:1254] — FIXED
+  — Added `useEffect` on `gameState?.runProposal` that calls `setDungeonEntranceOpen(false)` when a proposal becomes non-null.
+
+- [x] [Review][Patch] No input validation of biome/difficulty in RUN_PROPOSE [GameRoom.ts:129] — FIXED
+  — Added `biome !== 'grassland'` guard and `!Object.values(DifficultyTier).includes(msg.difficulty)` guard before storing the proposal, matching the CLASS_SELECT validation pattern.
+
+- [x] [Review][Defer] HOST_START silently overrides active vote [GameRoom.ts:115] — deferred, pre-existing
+  — No `runProposal !== null` guard in HOST_START. However, HubWorldScreen replaces the Start Dungeon button with the vote indicator when a proposal is active, making this unreachable via normal UI. Dev-tool fallback; acceptable for the current phase.
+
+- [x] [Review][Defer] HOST_START accepts post-run phase [GameRoom.ts:117] — deferred, pre-existing
+  — HOST_START only guards `phase === 'dungeon'`, not `post-run`. However HubWorldScreen is not rendered in post-run (App.tsx:69), so HOST_START cannot be triggered from normal UI in that phase.
+
+- [x] [Review][Defer] Late joiner added to active voters mid-vote [GameRoom.ts:165] — deferred, pre-existing
+  — A player joining after a proposal was broadcast is correctly included in the unanimity check and sees the VotePopup via snapshot. No timeout is in scope per story non-goals.
+
 ## Dev Agent Record
 
 ### Agent Model Used
@@ -904,4 +927,26 @@ claude-sonnet-4-6
 
 ### Completion Notes List
 
+- Fixed pre-existing test helper in `game-room-host-join.test.ts` that was missing `difficulty: null` and `runProposal: null` from the locally-defined `createEmptyGameState` — caught by strict TypeScript after the new fields were added.
+- Story 4.1 was already done, so `startDungeon()` includes the `generateFloorLayout` call copied from the existing HOST_START handler.
+- `spawnEnemies` default parameter (`difficulty = DifficultyTier.EASY`) preserves backward compatibility with all existing tests.
+- All 263 tests pass (0 regressions); 5 new Story 4.2 contract tests added.
+
 ### File List
+
+packages/shared-types/src/run-proposal.ts (NEW)
+packages/shared-types/src/session.ts (MODIFIED)
+packages/shared-types/src/game-state.ts (MODIFIED)
+packages/shared-types/src/index.ts (MODIFIED)
+packages/shared-types/src/poi.ts (MODIFIED)
+packages/net-protocol/src/event-names.ts (MODIFIED)
+packages/net-protocol/src/messages/mobile-to-server.ts (MODIFIED)
+packages/net-protocol/src/messages/server-to-host.ts (MODIFIED)
+packages/net-protocol/src/apply-delta.ts (MODIFIED)
+packages/net-protocol/src/index.ts (MODIFIED)
+apps/simulation-server/src/rooms/GameRoom.ts (MODIFIED)
+apps/simulation-server/tests/game-room-host-join.test.ts (MODIFIED)
+apps/host-client/src/screens/HubWorldScreen.tsx (MODIFIED)
+apps/mobile-controller/src/session/mobile-session.ts (MODIFIED)
+apps/mobile-controller/src/screens/ControllerScreen.tsx (MODIFIED)
+tests/contract/net-protocol.test.ts (MODIFIED)

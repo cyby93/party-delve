@@ -9,3 +9,4 @@ export * from './game-state.js';
 export * from './floor-layout.js';
 export * from './poi.js';
 export * from './class-definitions.js';
+export * from './run-proposal.js';

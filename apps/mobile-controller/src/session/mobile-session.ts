@@ -1,6 +1,6 @@
 import * as Colyseus from '@colyseus/sdk';
 import { EventNames, deserialize } from 'net-protocol';
-import type { SnapshotMsg, DeltaEventMsg, InputEventMsg, ClassSelectMsg, CooldownUpdateMsg } from 'net-protocol';
+import type { SnapshotMsg, DeltaEventMsg, InputEventMsg, ClassSelectMsg, CooldownUpdateMsg, RunProposeMsg, VoteMsg } from 'net-protocol';
 import type { GameState } from 'shared-types';
 
 const SIM_URL = import.meta.env['VITE_SIM_URL'] ?? `ws://${window.location.hostname || 'localhost'}:2567`;
@@ -17,6 +17,8 @@ export interface MobileSession {
   roomId: string;
   sendInput: (msg: InputEventMsg) => void;
   sendClassSelect: (msg: ClassSelectMsg) => void;
+  sendRunPropose: (msg: RunProposeMsg) => void;
+  sendVote: (msg: VoteMsg) => void;
   disconnect: () => void;
 }
 
@@ -112,6 +114,8 @@ export async function joinSession(
     // The server INPUT handler accepts both plain objects and JSON strings defensively.
     sendInput: (msg: InputEventMsg) => room.send(EventNames.INPUT, msg),
     sendClassSelect: (msg: ClassSelectMsg) => room.send(EventNames.CLASS_SELECT, msg),
+    sendRunPropose: (msg: RunProposeMsg) => room.send(EventNames.RUN_PROPOSE, msg),
+    sendVote: (msg: VoteMsg) => room.send(EventNames.VOTE, msg),
     disconnect: () => {
       try { room.leave(); } catch { /* socket may already be closed */ }
     },
@@ -144,6 +148,8 @@ export async function reconnectToSession(
     roomId: room.roomId,
     sendInput: (msg: InputEventMsg) => room.send(EventNames.INPUT, msg),
     sendClassSelect: (msg: ClassSelectMsg) => room.send(EventNames.CLASS_SELECT, msg),
+    sendRunPropose: (msg: RunProposeMsg) => room.send(EventNames.RUN_PROPOSE, msg),
+    sendVote: (msg: VoteMsg) => room.send(EventNames.VOTE, msg),
     disconnect: () => {
       try { room.leave(); } catch { /* socket may already be closed */ }
     },

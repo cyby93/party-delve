@@ -42,7 +42,7 @@
 # Phase2 legacy stories (old Phase-based keys) are tracked below under PHASE 2 STORIES.
 
 generated: 2026-06-22
-last_updated: 2026-06-30 (4-1 review)
+last_updated: 2026-07-01 (4-2 done)
 project: party-delve
 project_key: NOKEY
 tracking_system: file-system
@@ -101,7 +101,7 @@ development_status:
   # FRs: FR6, FR7, FR8, FR9 (Survive Waves), FR10, FR19, FR29, FR30, FR34
   epic-4: in-progress
   4-1-deterministic-seed-system-and-floor-layout-generator: done
-  4-2-dungeon-entrance-vote-and-run-initialisation: ready-for-dev
+  4-2-dungeon-entrance-vote-and-run-initialisation: done
   4-3-3-level-run-structure-and-level-transitions: ready-for-dev
   4-4-survive-the-waves-objective: ready-for-dev
   4-5-post-run-summary-screen: ready-for-dev

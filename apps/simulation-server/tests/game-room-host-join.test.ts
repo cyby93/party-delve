@@ -24,6 +24,7 @@ function createEmptyGameState(roomId: string): GameState {
       maxPlayers: 8,
       runSeed: 0,
       levelIndex: 0,
+      difficulty: null,
     },
     players: [],
     enemies: [],
@@ -31,6 +32,7 @@ function createEmptyGameState(roomId: string): GameState {
     essenceDrops: [],
     tick: 0,
     floorLayout: null,
+    runProposal: null,
   };
 }
 

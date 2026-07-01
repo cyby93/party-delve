@@ -492,3 +492,16 @@ On level clear with a downed player, `reviveTimerExpiresAt` is reset server-side
 
 **D-3.7-E — `enemies.length > 0` guard silently blocks clear on empty level** [apps/simulation-server/src/rooms/GameRoom.ts]
 The level-clear predicate guards on `enemies.length > 0` to avoid a vacuous clear on dungeon start. If a future `getEnemyCount` configuration returns 0 (e.g. a boss-only room with no grunt spawns), the clear condition can never fire. Add a fallback or log warning if `enemies.length === 0` and phase is still `dungeon` after N ticks.
+
+---
+
+## Deferred from: code review of 4-2-dungeon-entrance-vote-and-run-initialisation (2026-07-01)
+
+**D-4.2-A — HOST_START silently cancels active vote and overrides difficulty to EASY** [apps/simulation-server/src/rooms/GameRoom.ts:115]
+No `runProposal !== null` guard in HOST_START. In practice HubWorldScreen replaces the Start Dungeon button with the vote indicator, making this unreachable via normal UI. Dev-tool fallback; acceptable for current phase.
+
+**D-4.2-B — HOST_START accepts post-run phase** [apps/simulation-server/src/rooms/GameRoom.ts:117]
+HOST_START only guards `phase === 'dungeon'`, not `post-run`. HubWorldScreen is not rendered in post-run (App.tsx:69), so unreachable via normal UI. Noted in D-4.1-A from Story 4.1 review.
+
+**D-4.2-C — Late joiner added to active voters mid-vote with no timeout** [apps/simulation-server/src/rooms/GameRoom.ts:165]
+A player joining after a proposal is raised is correctly added to `activePlayers` and sees the VotePopup via snapshot. No vote timeout is in scope per story non-goals. Address in a UX polish story if the open-ended wait becomes a problem in practice.

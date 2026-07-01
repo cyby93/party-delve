@@ -8,4 +8,7 @@ export enum EventNames {
   CLASS_SELECT = 'class:select',
   COOLDOWN_UPDATE = 'cooldown:update',
   SPIRIT_FORM = 'spirit:form',
+  RUN_PROPOSE  = 'run:propose',
+  VOTE         = 'run:vote',
+  RUN_STARTING = 'run:starting',
 }

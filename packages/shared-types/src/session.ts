@@ -1,4 +1,5 @@
 import type { BondType } from './bond.js';
+import type { DifficultyTier } from './enemy.js';
 
 export interface SessionState {
   roomId: string;
@@ -8,6 +9,7 @@ export interface SessionState {
   maxPlayers: number;
   runSeed: number;
   levelIndex: number;
+  difficulty: DifficultyTier | null;
 }
 
 export interface RoomOptions {

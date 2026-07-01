@@ -1,4 +1,4 @@
-import type { GameState, BondState, EssenceDrop, PlayerClass } from 'shared-types';
+import type { GameState, BondState, EssenceDrop, PlayerClass, DifficultyTier } from 'shared-types';
 
 export interface SnapshotMsg {
   type: 'snapshot';
@@ -142,6 +142,19 @@ export type RunCompleteDelta = {
   totalEssence: number;
 };
 
+export type RunProposedDelta = {
+  type: 'run:proposed';
+  biome: 'grassland';
+  difficulty: DifficultyTier;
+  proposedBy: string;
+};
+
+export type RunStartingDelta = {
+  type: 'run:starting';
+  biome: 'grassland';
+  difficulty: DifficultyTier;
+};
+
 export type DeltaEventMsg =
   | PlayerMovedDelta
   | PlayerDownedDelta
@@ -165,4 +178,6 @@ export type DeltaEventMsg =
   | SpiritAbilityFiredDelta
   | RunFailedDelta
   | LevelCompleteDelta
-  | RunCompleteDelta;
+  | RunCompleteDelta
+  | RunProposedDelta
+  | RunStartingDelta;

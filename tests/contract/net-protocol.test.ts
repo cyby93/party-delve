@@ -14,6 +14,7 @@ function mockGameState(): GameState {
       maxPlayers: 8,
       runSeed: 42,
       levelIndex: 0,
+      difficulty: null,
     },
     players: [],
     enemies: [],
@@ -21,6 +22,7 @@ function mockGameState(): GameState {
     essenceDrops: [],
     tick: 0,
     floorLayout: null,
+    runProposal: null,
   };
 }
 
@@ -399,6 +401,50 @@ describe('net-protocol contract tests', () => {
     it('player:downed delta with reviveWindowMs survives serialize → deserialize', () => {
       const delta = { type: 'player:downed' as const, playerId: 'p1', downCount: 2, reviveWindowMs: 40000 } satisfies PlayerDownedDelta;
       expect(deserialize<DeltaEventMsg>(serialize(delta))).toEqual(delta);
+    });
+  });
+
+  describe('Story 4.2 delta round-trips', () => {
+    it('run:proposed delta survives serialize → deserialize', () => {
+      const delta = {
+        type: 'run:proposed' as const,
+        biome: 'grassland' as const,
+        difficulty: DifficultyTier.NORMAL,
+        proposedBy: 'player-1',
+      } satisfies DeltaEventMsg;
+      expect(deserialize<DeltaEventMsg>(serialize(delta))).toEqual(delta);
+    });
+
+    it('run:starting delta survives serialize → deserialize', () => {
+      const delta = {
+        type: 'run:starting' as const,
+        biome: 'grassland' as const,
+        difficulty: DifficultyTier.HARD,
+      } satisfies DeltaEventMsg;
+      expect(deserialize<DeltaEventMsg>(serialize(delta))).toEqual(delta);
+    });
+
+    it('applyDelta run:proposed sets runProposal', () => {
+      const state: GameState = mockGameState();
+      const next = applyDelta(state, { type: 'run:proposed', biome: 'grassland', difficulty: DifficultyTier.NORMAL, proposedBy: 'p1' });
+      expect(next.runProposal).toEqual({ biome: 'grassland', difficulty: DifficultyTier.NORMAL, proposedBy: 'p1' });
+      expect(state.runProposal).toBeNull(); // original must not be mutated
+    });
+
+    it('applyDelta run:starting clears runProposal and sets phase to dungeon', () => {
+      const base: GameState = mockGameState();
+      const withProposal = applyDelta(base, { type: 'run:proposed', biome: 'grassland', difficulty: DifficultyTier.HARD, proposedBy: 'p1' });
+      const next = applyDelta(withProposal, { type: 'run:starting', biome: 'grassland', difficulty: DifficultyTier.HARD });
+      expect(next.runProposal).toBeNull();
+      expect(next.session.phase).toBe('dungeon');
+      expect(next.session.difficulty).toBe(DifficultyTier.HARD);
+    });
+
+    it('SnapshotMsg with runProposal survives serialize → deserialize', () => {
+      const state = mockGameState();
+      state.runProposal = { biome: 'grassland', difficulty: DifficultyTier.EASY, proposedBy: 'p1' };
+      const msg = { type: 'snapshot' as const, state };
+      expect(deserialize<typeof msg>(serialize(msg))).toEqual(msg);
     });
   });
 });
