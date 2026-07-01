@@ -6,5 +6,6 @@ export * from './session.js';
 export * from './input.js';
 export * from './join.js';
 export * from './game-state.js';
+export * from './floor-layout.js';
 export * from './poi.js';
 export * from './class-definitions.js';

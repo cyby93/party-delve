@@ -11,11 +11,11 @@ import {
   extractPoiBeginContact, extractPoiEndContact, extractEssenceBeginContact, toMeters, toPixels,
 } from '../physics/world.js';
 import type { PoiBeginContactEvent, PoiEndContactEvent, EssenceBeginContactEvent } from '../physics/world.js';
-import { createRng, tickEnemy, dispatchAbility, getEnemyCount, applyDamage, isInHitZone, ABILITY_HIT_RANGE_PX, ABILITY_HIT_RADIUS_PX, applyPlayerDamage, ENEMY_MELEE_DAMAGE, ENEMY_MELEE_RANGE_PX, ENEMY_ATTACK_COOLDOWN_MS, REVIVE_RADIUS_PX, REVIVE_HP, SPIRIT_ABILITY_COOLDOWN_MS, getReviveWindowMs } from 'game-rules';
+import { createRng, tickEnemy, dispatchAbility, getEnemyCount, applyDamage, isInHitZone, ABILITY_HIT_RANGE_PX, ABILITY_HIT_RADIUS_PX, applyPlayerDamage, ENEMY_MELEE_DAMAGE, ENEMY_MELEE_RANGE_PX, ENEMY_ATTACK_COOLDOWN_MS, REVIVE_RADIUS_PX, REVIVE_HP, SPIRIT_ABILITY_COOLDOWN_MS, getReviveWindowMs, generateFloorLayout, GRASSLAND_ROOM_POOL } from 'game-rules';
 import type { BehaviorLayer, EnemyContext, EnemyAIEvent } from 'game-rules';
 import { CLASS_DEFINITIONS } from 'shared-types';
 import type { EnemyState } from 'shared-types';
-import { EnemyType, DifficultyTier, EnemyFSMState, OFFSET_ENEMY_SPAWN } from 'shared-types';
+import { EnemyType, DifficultyTier, EnemyFSMState, OFFSET_ENEMY_SPAWN, OFFSET_FLOOR_LAYOUT, OFFSET_ROOM_POOL } from 'shared-types';
 import { createEnemyBody } from '../physics/world.js';
 import { logger } from '../logger.js';
 
@@ -47,6 +47,7 @@ function createEmptyGameState(roomId: string): GameState {
     bonds: [],
     essenceDrops: [],
     tick: 0,
+    floorLayout: null,
   };
 }
 
@@ -120,6 +121,9 @@ export class GameRoom extends Room {
       this.gameState.session.phase = 'dungeon';
       this.gameState.session.levelIndex = 1;
       for (const p of this.gameState.players) p.nearPoiId = null;
+      const floorRng = createRng(this.gameState.session.runSeed ^ OFFSET_FLOOR_LAYOUT);
+      const roomRng  = createRng(this.gameState.session.runSeed ^ OFFSET_ROOM_POOL);
+      this.gameState.floorLayout = generateFloorLayout(floorRng, roomRng, 'early', GRASSLAND_ROOM_POOL);
       this.spawnEnemies();
       const snapshot: SnapshotMsg = { type: 'snapshot', state: this.gameState };
       this.broadcast(EventNames.SNAPSHOT, snapshot);

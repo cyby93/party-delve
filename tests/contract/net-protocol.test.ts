@@ -20,6 +20,7 @@ function mockGameState(): GameState {
     bonds: [],
     essenceDrops: [],
     tick: 0,
+    floorLayout: null,
   };
 }
 
@@ -266,6 +267,26 @@ describe('net-protocol contract tests', () => {
         reviveTimerExpiresAt: 0,
       });
       const msg: SnapshotMsg = { type: 'snapshot', state };
+      expect(deserialize<SnapshotMsg>(serialize(msg))).toEqual(msg);
+    });
+  });
+
+  describe('Story 4.1 floorLayout in SnapshotMsg', () => {
+    it('SnapshotMsg with non-null floorLayout survives serialize → deserialize', () => {
+      const state = mockGameState();
+      state.floorLayout = {
+        rooms: [
+          { id: 'room-0', templateId: 'grassland-01', x: 280, y: 540, isExit: false },
+          { id: 'room-1', templateId: 'grassland-02', x: 840, y: 490, isExit: true },
+        ],
+        corridors: [{ fromRoomId: 'room-0', toRoomId: 'room-1' }],
+      };
+      const msg: SnapshotMsg = { type: 'snapshot', state };
+      expect(deserialize<SnapshotMsg>(serialize(msg))).toEqual(msg);
+    });
+
+    it('SnapshotMsg with null floorLayout survives serialize → deserialize', () => {
+      const msg: SnapshotMsg = { type: 'snapshot', state: mockGameState() };
       expect(deserialize<SnapshotMsg>(serialize(msg))).toEqual(msg);
     });
   });

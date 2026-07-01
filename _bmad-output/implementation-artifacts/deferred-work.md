@@ -457,6 +457,25 @@ When a spirit player's class ability cooldown expires, the regular expiry loop s
 
 ---
 
+## Deferred from: code review of 4-1-deterministic-seed-system-and-floor-layout-generator (2026-06-30)
+
+**D-4.1-A — Second HOST_START from `post-run` accumulates stale enemies** [apps/simulation-server/src/rooms/GameRoom.ts:114]
+Phase guard only blocks re-entry when phase is `dungeon`; firing from `post-run` pushes new enemies onto the existing (non-cleared) array. Floor layout regenerates correctly (same deterministic overwrite). The enemy accumulation bug pre-dates Story 4.1. Fix: add `|| phase === 'post-run'` to the guard, or clear `gameState.enemies` / reset `floorLayout` before re-spawning. Address in Story 4.2 (dungeon entrance vote) which owns the run restart flow.
+
+**D-4.1-B — `floorLayout` not reset to null on phase transition to `post-run`** [apps/simulation-server/src/rooms/GameRoom.ts:792]
+AC5 specifies `floorLayout === null` in lobby/hub phases. Satisfied by `createEmptyGameState`, but no reset happens on dungeon→post-run transition. No return-to-hub path exists yet so this is latent. Story 4.2 should reset `floorLayout` to null when transitioning back to hub or initializing a new run.
+
+**D-4.1-C — `BOSS_FLOOR_LAYOUT` has `isExit: false` on its only room** [packages/game-rules/src/generation/room-pool.ts]
+If Story 4.3 uses `room.isExit` to detect advancement, the boss room will never satisfy the predicate. Either set `isExit: true` on the boss room, or the advancement trigger must be "boss dead" rather than "exit room". Intentional placeholder — Story 4.3 decides.
+
+**D-4.1-D — `Corridor` directionality not documented (directed vs. undirected)** [packages/shared-types/src/floor-layout.ts]
+Generator always produces a linear chain with `{ fromRoomId, toRoomId }` pairs. No contract says whether traversal is bidirectional. Story 4.3 host render work must document or encode the assumption.
+
+**D-4.1-E — Room y-position has no clamp to virtual 1080px space** [packages/game-rules/src/generation/floor-layout.ts]
+`y` range is [440, 640) with current constants. Safe with max heightPx=350. If a future template has `heightPx > 880`, top/bottom edges clip outside the 1080px virtual space. Add a clamp when template pool is expanded.
+
+---
+
 ## Deferred from: code review of 3-7-clear-objective-and-level-completion (2026-06-29)
 
 **D-3.7-A — `runOutcome` never resets between sessions** [apps/host-client/src/App.tsx, apps/mobile-controller/src/App.tsx]

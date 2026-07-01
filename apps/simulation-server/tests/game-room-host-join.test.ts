@@ -30,6 +30,7 @@ function createEmptyGameState(roomId: string): GameState {
     bonds: [],
     essenceDrops: [],
     tick: 0,
+    floorLayout: null,
   };
 }
 

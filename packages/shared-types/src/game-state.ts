@@ -2,6 +2,7 @@ import type { PlayerState } from './player.js';
 import type { EnemyState } from './enemy.js';
 import type { BondState } from './bond.js';
 import type { SessionState } from './session.js';
+import type { FloorLayout } from './floor-layout.js';
 
 export interface EssenceDrop {
   id: string;
@@ -17,4 +18,5 @@ export interface GameState {
   bonds: BondState[];
   essenceDrops: EssenceDrop[];
   tick: number;
+  floorLayout: FloorLayout | null;
 }

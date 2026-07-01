@@ -1,4 +1,7 @@
 export { createRng } from './prng/xoshiro128.js';
+export { generateFloorLayout } from './generation/floor-layout.js';
+export type { LevelTier } from './generation/floor-layout.js';
+export { GRASSLAND_ROOM_POOL, BOSS_FLOOR_LAYOUT } from './generation/room-pool.js';
 export type { Result, GameError } from './state/result.js';
 export {
   ABILITY_COOLDOWNS_MS, ABILITY_DAMAGE,
