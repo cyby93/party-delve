@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Application, Graphics } from 'pixi.js';
+import { Application, Graphics, Assets } from 'pixi.js';
 import type { GameState, PlayerState } from 'shared-types';
 import { SessionColor, CLASS_DEFINITIONS, PlayerClass } from 'shared-types';
 import type { HostSession } from '../session/host-session';
@@ -231,6 +231,14 @@ export function DungeonScreen({ gameState, session: _session, latestTransientDel
     };
   }, []);
 
+  // Preload biome assets during Level 1 to avoid mid-combat hitches on later levels
+  useEffect(() => {
+    if (gameState?.session.levelIndex === 1) {
+      // ponytail: no-op for alpha — wire real Grassland biome bundle URL in Epic 9
+      void Assets.backgroundLoad([]);
+    }
+  }, [gameState?.session.levelIndex]);
+
   // Handle transient delta visuals: ability flash, enemy kill fade, essence drop flash, level-complete flash
   useEffect(() => {
     if (!latestTransientDelta) return;
@@ -331,7 +339,6 @@ export function DungeonScreen({ gameState, session: _session, latestTransientDel
         {players.map(player => (
           <PlayerChipHUD key={player.id} player={player} />
         ))}
-        {/* ponytail: hardcoded; add objectiveType to SessionState when E4 introduces Survive the Waves */}
         {gameState?.session.phase === 'dungeon' && (
           <div style={{
             marginLeft: 'auto',
@@ -340,7 +347,7 @@ export function DungeonScreen({ gameState, session: _session, latestTransientDel
             fontSize: 'var(--text-sm)',
             color: 'var(--text-primary)',
           }}>
-            Clear
+            Level {gameState.session.levelIndex} — Grassland
           </div>
         )}
       </div>

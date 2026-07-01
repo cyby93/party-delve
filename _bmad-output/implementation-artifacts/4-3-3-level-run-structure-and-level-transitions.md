@@ -4,7 +4,7 @@ baseline_commit: 04ebbfa
 
 # Story 4.3: 3-Level Run Structure & Level Transitions
 
-Status: ready-for-dev
+Status: review
 
 ## CLAUDE.md Required Task Header
 
@@ -133,36 +133,43 @@ so that each run has a sense of escalating stakes and forward momentum.
 
 ## Tasks / Subtasks
 
-- [ ] T1: physics/world.ts — add victory trigger body helper (AC5, AC6)
-  - [ ] T1.1: Add `createVictoryTriggerBody(world: World, x: number, y: number, radius: number): Body`
+- [x] T1: physics/world.ts — add victory trigger body helper (AC5, AC6)
+  - [x] T1.1: Add `createVictoryTriggerBody(world: World, x: number, y: number, radius: number): Body`
     — circular sensor body with `isSensor: true`, no fixture userData needed (GameRoom checks by body reference)
-  - [ ] T1.2: Export the function (it's only used in GameRoom.ts but keep it in world.ts for consistency with the POI/essence helpers)
+  - [x] T1.2: Export the function (it's only used in GameRoom.ts but keep it in world.ts for consistency with the POI/essence helpers)
 
-- [ ] T2: GameRoom.ts — refactor spawnEnemies + add loadLevel (AC1, AC3, AC4, AC8)
-  - [ ] T2.1: Add `private victoryTriggerBody: Body | null = null;` field
-  - [ ] T2.2: Add `private pendingVictoryContact = false;` field
-  - [ ] T2.3: Add dungeon spawn positions array (see Dev Notes: DUNGEON_SPAWN_POSITIONS)
-  - [ ] T2.4: Modify `spawnEnemies()` signature to `spawnEnemies(tier: 'early' | 'mid' | 'late', levelIndex: number): void`
+- [x] T2: GameRoom.ts — refactor spawnEnemies + add loadLevel (AC1, AC3, AC4, AC8)
+  - [x] T2.1: Add `private victoryTriggerBody: Body | null = null;` field
+  - [x] T2.2: Add `private pendingVictoryContact = false;` field
+  - [x] T2.3: Add dungeon spawn positions array (see Dev Notes: DUNGEON_SPAWN_POSITIONS)
+  - [x] T2.4: Modify `spawnEnemies()` signature to `spawnEnemies(tier: 'early' | 'mid' | 'late', levelIndex: number): void`
     — use `createRng(runSeed ^ (OFFSET_ENEMY_SPAWN | (levelIndex << 8)))` for deterministic per-level seeding
     — use `getEnemyCount(playerCount, tier)` for count
     — enemy ids: `enemy-L${levelIndex}-${i}` (avoids id collision across levels)
     — pass `session.difficulty ?? DifficultyTier.EASY` as enemy difficultyTier
-  - [ ] T2.5: Add `private loadLevel(index: number): void` method (see Dev Notes for full pseudocode)
-  - [ ] T2.6: Wire loadLevel in the begin-contact handler: detect victoryTriggerBody contact and set pendingVictoryContact
-  - [ ] T2.7: Update existing HOST_START handler and startDungeon() (if 4.2 done):
+  - [x] T2.5: Add `private loadLevel(index: number): void` method (see Dev Notes for full pseudocode)
+  - [x] T2.6: Wire loadLevel in the begin-contact handler: detect victoryTriggerBody contact and set pendingVictoryContact
+  - [x] T2.7: Update existing HOST_START handler and startDungeon() (if 4.2 done):
     — replace direct `spawnEnemies()` call with `loadLevel(1)`
     — levelIndex is already set to 1 before calling; loadLevel should take the target index
-  - [ ] T2.8: Replace the level-clear block in tick() (currently fires both level:complete AND run:complete immediately):
+  - [x] T2.8: Replace the level-clear block in tick() (currently fires both level:complete AND run:complete immediately):
     — When all enemies dead AND levelIndex < 4: broadcast level:complete, then call loadLevel(levelIndex + 1), broadcast snapshot
     — When levelIndex === 4 AND pendingVictoryContact: broadcast run:complete, set phase='post-run'; clear pendingVictoryContact
-  - [ ] T2.9: Clean up victory trigger body in onDispose()
+  - [x] T2.9: Clean up victory trigger body in onDispose()
 
-- [ ] T3: DungeonScreen.tsx — level/biome display and backgroundLoad hook (AC1, AC2)
-  - [ ] T3.1: Replace hardcoded "Clear" label in the top strip with level + biome display:
+- [x] T3: DungeonScreen.tsx — level/biome display and backgroundLoad hook (AC1, AC2)
+  - [x] T3.1: Replace hardcoded "Clear" label in the top strip with level + biome display:
     `Level {gameState.session.levelIndex} — Grassland` (Lora 700, sm, text-primary)
-  - [ ] T3.2: Add `useEffect` that calls `Assets.backgroundLoad([])` when levelIndex === 1
+  - [x] T3.2: Add `useEffect` that calls `Assets.backgroundLoad([])` when levelIndex === 1
     — import `Assets` from `'pixi.js'`
     — add a `// ponytail: no-op for alpha — wire real biome bundle URL in Epic 9` comment
+
+### Review Findings
+
+- [x] [Review][Patch] victoryTriggerBody left live in physics world after run:complete [GameRoom.ts:967-976] — Body is not destroyed when the victory trigger check fires; stays alive in planck.js until onDispose, firing stale begin-contact callbacks each tick during post-run. Fix: destroy and null `this.victoryTriggerBody` immediately after broadcasting run:complete.
+- [x] [Review][Defer] HOST_START re-entry from post-run without lobby reset [GameRoom.ts:~126] — deferred, pre-existing; startDungeon has no guard against being called from phase==='post-run'. Not introduced by this story.
+- [x] [Review][Defer] Boss check `=== 4` vs `>= 4` in loadLevel [GameRoom.ts:968] — deferred, unreachable; level 4 has no enemies so level-clear never increments beyond 4. Asymmetry is a gotcha if enemy spawning at level 4 is ever added.
+- [x] [Review][Defer] O(n²) indexOf in player spawn loop [GameRoom.ts:482] — deferred, negligible; 64 ops max at MAX_PLAYERS=8.
 
 ---
 
@@ -453,9 +460,38 @@ All 222+ existing tests must pass. The multi-level flow is best verified by runn
 
 ---
 
+## Dev Agent Record
+
+### Completion Notes
+
+All three files changed exactly as specified. One correction from the story Dev Notes: `createPlayerBody`
+stores `{ type: 'player', playerId }` (tagged union) as body userData, not a plain string. The victory
+trigger contact handler uses `data?.type === 'player'` to extract `data.playerId` instead of casting to
+`string | null`.
+
+`getReviveWindowMs` was removed from the game-rules import — it was only used by the old level-clear stub
+and is no longer referenced. All other imports are unchanged.
+
+Total tests: 140 passing (113 in tests/, 23 in apps/simulation-server/tests/, 4 in packages/game-rules/tests).
+TypeScript: no errors in simulation-server or host-client.
+
+### File List
+
+- apps/simulation-server/src/physics/world.ts
+- apps/simulation-server/src/rooms/GameRoom.ts
+- apps/host-client/src/screens/DungeonScreen.tsx
+- _bmad-output/implementation-artifacts/sprint-status.yaml
+- _bmad-output/implementation-artifacts/4-3-3-level-run-structure-and-level-transitions.md
+
+### Change Log
+
+- 2026-07-01: Implemented 3-level run structure and level transitions (Story 4.3)
+
+---
+
 ## Story Completion Status
 
-- Status: ready-for-dev
+- Status: done
 - Context engine analysis: complete
 - Notes: All needed types (levelIndex, level:complete, run:complete, DifficultyTier, getEnemyCount)
   already exist. The change is entirely within GameRoom.ts (multi-level loop), world.ts (victory trigger

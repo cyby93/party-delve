@@ -9,9 +9,10 @@ import type { World } from 'planck';
 import {
   createPhysicsWorld, createPlayerBody, createPoiSensorBody, createEssenceSensorBody,
   extractPoiBeginContact, extractPoiEndContact, extractEssenceBeginContact, toMeters, toPixels,
+  createVictoryTriggerBody,
 } from '../physics/world.js';
-import type { PoiBeginContactEvent, PoiEndContactEvent, EssenceBeginContactEvent } from '../physics/world.js';
-import { createRng, tickEnemy, dispatchAbility, getEnemyCount, applyDamage, isInHitZone, ABILITY_HIT_RANGE_PX, ABILITY_HIT_RADIUS_PX, applyPlayerDamage, ENEMY_MELEE_DAMAGE, ENEMY_MELEE_RANGE_PX, ENEMY_ATTACK_COOLDOWN_MS, REVIVE_RADIUS_PX, REVIVE_HP, SPIRIT_ABILITY_COOLDOWN_MS, getReviveWindowMs, generateFloorLayout, GRASSLAND_ROOM_POOL } from 'game-rules';
+import type { PoiBeginContactEvent, PoiEndContactEvent, EssenceBeginContactEvent, PhysicsBodyData } from '../physics/world.js';
+import { createRng, tickEnemy, dispatchAbility, getEnemyCount, applyDamage, isInHitZone, ABILITY_HIT_RANGE_PX, ABILITY_HIT_RADIUS_PX, applyPlayerDamage, ENEMY_MELEE_DAMAGE, ENEMY_MELEE_RANGE_PX, ENEMY_ATTACK_COOLDOWN_MS, REVIVE_RADIUS_PX, REVIVE_HP, SPIRIT_ABILITY_COOLDOWN_MS, generateFloorLayout, GRASSLAND_ROOM_POOL } from 'game-rules';
 import type { BehaviorLayer, EnemyContext, EnemyAIEvent } from 'game-rules';
 import { CLASS_DEFINITIONS } from 'shared-types';
 import type { EnemyState } from 'shared-types';
@@ -29,6 +30,12 @@ const SESSION_COLORS: ReadonlyArray<SessionColor> = [
 const SPAWN_POSITIONS: ReadonlyArray<{ x: number; y: number }> = [
   { x: 960, y: 540 }, { x: 880, y: 540 }, { x: 1040, y: 540 }, { x: 920, y: 480 },
   { x: 1000, y: 480 }, { x: 880, y: 600 }, { x: 960, y: 600 }, { x: 1040, y: 600 },
+];
+
+// Dungeon entry positions — left side of arena, clear of enemy spawn zone (x≥600)
+const DUNGEON_SPAWN_POSITIONS: ReadonlyArray<{ x: number; y: number }> = [
+  { x: 300, y: 540 }, { x: 300, y: 480 }, { x: 300, y: 600 }, { x: 240, y: 510 },
+  { x: 240, y: 570 }, { x: 360, y: 510 }, { x: 360, y: 570 }, { x: 300, y: 420 },
 ];
 
 function createEmptyGameState(roomId: string): GameState {
@@ -104,6 +111,8 @@ export class GameRoom extends Room {
   private nextSlotIndex = 0;
   private enemyAttackCooldowns = new Map<string, number>(); // enemyId → expiry epoch ms
   private runVotes = new Map<string, 'accept' | 'decline'>();
+  private victoryTriggerBody: Body | null = null;
+  private pendingVictoryContact = false;
 
   async onCreate(_options: unknown): Promise<void> {
     this.roomId = generateRoomCode();
@@ -235,6 +244,20 @@ export class GameRoom extends Room {
       if (poiEvt) this.pendingPoiBeginContacts.push(poiEvt);
       const essenceEvt = extractEssenceBeginContact(contact);
       if (essenceEvt) this.pendingEssenceBeginContacts.push(essenceEvt);
+      if (this.victoryTriggerBody) {
+        const bodyA = contact.getFixtureA().getBody();
+        const bodyB = contact.getFixtureB().getBody();
+        if (bodyA === this.victoryTriggerBody || bodyB === this.victoryTriggerBody) {
+          const otherBody = bodyA === this.victoryTriggerBody ? bodyB : bodyA;
+          const data = otherBody.getUserData() as PhysicsBodyData | null;
+          if (data?.type === 'player') {
+            const player = this.gameState.players.find(p => p.id === data.playerId);
+            if (player && !player.isFrozen && !player.isDown && !player.isSpirit) {
+              this.pendingVictoryContact = true;
+            }
+          }
+        }
+      }
     });
     this.physicsWorld.on('end-contact', (contact: Contact) => {
       const evt = extractPoiEndContact(contact);
@@ -363,6 +386,10 @@ export class GameRoom extends Room {
       this.physicsWorld.destroyBody(body);
     }
     this.essenceSensorBodies.clear();
+    if (this.victoryTriggerBody) {
+      this.physicsWorld.destroyBody(this.victoryTriggerBody);
+      this.victoryTriggerBody = null;
+    }
     this.pendingPoiBeginContacts.length = 0;
     this.pendingPoiEndContacts.length = 0;
     this.pendingEssenceBeginContacts.length = 0;
@@ -384,25 +411,25 @@ export class GameRoom extends Room {
 
   private startDungeon(difficulty: DifficultyTier): void {
     this.gameState.session.phase = 'dungeon';
-    this.gameState.session.levelIndex = 1;
     this.gameState.session.difficulty = difficulty;
     this.gameState.runProposal = null;
     for (const p of this.gameState.players) p.nearPoiId = null;
     const floorRng = createRng(this.gameState.session.runSeed ^ OFFSET_FLOOR_LAYOUT);
     const roomRng  = createRng(this.gameState.session.runSeed ^ OFFSET_ROOM_POOL);
     this.gameState.floorLayout = generateFloorLayout(floorRng, roomRng, 'early', GRASSLAND_ROOM_POOL);
-    this.spawnEnemies(difficulty);
+    this.loadLevel(1);
     const snapshot: SnapshotMsg = { type: 'snapshot', state: this.gameState };
     this.broadcast(EventNames.SNAPSHOT, snapshot);
     logger.info({ roomId: this.roomId, difficulty }, 'dungeon phase started');
   }
 
-  private spawnEnemies(difficulty: DifficultyTier = DifficultyTier.EASY): void {
-    const count = getEnemyCount(this.gameState.players.length, 'early');
-    const enemyPrng = createRng(this.gameState.session.runSeed ^ OFFSET_ENEMY_SPAWN);
+  private spawnEnemies(tier: 'early' | 'mid' | 'late', levelIndex: number): void {
+    const count = getEnemyCount(this.gameState.players.length, tier);
+    const enemyPrng = createRng(this.gameState.session.runSeed ^ (OFFSET_ENEMY_SPAWN | (levelIndex << 8)));
+    const difficulty = this.gameState.session.difficulty ?? DifficultyTier.EASY;
     for (let i = 0; i < count; i++) {
-      const id = `enemy-${i}`;
-      const x = 200 + enemyPrng() * 1520;
+      const id = `enemy-L${levelIndex}-${i}`;
+      const x = 600 + enemyPrng() * 1120;
       const y = 200 + enemyPrng() * 680;
       const enemy: EnemyState = {
         id,
@@ -421,7 +448,55 @@ export class GameRoom extends Room {
       this.enemyBodies.set(id, body);
       this.enemyAttackCooldowns.set(id, 0);
     }
-    logger.info({ roomId: this.roomId, count, difficulty }, 'enemies spawned');
+    logger.info({ roomId: this.roomId, count, tier, levelIndex }, 'enemies spawned');
+  }
+
+  private loadLevel(index: number): void {
+    // Clear current enemies
+    for (const body of this.enemyBodies.values()) this.physicsWorld.destroyBody(body);
+    this.enemyBodies.clear();
+    this.enemyLayers.clear();
+    this.enemyAttackCooldowns.clear();
+    this.gameState.enemies = [];
+
+    // Clear essence drops
+    for (const body of this.essenceSensorBodies.values()) this.physicsWorld.destroyBody(body);
+    this.essenceSensorBodies.clear();
+    this.gameState.essenceDrops = [];
+
+    // Clear previous victory trigger
+    if (this.victoryTriggerBody) {
+      this.physicsWorld.destroyBody(this.victoryTriggerBody);
+      this.victoryTriggerBody = null;
+    }
+    this.pendingVictoryContact = false;
+
+    // Auto-revive downed/spirit players; carry downCount (shorter next revive window)
+    for (const player of this.gameState.players) {
+      if (player.isDown || player.isSpirit) {
+        player.isDown = false;
+        player.isSpirit = false;
+        player.reviveTimerExpiresAt = 0;
+        player.hp = REVIVE_HP;
+      }
+      const spawnIdx = this.gameState.players.indexOf(player);
+      const spawn = DUNGEON_SPAWN_POSITIONS[spawnIdx] ?? { x: 400, y: 540 };
+      player.x = spawn.x;
+      player.y = spawn.y;
+      const body = this.playerBodies.get(player.id);
+      if (body) body.setPosition(Vec2(toMeters(spawn.x), toMeters(spawn.y)));
+    }
+
+    this.gameState.session.levelIndex = index;
+
+    if (index >= 4) {
+      // Boss placeholder: empty room with a victory trigger zone at the far end
+      this.victoryTriggerBody = createVictoryTriggerBody(this.physicsWorld, 1700, 540, 120);
+      logger.info({ roomId: this.roomId }, 'boss placeholder level loaded — victory trigger at (1700, 540)');
+    } else {
+      const tier = index === 1 ? 'early' : index === 2 ? 'mid' : 'late';
+      this.spawnEnemies(tier, index);
+    }
   }
 
   private buildEnemyContext(enemy: EnemyState): EnemyContext {
@@ -876,33 +951,31 @@ export class GameRoom extends Room {
       }
     }
 
-    // ── Level clear: all enemies defeated → level:complete + run:complete ────
+    // ── Level clear: all enemies defeated → advance to next level ────────────
     if (this.gameState.session.phase === 'dungeon') {
       const enemies = this.gameState.enemies;
       if (enemies.length > 0 && enemies.every(e => !e.isAlive)) {
         const levelIndex = this.gameState.session.levelIndex;
-        this.gameState.session.phase = 'post-run';
+        this.broadcast(EventNames.DELTA, { type: 'level:complete' as const, levelIndex } satisfies DeltaEventMsg);
+        this.loadLevel(levelIndex + 1);
+        const snapshot: SnapshotMsg = { type: 'snapshot', state: this.gameState };
+        this.broadcast(EventNames.SNAPSHOT, snapshot);
+        logger.info({ roomId: this.roomId, nextLevel: levelIndex + 1 }, 'level complete — loading next level');
+      }
+    }
 
-        this.broadcast(EventNames.DELTA, {
-          type: 'level:complete' as const,
-          levelIndex,
-        } satisfies DeltaEventMsg);
-
-        // ponytail: silent reset; E4 will broadcast a new player:downed when the next level loads
-        const nowClear = Date.now();
-        for (const player of this.gameState.players) {
-          if (player.isDown) {
-            player.reviveTimerExpiresAt = nowClear + getReviveWindowMs(player.downCount);
-          }
-        }
-
-        const totalEssence = this.gameState.players.reduce((sum, p) => sum + (p.essenceTotal ?? 0), 0);
-        this.broadcast(EventNames.DELTA, {
-          type: 'run:complete' as const,
-          totalEssence,
-        } satisfies DeltaEventMsg);
-
-        logger.info({ roomId: this.roomId, levelIndex, totalEssence }, 'level clear — run complete');
+    // ── Boss placeholder: victory trigger contact → run:complete ─────────────
+    if (this.gameState.session.phase === 'dungeon'
+        && this.gameState.session.levelIndex === 4
+        && this.pendingVictoryContact) {
+      this.pendingVictoryContact = false;
+      const totalEssence = this.gameState.players.reduce((sum, p) => sum + (p.essenceTotal ?? 0), 0);
+      this.gameState.session.phase = 'post-run';
+      this.broadcast(EventNames.DELTA, { type: 'run:complete' as const, totalEssence } satisfies DeltaEventMsg);
+      logger.info({ roomId: this.roomId, totalEssence }, 'boss placeholder — victory zone reached, run complete');
+      if (this.victoryTriggerBody) {
+        this.physicsWorld.destroyBody(this.victoryTriggerBody);
+        this.victoryTriggerBody = null;
       }
     }
 

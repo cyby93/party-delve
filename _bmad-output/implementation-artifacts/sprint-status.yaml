@@ -42,7 +42,7 @@
 # Phase2 legacy stories (old Phase-based keys) are tracked below under PHASE 2 STORIES.
 
 generated: 2026-06-22
-last_updated: 2026-07-01 (4-2 done)
+last_updated: 2026-07-01 (4-7 created)
 project: party-delve
 project_key: NOKEY
 tracking_system: file-system
@@ -102,10 +102,11 @@ development_status:
   epic-4: in-progress
   4-1-deterministic-seed-system-and-floor-layout-generator: done
   4-2-dungeon-entrance-vote-and-run-initialisation: done
-  4-3-3-level-run-structure-and-level-transitions: ready-for-dev
+  4-3-3-level-run-structure-and-level-transitions: done
   4-4-survive-the-waves-objective: ready-for-dev
   4-5-post-run-summary-screen: ready-for-dev
   4-6-end-to-end-run-e2e-test-and-latency-baseline: ready-for-dev
+  4-7-session-url-sync-on-join: done
   epic-4-retrospective: optional
 
   # ─── E5: Spirit Bond System ─────────────────────────────────────────────────

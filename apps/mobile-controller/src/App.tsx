@@ -94,6 +94,7 @@ export function App() {
         handleDisconnect,
       );
       setSession(s);
+      history.replaceState(null, '', '?session=' + roomId);
       // delay navigation so SessionCodeEntryScreen renders the accent-purify flash (AC4)
       setTimeout(() => setScreen('orientation-prompt'), 500);
     } catch (err) {

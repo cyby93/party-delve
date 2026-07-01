@@ -113,3 +113,10 @@ export function extractPoiEndContact(contact: Contact): PoiEndContactEvent | nul
   if (!playerData || !poiData) return null;
   return { playerId: playerData.playerId, poiId: poiData.poiId };
 }
+
+export function createVictoryTriggerBody(world: World, x: number, y: number, radiusPx: number): Body {
+  const body = world.createBody({ type: 'static', position: Vec2(toMeters(x), toMeters(y)) });
+  body.createFixture({ shape: new Circle(toMeters(radiusPx)), isSensor: true });
+  // No userData needed — GameRoom identifies this body by reference
+  return body;
+}

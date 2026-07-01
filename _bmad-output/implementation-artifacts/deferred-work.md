@@ -505,3 +505,16 @@ HOST_START only guards `phase === 'dungeon'`, not `post-run`. HubWorldScreen is 
 
 **D-4.2-C — Late joiner added to active voters mid-vote with no timeout** [apps/simulation-server/src/rooms/GameRoom.ts:165]
 A player joining after a proposal is raised is correctly added to `activePlayers` and sees the VotePopup via snapshot. No vote timeout is in scope per story non-goals. Address in a UX polish story if the open-ended wait becomes a problem in practice.
+
+---
+
+## Deferred from: code review of 4-3-3-level-run-structure-and-level-transitions (2026-07-01)
+
+**D-4.3-A — HOST_START re-entry from post-run skips hub/class-selection flow** [apps/simulation-server/src/rooms/GameRoom.ts:~115]
+Guard only blocks re-entry when `phase === 'dungeon'`. From `post-run`, `startDungeon()` fires, `loadLevel(1)` correctly clears enemies and positions players, but host and mobile clients are never signalled to return to hub — they transition directly from the post-run overlay into a new dungeon snapshot with stale class selections. Pre-existing gap; `loadLevel`'s enemy-clearing fix (Story 4.3) removes the accumulation risk noted in D-4.1-A, but the client flow issue remains. Address in the return-to-hub story (post-E4).
+
+**D-4.3-B — Boss victory check `=== 4` narrower than `loadLevel` guard `>= 4`** [apps/simulation-server/src/rooms/GameRoom.ts:969]
+`loadLevel` branches on `index >= 4` to create the victory trigger; the tick-level run:complete check guards on `levelIndex === 4`. If `loadLevel(5+)` were ever called (currently unreachable: level 4 has no enemies so level-clear never fires there), the victory trigger body would exist but the `=== 4` check would never fire, permanently stalling the run. No impact today; align to `>= 4` in a future cleanup pass.
+
+**D-4.3-C — O(n²) indexOf in player spawn loop** [apps/simulation-server/src/rooms/GameRoom.ts:482]
+`this.gameState.players.indexOf(player)` inside a `for...of` over the same array. MAX_PLAYERS=8 so 64 comparisons max — negligible. Replace with an index-based `for` loop if the player cap grows.
