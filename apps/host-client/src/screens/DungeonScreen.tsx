@@ -346,8 +346,20 @@ export function DungeonScreen({ gameState, session: _session, latestTransientDel
             fontWeight: 700,
             fontSize: 'var(--text-sm)',
             color: 'var(--text-primary)',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'flex-end',
+            gap: 2,
           }}>
-            Level {gameState.session.levelIndex} — Grassland
+            {(gameState.session.levelObjective ?? 'clear') === 'survive-waves'
+              ? `Level ${gameState.session.levelIndex} — Survive: ${gameState.session.totalWaves} Waves`
+              : `Level ${gameState.session.levelIndex} — Grassland`
+            }
+            {(gameState.session.levelObjective ?? 'clear') === 'survive-waves' && gameState.session.waveIndex > 0 && (
+              <span style={{ fontSize: 'var(--text-xs)', fontWeight: 400, color: 'var(--text-secondary)' }}>
+                Wave {gameState.session.waveIndex} / {gameState.session.totalWaves}
+              </span>
+            )}
           </div>
         )}
       </div>

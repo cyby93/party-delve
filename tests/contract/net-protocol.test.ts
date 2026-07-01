@@ -15,6 +15,9 @@ function mockGameState(): GameState {
       runSeed: 42,
       levelIndex: 0,
       difficulty: null,
+      levelObjective: 'clear' as const,
+      waveIndex: 0,
+      totalWaves: 0,
     },
     players: [],
     enemies: [],
@@ -290,6 +293,39 @@ describe('net-protocol contract tests', () => {
     it('SnapshotMsg with null floorLayout survives serialize → deserialize', () => {
       const msg: SnapshotMsg = { type: 'snapshot', state: mockGameState() };
       expect(deserialize<SnapshotMsg>(serialize(msg))).toEqual(msg);
+    });
+  });
+
+  describe('Story 4.4 wave delta round-trips', () => {
+    it('wave:started delta survives serialize → deserialize', () => {
+      const delta = {
+        type: 'wave:started' as const,
+        waveIndex: 2,
+        totalWaves: 3,
+      } satisfies DeltaEventMsg;
+      expect(deserialize<DeltaEventMsg>(serialize(delta))).toEqual(delta);
+    });
+
+    it('wave:complete delta survives serialize → deserialize', () => {
+      const delta = {
+        type: 'wave:complete' as const,
+        waveIndex: 1,
+      } satisfies DeltaEventMsg;
+      expect(deserialize<DeltaEventMsg>(serialize(delta))).toEqual(delta);
+    });
+
+    it('applyDelta wave:started updates waveIndex and totalWaves', () => {
+      const state: GameState = mockGameState();
+      const next = applyDelta(state, { type: 'wave:started', waveIndex: 1, totalWaves: 3 });
+      expect(next.session.waveIndex).toBe(1);
+      expect(next.session.totalWaves).toBe(3);
+      expect(state.session.waveIndex).toBe(0); // original not mutated
+    });
+
+    it('applyDelta wave:complete returns state unchanged', () => {
+      const state: GameState = mockGameState();
+      const next = applyDelta(state, { type: 'wave:complete', waveIndex: 1 });
+      expect(next).toBe(state);
     });
   });
 

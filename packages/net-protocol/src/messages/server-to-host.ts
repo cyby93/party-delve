@@ -155,6 +155,17 @@ export type RunStartingDelta = {
   difficulty: DifficultyTier;
 };
 
+export type WaveStartedDelta = {
+  type: 'wave:started';
+  waveIndex: number;
+  totalWaves: number;
+};
+
+export type WaveCompleteDelta = {
+  type: 'wave:complete';
+  waveIndex: number;
+};
+
 export type DeltaEventMsg =
   | PlayerMovedDelta
   | PlayerDownedDelta
@@ -180,4 +191,6 @@ export type DeltaEventMsg =
   | LevelCompleteDelta
   | RunCompleteDelta
   | RunProposedDelta
-  | RunStartingDelta;
+  | RunStartingDelta
+  | WaveStartedDelta
+  | WaveCompleteDelta;

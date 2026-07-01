@@ -15,6 +15,9 @@ export {
   ENEMY_MELEE_DAMAGE, ENEMY_MELEE_RANGE_PX, ENEMY_ATTACK_COOLDOWN_MS,
   SPIRIT_ABILITY_NAMES,
   SPIRIT_ABILITY_COOLDOWN_MS,
+  WAVE_COUNTS,
+  WAVE_PAUSE_MS,
+  WAVE_ENEMY_SCALE,
 } from './balance.js';
 export { applyPlayerDamage, getReviveWindowMs } from './systems/player-health.js';
 export type { PlayerDamageResult, HealthError } from './systems/player-health.js';

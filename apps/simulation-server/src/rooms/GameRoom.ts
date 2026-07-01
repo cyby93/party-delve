@@ -12,7 +12,7 @@ import {
   createVictoryTriggerBody,
 } from '../physics/world.js';
 import type { PoiBeginContactEvent, PoiEndContactEvent, EssenceBeginContactEvent, PhysicsBodyData } from '../physics/world.js';
-import { createRng, tickEnemy, dispatchAbility, getEnemyCount, applyDamage, isInHitZone, ABILITY_HIT_RANGE_PX, ABILITY_HIT_RADIUS_PX, applyPlayerDamage, ENEMY_MELEE_DAMAGE, ENEMY_MELEE_RANGE_PX, ENEMY_ATTACK_COOLDOWN_MS, REVIVE_RADIUS_PX, REVIVE_HP, SPIRIT_ABILITY_COOLDOWN_MS, generateFloorLayout, GRASSLAND_ROOM_POOL } from 'game-rules';
+import { createRng, tickEnemy, dispatchAbility, getEnemyCount, applyDamage, isInHitZone, ABILITY_HIT_RANGE_PX, ABILITY_HIT_RADIUS_PX, applyPlayerDamage, ENEMY_MELEE_DAMAGE, ENEMY_MELEE_RANGE_PX, ENEMY_ATTACK_COOLDOWN_MS, REVIVE_RADIUS_PX, REVIVE_HP, SPIRIT_ABILITY_COOLDOWN_MS, generateFloorLayout, GRASSLAND_ROOM_POOL, WAVE_COUNTS, WAVE_PAUSE_MS, WAVE_ENEMY_SCALE } from 'game-rules';
 import type { BehaviorLayer, EnemyContext, EnemyAIEvent } from 'game-rules';
 import { CLASS_DEFINITIONS } from 'shared-types';
 import type { EnemyState } from 'shared-types';
@@ -49,6 +49,9 @@ function createEmptyGameState(roomId: string): GameState {
       runSeed: 0,
       levelIndex: 0,
       difficulty: null,
+      levelObjective: 'clear',
+      waveIndex: 0,
+      totalWaves: 0,
     },
     players: [],
     enemies: [],
@@ -113,6 +116,10 @@ export class GameRoom extends Room {
   private runVotes = new Map<string, 'accept' | 'decline'>();
   private victoryTriggerBody: Body | null = null;
   private pendingVictoryContact = false;
+  private levelObjective: 'clear' | 'survive-waves' = 'clear';
+  private waveIndex = 0;
+  private totalWaves = 0;
+  private wavePauseUntil = 0;
 
   async onCreate(_options: unknown): Promise<void> {
     this.roomId = generateRoomCode();
@@ -451,6 +458,55 @@ export class GameRoom extends Room {
     logger.info({ roomId: this.roomId, count, tier, levelIndex }, 'enemies spawned');
   }
 
+  private spawnWave(waveNum: number, tier: 'early' | 'mid' | 'late', levelIndex: number): void {
+    // Remove dead bodies from previous wave
+    for (const enemy of this.gameState.enemies) {
+      if (!enemy.isAlive) {
+        const body = this.enemyBodies.get(enemy.id);
+        if (body) {
+          this.physicsWorld.destroyBody(body);
+          this.enemyBodies.delete(enemy.id);
+        }
+        this.enemyAttackCooldowns.delete(enemy.id);
+      }
+    }
+    this.gameState.enemies = this.gameState.enemies.filter(e => e.isAlive);
+
+    const baseCount = getEnemyCount(this.gameState.players.length, tier);
+    const scaleIndex = Math.min(waveNum - 1, WAVE_ENEMY_SCALE.length - 1);
+    const count = Math.max(1, Math.ceil(baseCount * (WAVE_ENEMY_SCALE[scaleIndex] ?? 1.0)));
+    const waveRng = createRng(
+      this.gameState.session.runSeed ^ (OFFSET_ENEMY_SPAWN | (levelIndex << 8) | (waveNum << 4))
+    );
+    const difficulty = this.gameState.session.difficulty ?? DifficultyTier.EASY;
+
+    for (let i = 0; i < count; i++) {
+      const id = `enemy-L${levelIndex}-W${waveNum}-${i}`;
+      const x = 1200 + waveRng() * 650;  // right-half spawn: 1200–1850
+      const y = 100  + waveRng() * 880;
+      const enemy: EnemyState = {
+        id, type: EnemyType.GRUNT, x, y,
+        hp: 60, maxHp: 60, difficultyTier: difficulty,
+        isAlive: true, fsmState: EnemyFSMState.IDLE, attackCooldownTicks: 0,
+      };
+      this.gameState.enemies.push(enemy);
+      const body = createEnemyBody(this.physicsWorld, id, x, y);
+      this.enemyBodies.set(id, body);
+      this.enemyAttackCooldowns.set(id, 0);
+    }
+
+    this.waveIndex = waveNum;
+    this.gameState.session.waveIndex = waveNum;
+    this.wavePauseUntil = 0;
+
+    this.broadcast(EventNames.DELTA, {
+      type: 'wave:started' as const,
+      waveIndex: waveNum,
+      totalWaves: this.totalWaves,
+    } satisfies DeltaEventMsg);
+    logger.info({ roomId: this.roomId, levelIndex, waveNum, count, tier }, 'wave started');
+  }
+
   private loadLevel(index: number): void {
     // Clear current enemies
     for (const body of this.enemyBodies.values()) this.physicsWorld.destroyBody(body);
@@ -493,8 +549,22 @@ export class GameRoom extends Room {
       // Boss placeholder: empty room with a victory trigger zone at the far end
       this.victoryTriggerBody = createVictoryTriggerBody(this.physicsWorld, 1700, 540, 120);
       logger.info({ roomId: this.roomId }, 'boss placeholder level loaded — victory trigger at (1700, 540)');
+    } else if (index === 2) {
+      this.levelObjective = 'survive-waves';
+      this.totalWaves = WAVE_COUNTS['mid'];
+      this.waveIndex = 0;
+      this.wavePauseUntil = 0;
+      this.gameState.session.levelObjective = 'survive-waves';
+      this.gameState.session.waveIndex = 0;
+      this.gameState.session.totalWaves = this.totalWaves;
+      this.spawnWave(1, 'mid', index);
     } else {
-      const tier = index === 1 ? 'early' : index === 2 ? 'mid' : 'late';
+      this.levelObjective = 'clear';
+      this.waveIndex = 0; this.totalWaves = 0; this.wavePauseUntil = 0;
+      this.gameState.session.levelObjective = 'clear';
+      this.gameState.session.waveIndex = 0;
+      this.gameState.session.totalWaves = 0;
+      const tier = index === 1 ? 'early' : 'late';
       this.spawnEnemies(tier, index);
     }
   }
@@ -951,16 +1021,45 @@ export class GameRoom extends Room {
       }
     }
 
-    // ── Level clear: all enemies defeated → advance to next level ────────────
+    // ── Level clear / wave objective check ───────────────────────────────────
     if (this.gameState.session.phase === 'dungeon') {
       const enemies = this.gameState.enemies;
-      if (enemies.length > 0 && enemies.every(e => !e.isAlive)) {
-        const levelIndex = this.gameState.session.levelIndex;
-        this.broadcast(EventNames.DELTA, { type: 'level:complete' as const, levelIndex } satisfies DeltaEventMsg);
-        this.loadLevel(levelIndex + 1);
-        const snapshot: SnapshotMsg = { type: 'snapshot', state: this.gameState };
-        this.broadcast(EventNames.SNAPSHOT, snapshot);
-        logger.info({ roomId: this.roomId, nextLevel: levelIndex + 1 }, 'level complete — loading next level');
+      const allEnemiesDead = enemies.length > 0 && enemies.every(e => !e.isAlive);
+
+      if (this.levelObjective === 'survive-waves') {
+        if (allEnemiesDead && this.wavePauseUntil === 0 && this.waveIndex > 0) {
+          const completedWave = this.waveIndex;
+          this.broadcast(EventNames.DELTA, {
+            type: 'wave:complete' as const,
+            waveIndex: completedWave,
+          } satisfies DeltaEventMsg);
+
+          if (completedWave >= this.totalWaves) {
+            const levelIndex = this.gameState.session.levelIndex;
+            this.broadcast(EventNames.DELTA, { type: 'level:complete' as const, levelIndex } satisfies DeltaEventMsg);
+            this.loadLevel(levelIndex + 1);
+            this.broadcast(EventNames.SNAPSHOT, { type: 'snapshot', state: this.gameState } satisfies SnapshotMsg);
+            logger.info({ roomId: this.roomId, levelIndex, waves: completedWave }, 'survive-waves level complete');
+          } else {
+            this.wavePauseUntil = Date.now() + WAVE_PAUSE_MS;
+            logger.info({ roomId: this.roomId, completedWave, nextWave: completedWave + 1 }, 'wave cleared — pausing before next wave');
+          }
+        }
+
+        if (this.wavePauseUntil > 0 && Date.now() >= this.wavePauseUntil) {
+          this.wavePauseUntil = 0;
+          const nextWave = this.waveIndex + 1;
+          this.spawnWave(nextWave, 'mid', this.gameState.session.levelIndex);
+          this.broadcast(EventNames.SNAPSHOT, { type: 'snapshot', state: this.gameState } satisfies SnapshotMsg);
+        }
+      } else {
+        if (allEnemiesDead) {
+          const levelIndex = this.gameState.session.levelIndex;
+          this.broadcast(EventNames.DELTA, { type: 'level:complete' as const, levelIndex } satisfies DeltaEventMsg);
+          this.loadLevel(levelIndex + 1);
+          this.broadcast(EventNames.SNAPSHOT, { type: 'snapshot', state: this.gameState } satisfies SnapshotMsg);
+          logger.info({ roomId: this.roomId, nextLevel: levelIndex + 1 }, 'level complete — loading next level');
+        }
       }
     }
 

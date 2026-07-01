@@ -518,3 +518,22 @@ Guard only blocks re-entry when `phase === 'dungeon'`. From `post-run`, `startDu
 
 **D-4.3-C — O(n²) indexOf in player spawn loop** [apps/simulation-server/src/rooms/GameRoom.ts:482]
 `this.gameState.players.indexOf(player)` inside a `for...of` over the same array. MAX_PLAYERS=8 so 64 comparisons max — negligible. Replace with an index-based `for` loop if the player cap grows.
+
+---
+
+## Deferred from: code review of 4-4-survive-the-waves-objective (2026-07-01)
+
+**D-4.4-A — Broadcast storm if loadLevel throws mid-tick** [apps/simulation-server/src/rooms/GameRoom.ts:tick()]
+Wave completion tick calls `loadLevel(nextIndex)` without a try/catch. If `loadLevel` throws (e.g., invalid index, planck error), the tick exits mid-broadcast, leaving room state inconsistent. Pre-existing pattern from Clear objective — the same unguarded call was there before Story 4.4.
+
+**D-4.4-B — Run-failure races wave-complete in same tick** [apps/simulation-server/src/rooms/GameRoom.ts:tick()]
+If the last alive player dies in the same tick that the last wave enemy dies, both the run-failure block and the wave-complete block can fire (order: run-fail → wave-complete, due to tick ordering). Intentional per AC5 ("run failure takes precedence"); the wave-complete branch is guarded by `allEnemiesDead && wavePauseUntil===0 && waveIndex>0` which doesn't check if run already failed. No user-visible issue; document in tick ordering comment if clarity is needed.
+
+**D-4.4-C — Tick block evaluation order is an undocumented load-bearing invariant** [apps/simulation-server/src/rooms/GameRoom.ts:~1040]
+`allEnemiesDead` is computed once before the survive-waves block but after the run-failure block. Block ordering determines correctness (run-fail before wave-clear). Not obvious from reading the code in isolation. Add a short ordering comment if a future story adds a third tick block in this region.
+
+**D-4.4-D — Wave timing non-deterministic under replay** [apps/simulation-server/src/rooms/GameRoom.ts:wavePauseUntil]
+`wavePauseUntil` uses `Date.now()` (wall clock), not tick count. Replay scenarios will produce different wave-pause durations depending on replay playback speed. Same systemic pre-existing issue as other Date.now() tick comparisons in the codebase. Address in Phase 5 deterministic replay work.
+
+**D-4.4-E — RNG seed fragile for waveNum ≥ 16 or future OFFSET_ENEMY_SPAWN bit changes** [apps/simulation-server/src/rooms/GameRoom.ts:478]
+Seed packing `OFFSET_ENEMY_SPAWN | (levelIndex << 8) | (waveNum << 4)` assumes `waveNum` fits in 4 bits (≤15). With `totalWaves=3` this is safe. If WAVE_COUNTS is raised above 15 or OFFSET_ENEMY_SPAWN grows into bits 4-5, seeds collide silently. Not a current concern; document the constraint in balance.ts if WAVE_COUNTS grows.

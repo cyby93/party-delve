@@ -78,6 +78,16 @@ export const ABILITY_HIT_RADIUS_PX: Record<PlayerClass, readonly [number, number
 export const ESSENCE_DROP_AMOUNT = 10;
 export const ESSENCE_COLLECT_RADIUS_PX = 50;
 
+// ── Survive the Waves ─────────────────────────────────────────────────────────
+export const WAVE_COUNTS: Record<'early' | 'mid' | 'late', number> = {
+  early: 2,  // unused in alpha (Level 1 = Clear)
+  mid:   3,
+  late:  3,  // unused in alpha (Level 3 = Clear)
+};
+export const WAVE_PAUSE_MS = 2500;
+// Per-wave multiplier: Wave 1 = 70%, Wave 2 = 85%, Wave 3 = 100% of getEnemyCount
+export const WAVE_ENEMY_SCALE = [0.7, 0.85, 1.0] as const;
+
 // ── Enemy Count Scaling ───────────────────────────────────────────────────────
 // Enemy count scales with player count only — difficulty tier does NOT affect count (FR22)
 const ENEMY_RATIO: Record<'early' | 'mid' | 'late', number> = {

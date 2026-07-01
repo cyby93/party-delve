@@ -142,6 +142,10 @@ export function applyDelta(state: GameState, evt: DeltaEventMsg): GameState {
       return { ...state, runProposal: { biome: evt.biome, difficulty: evt.difficulty, proposedBy: evt.proposedBy } };
     case 'run:starting':
       return { ...state, runProposal: null, session: { ...state.session, phase: 'dungeon', difficulty: evt.difficulty } };
+    case 'wave:started':
+      return { ...state, session: { ...state.session, waveIndex: evt.waveIndex, totalWaves: evt.totalWaves } };
+    case 'wave:complete':
+      return state;  // ponytail: transient; next wave:started updates waveIndex; snapshot reconciles
     default: {
       // Exhaustiveness guard: adding a new DeltaEventMsg variant without a case here causes a TS error.
       const _exhaustive: never = evt;

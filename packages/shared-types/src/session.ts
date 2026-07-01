@@ -10,6 +10,9 @@ export interface SessionState {
   runSeed: number;
   levelIndex: number;
   difficulty: DifficultyTier | null;
+  levelObjective: 'clear' | 'survive-waves';
+  waveIndex: number;
+  totalWaves: number;
 }
 
 export interface RoomOptions {
