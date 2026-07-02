@@ -4,7 +4,7 @@ baseline_commit: 04ebbfa
 
 # Story 4.5: Post-Run Summary Screen
 
-Status: ready-for-dev
+Status: done
 
 ## CLAUDE.md Required Task Header
 
@@ -161,79 +161,109 @@ so that we can celebrate victory or reflect on defeat before deciding whether to
 
 ---
 
+## Senior Developer Review (AI)
+
+**Review Date:** 2026-07-01
+**Outcome:** Approved (patches applied 2026-07-02)
+**Layers:** Blind Hunter, Edge Case Hunter, Acceptance Auditor
+
+### Action Items
+
+- [x] [Review][Decision] AC1 headline color: kept `accent-spirit` per Dev Notes intent — Spec AC1 says `text-primary`; user chose Dev Notes T4.3 (`accent-spirit`). [PostRunSummaryScreen.tsx]
+- [x] [Review][Patch][High] cooldownMap/spiritCooldownMap cleared but never repopulated — fixed: re-populate for all players after clearing in resetToHub [GameRoom.ts:resetToHub]
+- [x] [Review][Patch][High] onLeave during post-run doesn't re-evaluate return-readiness — fixed: extracted `checkReturnReady()` helper; called from both freeze and grace-expiry paths [GameRoom.ts:onLeave]
+- [x] [Review][Patch] AC2 team essence not dimmed on failure — fixed: `opacity: isVictory ? 1 : 0.5` on team essence div [PostRunSummaryScreen.tsx]
+- [x] [Review][Patch] AC5 `pointer-events: none` missing on disabled button — fixed: added `pointerEvents: returned ? 'none' : 'auto'` [mobile/App.tsx]
+- [x] [Review][Patch] Silent failure guard — fixed: render PostRunMobileScreen only when `session !== null`; removed optional chain [mobile/App.tsx]
+- [x] [Review][Defer] floorLayout/session.levelObjective/waveIndex/difficulty not reset in resetToHub — hub snapshot carries stale dungeon values; no visible regression yet — deferred, pre-existing stale-field pattern
+- [x] [Review][Defer] runSeed not reset in resetToHub — pre-existing; same layout per session — deferred, pre-existing
+- [x] [Review][Defer] `runOutcome ?? 'complete'` fallback — intentional per Dev Notes — deferred, intentional design choice
+- [x] [Review][Defer] Player physics bodies retain velocity after hub teleport — sub-tick drift, corrected on next broadcast — deferred, low impact
+
+### Review Follow-ups (AI)
+
+- [x] [AI-Review] Resolve AC1 color decision then apply — kept accent-spirit (user decision 2026-07-02)
+- [x] [AI-Review] Fix cooldownMap/spiritCooldownMap not repopulated after resetToHub
+- [x] [AI-Review] Fix onLeave not calling readiness check when phase === 'post-run'
+- [x] [AI-Review] Fix AC2 team essence dimming on failure
+- [x] [AI-Review] Add `pointerEvents: 'none'` to disabled button style
+- [x] [AI-Review] Guard sendReturnToCamp against null session (check before setReturned)
+
+---
+
 ## Tasks / Subtasks
 
-- [ ] T1: net-protocol — add RETURN_TO_CAMP event name and ReturnToCampMsg type
-  - [ ] T1.1: In `packages/net-protocol/src/event-names.ts`, add:
+- [x] T1: net-protocol — add RETURN_TO_CAMP event name and ReturnToCampMsg type
+  - [x] T1.1: In `packages/net-protocol/src/event-names.ts`, add:
     `RETURN_TO_CAMP = 'return:to-camp'` to the EventNames enum
-  - [ ] T1.2: In `packages/net-protocol/src/messages/mobile-to-server.ts`, add:
+  - [x] T1.2: In `packages/net-protocol/src/messages/mobile-to-server.ts`, add:
     `export interface ReturnToCampMsg { type: 'return:to-camp'; }`
-  - [ ] T1.3: In `packages/net-protocol/src/index.ts`, add `ReturnToCampMsg` to the
+  - [x] T1.3: In `packages/net-protocol/src/index.ts`, add `ReturnToCampMsg` to the
     mobile-to-server export line
 
-- [ ] T2: mobile-session — add sendReturnToCamp method
-  - [ ] T2.1: In `apps/mobile-controller/src/session/mobile-session.ts`, add
+- [x] T2: mobile-session — add sendReturnToCamp method
+  - [x] T2.1: In `apps/mobile-controller/src/session/mobile-session.ts`, add
     `sendReturnToCamp: () => void` to the `MobileSession` interface
-  - [ ] T2.2: In both `joinSession` and `reconnectToSession` return objects, add:
+  - [x] T2.2: In both `joinSession` and `reconnectToSession` return objects, add:
     `sendReturnToCamp: () => room.send(EventNames.RETURN_TO_CAMP, { type: 'return:to-camp' })`
 
-- [ ] T3: GameRoom.ts — return-to-camp handler + hub reset
-  - [ ] T3.1: Add private field: `private returnReadySet = new Set<string>()`
-  - [ ] T3.2: Register handler in onCreate:
+- [x] T3: GameRoom.ts — return-to-camp handler + hub reset
+  - [x] T3.1: Add private field: `private returnReadySet = new Set<string>()`
+  - [x] T3.2: Register handler in onCreate:
     `this.onMessage(EventNames.RETURN_TO_CAMP, (client: Client) => { ... })`
-  - [ ] T3.3: In the handler: add `client.sessionId` to `returnReadySet`; check if all
+  - [x] T3.3: In the handler: add `client.sessionId` to `returnReadySet`; check if all
     non-frozen players have confirmed (see Dev Notes for exact check)
-  - [ ] T3.4: When confirmed: destroy all enemy physics bodies, clear enemies array,
+  - [x] T3.4: When confirmed: destroy all enemy physics bodies, clear enemies array,
     clear essenceDrops, destroy essence sensor bodies, clear cooldownMap,
     spiritCooldownMap, lastKnownJoystick, enemyAttackCooldowns, inputQueue;
     reset each player to hub state; set session.phase = 'hub', session.levelIndex = 0;
     clear returnReadySet; broadcast snapshot (see Dev Notes for full reset sequence)
 
-- [ ] T4: PostRunSummaryScreen.tsx — new host screen (AC1, AC2, AC3, AC4)
-  - [ ] T4.1: Create `apps/host-client/src/screens/PostRunSummaryScreen.tsx`
-  - [ ] T4.2: Props: `{ gameState: GameState; runOutcome: 'complete' | 'failed' }`
-  - [ ] T4.3: Headline: Uncial Antiqua (var(--font-display)), xl (40px), text-primary
+- [x] T4: PostRunSummaryScreen.tsx — new host screen (AC1, AC2, AC3, AC4)
+  - [x] T4.1: Create `apps/host-client/src/screens/PostRunSummaryScreen.tsx`
+  - [x] T4.2: Props: `{ gameState: GameState; runOutcome: 'complete' | 'failed' }`
+  - [x] T4.3: Headline: Uncial Antiqua (var(--font-display)), xl (40px), text-primary
     - Victory: "Purified. The campfire noticed."
     - Failure: "Tonight, the forest held its ground."
-  - [ ] T4.4: Team essence total: computed from `gameState.players.reduce((s, p) => s + p.essenceTotal, 0)`
+  - [x] T4.4: Team essence total: computed from `gameState.players.reduce((s, p) => s + p.essenceTotal, 0)`
     Label: "Spirit Essence" — Lora 700, accent-warm
-  - [ ] T4.5: Per-player rows — see Dev Notes for row layout
-  - [ ] T4.6: No "Return to Camp" button on host — screen persists until snapshot arrives
+  - [x] T4.5: Per-player rows — see Dev Notes for row layout
+  - [x] T4.6: No "Return to Camp" button on host — screen persists until snapshot arrives
 
-- [ ] T5: DungeonScreen.tsx — remove post-run overlays (AC1, AC2)
-  - [ ] T5.1: Remove the three post-run overlay divs:
+- [x] T5: DungeonScreen.tsx — remove post-run overlays (AC1, AC2)
+  - [x] T5.1: Remove the three post-run overlay divs:
     - `phase === 'post-run' && runOutcome === 'failed'` block (~lines 359–397)
     - `phase === 'post-run' && runOutcome === 'complete'` block (~lines 399–437)
     - `phase === 'post-run' && runOutcome === null` block (~lines 439–453)
-  - [ ] T5.2: Remove `runOutcome` from DungeonScreenProps (it's no longer used in DungeonScreen)
-  - [ ] T5.3: Verify: DungeonScreen only renders during phase === 'dungeon' after App.tsx routing change
+  - [x] T5.2: Remove `runOutcome` from DungeonScreenProps (it's no longer used in DungeonScreen)
+  - [x] T5.3: Verify: DungeonScreen only renders during phase === 'dungeon' after App.tsx routing change
 
-- [ ] T6: App.tsx (host) — route post-run to PostRunSummaryScreen (AC1, AC2, AC4)
-  - [ ] T6.1: Import `PostRunSummaryScreen` from `./screens/PostRunSummaryScreen`
-  - [ ] T6.2: Split the current combined check: phase 'dungeon' → DungeonScreen; phase 'post-run' → PostRunSummaryScreen
+- [x] T6: App.tsx (host) — route post-run to PostRunSummaryScreen (AC1, AC2, AC4)
+  - [x] T6.1: Import `PostRunSummaryScreen` from `./screens/PostRunSummaryScreen`
+  - [x] T6.2: Split the current combined check: phase 'dungeon' → DungeonScreen; phase 'post-run' → PostRunSummaryScreen
     (see Dev Notes for exact diff)
-  - [ ] T6.3: Remove `runOutcome` prop from `<DungeonScreen>` call (it's removed from DungeonScreenProps)
-  - [ ] T6.4: Pass `runOutcome` (non-null coercion safe since we only render when outcome arrived)
+  - [x] T6.3: Remove `runOutcome` prop from `<DungeonScreen>` call (it's removed from DungeonScreenProps)
+  - [x] T6.4: Pass `runOutcome` (non-null coercion safe since we only render when outcome arrived)
     and `gameState` to PostRunSummaryScreen
 
-- [ ] T7: App.tsx (mobile) — replace post-run placeholders with Return to Camp screen (AC5)
-  - [ ] T7.1: Replace the two separate `phase === 'post-run'` blocks (failed/complete) with a
+- [x] T7: App.tsx (mobile) — replace post-run placeholders with Return to Camp screen (AC5)
+  - [x] T7.1: Replace the two separate `phase === 'post-run'` blocks (failed/complete) with a
     single `PostRunMobileScreen` inline component or just inline JSX
-  - [ ] T7.2: The screen shows outcome label + "Return to Camp" button
-  - [ ] T7.3: On button tap: call `session.sendReturnToCamp()`, then disable the button
+  - [x] T7.2: The screen shows outcome label + "Return to Camp" button
+  - [x] T7.3: On button tap: call `session.sendReturnToCamp()`, then disable the button
     (local state: `const [returned, setReturned] = useState(false)`)
-  - [ ] T7.4: After tap, show "Waiting for others..." in place of the button
+  - [x] T7.4: After tap, show "Waiting for others..." in place of the button
 
-- [ ] T8: Contract test (AC8)
-  - [ ] T8.1: Create `tests/contract/return-to-camp-msg.test.ts`:
+- [x] T8: Contract test (AC8)
+  - [x] T8.1: Create `tests/contract/return-to-camp-msg.test.ts`:
     serialize → deserialize round-trip for `ReturnToCampMsg`
 
-- [ ] T9: Verify and finalize
-  - [ ] T9.1: Run `npm run typecheck --workspace=packages/net-protocol`
-  - [ ] T9.2: Run `npm run typecheck --workspace=apps/simulation-server`
-  - [ ] T9.3: Run `npm run typecheck --workspace=apps/host-client`
-  - [ ] T9.4: Run `npm run typecheck --workspace=apps/mobile-controller`
-  - [ ] T9.5: Run `npm test --workspace=tests` (101+ tests must pass)
+- [x] T9: Verify and finalize
+  - [x] T9.1: Run `npm run typecheck --workspace=packages/net-protocol`
+  - [x] T9.2: Run `npm run typecheck --workspace=apps/simulation-server`
+  - [x] T9.3: Run `npm run typecheck --workspace=apps/host-client`
+  - [x] T9.4: Run `npm run typecheck --workspace=apps/mobile-controller`
+  - [x] T9.5: Run `npm test --workspace=tests` (101+ tests must pass)
 
 ---
 
@@ -696,4 +726,31 @@ claude-sonnet-4-6
 
 ### Completion Notes List
 
+- Added `RETURN_TO_CAMP = 'return:to-camp'` to EventNames enum and `ReturnToCampMsg` interface to net-protocol; exported from index.
+- Added `sendReturnToCamp()` to `MobileSession` interface and both `joinSession` / `reconnectToSession` return objects using `satisfies ReturnToCampMsg` type guard.
+- Added `private returnReadySet = new Set<string>()` to GameRoom; registered `onMessage(RETURN_TO_CAMP)` handler with phase guard; added `resetToHub()` private method that tears down physics bodies, clears all dungeon state, resets players to hub spawn, flips `session.phase = 'hub'`, and broadcasts snapshot.
+- `victoryTriggerBody` (class field confirmed at line 117) is destroyed and nulled in `resetToHub()`.
+- Created `PostRunSummaryScreen.tsx` with victory/failure headline (Uncial Antiqua 40px), team Spirit Essence total (Lora 700 accent-warm), per-player rows (name/class/downCount/essence), and "Return to Camp on your phone" hint. Screen persists until hub snapshot arrives.
+- Removed three post-run overlay blocks from `DungeonScreen.tsx` and dropped `runOutcome` from `DungeonScreenProps`.
+- Host `App.tsx` routing split: `phase === 'dungeon'` → DungeonScreen, `phase === 'post-run'` → PostRunSummaryScreen (with `runOutcome ?? 'complete'` fallback).
+- Mobile `App.tsx` replaced two separate post-run blocks with single `PostRunMobileScreen` inline component: shows Victory/Run Ended label + "Return to Camp" button (≥56px, disabled after first tap, shows "Waiting for others…").
+- Contract test passes: 118 tests total (was 101+ per story requirement); all 4 tsconfig typechecks clean.
+
 ### File List
+
+- packages/net-protocol/src/event-names.ts
+- packages/net-protocol/src/messages/mobile-to-server.ts
+- packages/net-protocol/src/index.ts
+- apps/mobile-controller/src/session/mobile-session.ts
+- apps/simulation-server/src/rooms/GameRoom.ts
+- apps/host-client/src/screens/PostRunSummaryScreen.tsx (NEW)
+- apps/host-client/src/screens/DungeonScreen.tsx
+- apps/host-client/src/App.tsx
+- apps/mobile-controller/src/App.tsx
+- tests/contract/return-to-camp-msg.test.ts (NEW)
+- _bmad-output/implementation-artifacts/4-5-post-run-summary-screen.md
+- _bmad-output/implementation-artifacts/sprint-status.yaml
+
+## Change Log
+
+- 2026-07-01: Story 4.5 implemented — post-run summary screen, Return to Camp flow, server hub reset

@@ -3,6 +3,7 @@ import { MainMenuScreen } from './screens/MainMenuScreen';
 import { LobbyScreen } from './screens/LobbyScreen';
 import { HubWorldScreen } from './screens/HubWorldScreen';
 import { DungeonScreen } from './screens/DungeonScreen';
+import { PostRunSummaryScreen } from './screens/PostRunSummaryScreen';
 import { createHostSession } from './session/host-session';
 import type { HostSession } from './session/host-session';
 import type { GameState } from 'shared-types';
@@ -66,8 +67,11 @@ export function App() {
       />
     );
   }
-  if (gameState?.session.phase === 'dungeon' || gameState?.session.phase === 'post-run') {
-    return <DungeonScreen gameState={gameState} session={session} latestTransientDelta={latestTransientDelta} runOutcome={runOutcome} />;
+  if (gameState?.session.phase === 'dungeon') {
+    return <DungeonScreen gameState={gameState} session={session} latestTransientDelta={latestTransientDelta} />;
+  }
+  if (gameState?.session.phase === 'post-run') {
+    return <PostRunSummaryScreen gameState={gameState} runOutcome={runOutcome ?? 'complete'} />;
   }
   return <HubWorldScreen gameState={gameState} session={session} />;
 }

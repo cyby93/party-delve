@@ -9,7 +9,6 @@ interface DungeonScreenProps {
   gameState: GameState | null;
   session: HostSession | null;
   latestTransientDelta: DeltaEventMsg | null;
-  runOutcome: 'complete' | 'failed' | null;
 }
 
 const SESSION_COLOR_HEX: Record<SessionColor, number> = {
@@ -176,7 +175,7 @@ interface ReviveDeadline {
   name: string;
 }
 
-export function DungeonScreen({ gameState, session: _session, latestTransientDelta, runOutcome }: DungeonScreenProps) {
+export function DungeonScreen({ gameState, session, latestTransientDelta }: DungeonScreenProps) {
   const canvasContainerRef = useRef<HTMLDivElement>(null);
   const pixiAppRef = useRef<Application | null>(null);
   const playerGraphicsRef = useRef<Map<string, PlayerEntry>>(new Map());
@@ -340,26 +339,46 @@ export function DungeonScreen({ gameState, session: _session, latestTransientDel
           <PlayerChipHUD key={player.id} player={player} />
         ))}
         {gameState?.session.phase === 'dungeon' && (
-          <div style={{
-            marginLeft: 'auto',
-            fontFamily: 'var(--font-body)',
-            fontWeight: 700,
-            fontSize: 'var(--text-sm)',
-            color: 'var(--text-primary)',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'flex-end',
-            gap: 2,
-          }}>
-            {(gameState.session.levelObjective ?? 'clear') === 'survive-waves'
-              ? `Level ${gameState.session.levelIndex} — Survive: ${gameState.session.totalWaves} Waves`
-              : `Level ${gameState.session.levelIndex} — Grassland`
-            }
-            {(gameState.session.levelObjective ?? 'clear') === 'survive-waves' && gameState.session.waveIndex > 0 && (
-              <span style={{ fontSize: 'var(--text-xs)', fontWeight: 400, color: 'var(--text-secondary)' }}>
-                Wave {gameState.session.waveIndex} / {gameState.session.totalWaves}
-              </span>
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12, pointerEvents: 'auto' }}>
+            {session && (
+              <button
+                onPointerDown={() => session.sendDebugKillAll()}
+                style={{
+                  padding: '4px 10px',
+                  background: 'rgba(231,76,60,0.8)',
+                  border: 'none',
+                  borderRadius: 4,
+                  color: '#fff',
+                  fontFamily: 'var(--font-body)',
+                  fontWeight: 700,
+                  fontSize: 'var(--text-xs)',
+                  cursor: 'pointer',
+                }}
+              >
+                Kill All
+              </button>
             )}
+            <div style={{
+              fontFamily: 'var(--font-body)',
+              fontWeight: 700,
+              fontSize: 'var(--text-sm)',
+              color: 'var(--text-primary)',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'flex-end',
+              gap: 2,
+              pointerEvents: 'none',
+            }}>
+              {(gameState.session.levelObjective ?? 'clear') === 'survive-waves'
+                ? `Level ${gameState.session.levelIndex} — Survive: ${gameState.session.totalWaves} Waves`
+                : `Level ${gameState.session.levelIndex} — Grassland`
+              }
+              {(gameState.session.levelObjective ?? 'clear') === 'survive-waves' && gameState.session.waveIndex > 0 && (
+                <span style={{ fontSize: 'var(--text-xs)', fontWeight: 400, color: 'var(--text-secondary)' }}>
+                  Wave {gameState.session.waveIndex} / {gameState.session.totalWaves}
+                </span>
+              )}
+            </div>
           </div>
         )}
       </div>
@@ -373,102 +392,6 @@ export function DungeonScreen({ gameState, session: _session, latestTransientDel
           zIndex: 20,
           pointerEvents: 'none',
         }} />
-      )}
-      {/* Post-run failure overlay */}
-      {gameState?.session.phase === 'post-run' && runOutcome === 'failed' && (
-        <div style={{
-          position: 'absolute',
-          inset: 0,
-          background: 'rgba(0,0,0,0.85)',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: 16,
-          zIndex: 50,
-        }}>
-          <div style={{
-            fontFamily: 'var(--font-body)',
-            fontWeight: 700,
-            fontSize: 'var(--text-xl)',
-            color: 'var(--text-secondary)',
-            textAlign: 'center',
-          }}>
-            The run ends here.
-          </div>
-          <div style={{
-            fontFamily: 'var(--font-body)',
-            fontWeight: 700,
-            fontSize: 'var(--text-lg)',
-            color: 'var(--accent-warm)',
-          }}>
-            Spirit Essence carried: {gameState.players.reduce((sum, p) => sum + (p.essenceTotal ?? 0), 0)}
-          </div>
-          <div style={{
-            fontFamily: 'var(--font-body)',
-            fontWeight: 400,
-            fontSize: 'var(--text-sm)',
-            color: 'var(--text-secondary)',
-          }}>
-            Full run summary coming in Epic 4.
-          </div>
-        </div>
-      )}
-      {/* Post-run success overlay */}
-      {gameState?.session.phase === 'post-run' && runOutcome === 'complete' && (
-        <div style={{
-          position: 'absolute',
-          inset: 0,
-          background: 'rgba(0,0,0,0.8)',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: 16,
-          zIndex: 50,
-        }}>
-          <div style={{
-            fontFamily: 'var(--font-body)',
-            fontWeight: 700,
-            fontSize: 'var(--text-xl)',
-            color: 'var(--accent-spirit)',
-            textAlign: 'center',
-          }}>
-            Level Clear.
-          </div>
-          <div style={{
-            fontFamily: 'var(--font-body)',
-            fontWeight: 700,
-            fontSize: 'var(--text-lg)',
-            color: 'var(--accent-warm)',
-          }}>
-            Spirit Essence carried: {gameState.players.reduce((sum, p) => sum + (p.essenceTotal ?? 0), 0)}
-          </div>
-          <div style={{
-            fontFamily: 'var(--font-body)',
-            fontWeight: 400,
-            fontSize: 'var(--text-sm)',
-            color: 'var(--text-muted)',
-          }}>
-            Full run summary coming in Epic 4.
-          </div>
-        </div>
-      )}
-      {/* Post-run fallback: outcome delta not yet received (packet loss / reconnect) */}
-      {gameState?.session.phase === 'post-run' && runOutcome === null && (
-        <div style={{
-          position: 'absolute',
-          inset: 0,
-          background: 'rgba(0,0,0,0.8)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 50,
-        }}>
-          <div style={{ fontFamily: 'var(--font-body)', fontWeight: 400, fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>
-            Run ended.
-          </div>
-        </div>
       )}
       {/* Revive timer overlay — bottom-center */}
       <div style={{

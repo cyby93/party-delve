@@ -120,6 +120,7 @@ export class GameRoom extends Room {
   private waveIndex = 0;
   private totalWaves = 0;
   private wavePauseUntil = 0;
+  private returnReadySet = new Set<string>();
 
   async onCreate(_options: unknown): Promise<void> {
     this.roomId = generateRoomCode();
@@ -237,6 +238,29 @@ export class GameRoom extends Room {
       }
     });
 
+    this.onMessage(EventNames.RETURN_TO_CAMP, (client: Client) => {
+      if (this.gameState.session.phase !== 'post-run') return;
+      this.returnReadySet.add(client.sessionId);
+      this.checkReturnReady();
+    });
+
+    this.onMessage('debug:kill-all', (_client: Client) => {
+      if (this.gameState.session.phase !== 'dungeon') return;
+      for (const enemy of this.gameState.enemies) {
+        if (!enemy.isAlive) continue;
+        enemy.isAlive = false;
+        this.broadcast(EventNames.DELTA, {
+          type: 'enemy:killed' as const,
+          enemyId: enemy.id,
+          byPlayerId: '',
+        } satisfies DeltaEventMsg);
+        const body = this.enemyBodies.get(enemy.id);
+        if (body) { this.physicsWorld.destroyBody(body); this.enemyBodies.delete(enemy.id); }
+        this.enemyAttackCooldowns.delete(enemy.id);
+      }
+      logger.info({ roomId: this.roomId }, 'debug:kill-all — all enemies killed');
+    });
+
     // Initialize physics world
     this.physicsWorld = createPhysicsWorld();
 
@@ -339,8 +363,9 @@ export class GameRoom extends Room {
     } satisfies DeltaEventMsg;
     this.broadcast(EventNames.DELTA, disconnectDelta);
     logger.info({ roomId: this.roomId, clientId: client.sessionId }, 'player disconnected — grace period started');
-    // Freezing this player may unblock a unanimous vote that was waiting on them.
+    // Freezing this player may unblock a unanimous vote or return-to-camp confirmation.
     this.resolveVoteIfComplete();
+    this.checkReturnReady();
 
     try {
       const reconnectedClient = await this.allowReconnection(client, RECONNECT_GRACE_S);
@@ -368,8 +393,9 @@ export class GameRoom extends Room {
       const delta = { type: 'player:left' as const, playerId: client.sessionId } satisfies DeltaEventMsg;
       this.broadcast(EventNames.DELTA, delta);
       logger.info({ roomId: this.roomId, clientId: client.sessionId }, 'reconnect grace expired — player removed');
-      // Removing this player may unblock a unanimous vote that was waiting on them.
+      // Removing this player may unblock a unanimous vote or return-to-camp confirmation.
       this.resolveVoteIfComplete();
+      this.checkReturnReady();
     }
   }
 
@@ -505,6 +531,88 @@ export class GameRoom extends Room {
       totalWaves: this.totalWaves,
     } satisfies DeltaEventMsg);
     logger.info({ roomId: this.roomId, levelIndex, waveNum, count, tier }, 'wave started');
+  }
+
+  private checkReturnReady(): void {
+    if (this.gameState.session.phase !== 'post-run') return;
+    const activePlayers = this.gameState.players.filter(p => !p.isFrozen);
+    if (activePlayers.length > 0 && activePlayers.every(p => this.returnReadySet.has(p.id))) {
+      this.resetToHub();
+    }
+  }
+
+  private resetToHub(): void {
+    // Destroy enemy physics bodies
+    for (const [id, body] of this.enemyBodies) {
+      this.physicsWorld.destroyBody(body);
+      this.enemyBodies.delete(id);
+    }
+    this.enemyLayers.clear();
+    // Destroy victory trigger body if present
+    if (this.victoryTriggerBody) {
+      this.physicsWorld.destroyBody(this.victoryTriggerBody);
+      this.victoryTriggerBody = null;
+    }
+    // Destroy essence sensor bodies
+    for (const [, body] of this.essenceSensorBodies) {
+      this.physicsWorld.destroyBody(body);
+    }
+    this.essenceSensorBodies.clear();
+
+    // Clear game state arrays
+    this.gameState.enemies = [];
+    this.gameState.essenceDrops = [];
+    this.gameState.bonds = [];
+
+    // Reset each player to hub spawn
+    for (let i = 0; i < this.gameState.players.length; i++) {
+      const player = this.gameState.players[i]!;
+      const spawn = SPAWN_POSITIONS[i] ?? { x: 960, y: 540 };
+      player.x = spawn.x;
+      player.y = spawn.y;
+      player.hp = player.maxHp;
+      player.isDown = false;
+      player.isSpirit = false;
+      player.isFrozen = false;
+      player.nearPoiId = null;
+      player.reviveTimerExpiresAt = 0;
+      player.essenceTotal = 0;
+      player.downCount = 0;
+      const body = this.playerBodies.get(player.id);
+      if (body) {
+        body.setPosition(Vec2(toMeters(spawn.x), toMeters(spawn.y)));
+        body.setLinearVelocity(Vec2(0, 0));
+      }
+    }
+
+    // Reset session
+    this.gameState.session.phase = 'hub';
+    this.gameState.session.levelIndex = 0;
+
+    // Clear server-local dungeon state
+    this.returnReadySet.clear();
+    this.inputQueue = [];
+    this.cooldownMap.clear();
+    this.spiritCooldownMap.clear();
+    for (const p of this.gameState.players) {
+      this.cooldownMap.set(p.id, [0, 0, 0, 0]);
+      this.spiritCooldownMap.set(p.id, 0);
+    }
+    this.lastKnownJoystick.clear();
+    this.enemyAttackCooldowns.clear();
+    this.runVotes.clear();
+    this.pendingPoiBeginContacts = [];
+    this.pendingPoiEndContacts = [];
+    this.pendingEssenceBeginContacts = [];
+    this.pendingVictoryContact = false;
+    this.waveIndex = 0;
+    this.totalWaves = 0;
+    this.wavePauseUntil = 0;
+    this.levelObjective = 'clear';
+
+    const snapshot: SnapshotMsg = { type: 'snapshot', state: this.gameState };
+    this.broadcast(EventNames.SNAPSHOT, snapshot);
+    logger.info({ roomId: this.roomId }, 'all players returned to camp — hub reset');
   }
 
   private loadLevel(index: number): void {

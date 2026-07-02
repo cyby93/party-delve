@@ -537,3 +537,19 @@ If the last alive player dies in the same tick that the last wave enemy dies, bo
 
 **D-4.4-E — RNG seed fragile for waveNum ≥ 16 or future OFFSET_ENEMY_SPAWN bit changes** [apps/simulation-server/src/rooms/GameRoom.ts:478]
 Seed packing `OFFSET_ENEMY_SPAWN | (levelIndex << 8) | (waveNum << 4)` assumes `waveNum` fits in 4 bits (≤15). With `totalWaves=3` this is safe. If WAVE_COUNTS is raised above 15 or OFFSET_ENEMY_SPAWN grows into bits 4-5, seeds collide silently. Not a current concern; document the constraint in balance.ts if WAVE_COUNTS grows.
+
+---
+
+## Deferred from: code review of 4-5-post-run-summary-screen (2026-07-01)
+
+**D-4.5-A — runSeed not reset in resetToHub — same floor layout every run per session** [apps/simulation-server/src/rooms/GameRoom.ts:resetToHub]
+`runSeed` is only randomized in `onCreate`. Repeating runs in the same room replay identical floor layouts. Not a 4.5 concern (seed management is pre-existing design). Randomize `runSeed` in `resetToHub` when dungeon variety becomes important.
+
+**D-4.5-B — runOutcome ?? 'complete' fallback shows victory on null outcome (host reconnect)** [apps/host-client/src/App.tsx]
+If the host reconnects mid-post-run, `runOutcome` is `null` (snapshot doesn't carry it) and defaults to `'complete'`. Visual only — hub transition still correct. Intentional per Dev Notes; `GameState.session` would need a `runOutcome` field to fix cleanly. Address in Phase 5 session state hardening.
+
+**D-4.5-C — Stale dungeon fields in hub snapshot: levelObjective, waveIndex, totalWaves, difficulty** [apps/simulation-server/src/rooms/GameRoom.ts:resetToHub]
+`session.levelObjective/waveIndex/totalWaves/difficulty` are not cleared in `resetToHub`. Hub snapshot carries last-run values. HubWorldScreen doesn't render these so no visible regression now. Clear them in `resetToHub` before hub screens start reading session objective fields.
+
+**D-4.5-D — Player physics bodies retain linear velocity after hub teleport** [apps/simulation-server/src/rooms/GameRoom.ts:resetToHub]
+`body.setPosition(hubSpawn)` without `body.setLinearVelocity(Vec2(0,0))`. Sub-tick drift before next state broadcast. Add velocity reset alongside position reset.

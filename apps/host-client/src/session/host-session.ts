@@ -9,6 +9,7 @@ export interface HostSession {
   roomId: string;
   sessionId: string;
   sendStartGame: () => void;
+  sendDebugKillAll: () => void;
   disconnect: () => void;
 }
 
@@ -69,6 +70,7 @@ export async function createHostSession(
     roomId: room.roomId,
     sessionId: room.sessionId,
     sendStartGame: () => room.send(EventNames.HOST_START, ''),
+    sendDebugKillAll: () => room.send('debug:kill-all', ''),
     disconnect: () => room.leave(),
   };
 }

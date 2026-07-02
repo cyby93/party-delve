@@ -25,3 +25,7 @@ export interface VoteMsg {
   type: 'run:vote';
   accept: boolean;
 }
+
+export interface ReturnToCampMsg {
+  type: 'return:to-camp';
+}
