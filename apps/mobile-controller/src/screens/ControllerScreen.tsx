@@ -265,7 +265,7 @@ interface ClassSelectionScreenProps {
   onPickClass: (classId: PlayerClass) => void;
 }
 
-function ClassSelectionScreen({ onBack, onPickClass }: ClassSelectionScreenProps) {
+export function ClassSelectionScreen({ onBack, onPickClass }: ClassSelectionScreenProps) {
   const [selectedClass, setSelectedClass] = useState<PlayerClass | null>(null);
   const panelOpen = selectedClass !== null;
   const selectedDef = selectedClass !== null ? CLASS_DEFINITIONS[selectedClass] : null;

@@ -563,3 +563,19 @@ If the host reconnects mid-post-run, `runOutcome` is `null` (snapshot doesn't ca
 
 **W2 — L1/L3 enemy counts (5 and 8) not asserted**
 `tests/e2e/full-run.test.ts:88,101` — AC1 says "5 enemies die" (L1) and "8 enemies die" (L3) but the test only checks `levelIndex` on completion. Requires reading `gameState.enemies.length` from a snapshot at enemy spawn time.
+
+---
+
+## Deferred from code review of 4-8-forced-class-selection-on-join (2026-07-02)
+
+**W3 — Reconnect during class-select-forced → permanent soft-lock (deferred by user)**
+`App.tsx:161-175, GameRoom.ts:723` — A player who disconnects before picking a class reconnects via `handleReconnect` straight to `'controller'`. The null-class velocity gate (Task 4) freezes their body; the null-class circle guard (Task 3) hides them on host. The class-select POI is 560px from spawn and unreachable while frozen. No UI recovery path. Story spec explicitly deferred the reconnect edge case; user chose to keep it deferred. Fix: check `player.class === null` in reconnect path and route to `'class-select-forced'` instead of `'controller'`.
+
+**W4 — Optimistic class:select with no server ack**
+`App.tsx:203-206` — `sendClassSelect` + `setScreen('orientation-prompt')` fires without waiting for server confirmation. A dropped message leaves `player.class === null` while the mobile believes class is set. Combined with the null-class velocity gate (GameRoom.ts:723), this would produce a soft-lock. Local WebSocket message loss is vanishingly rare; pre-existing fire-and-forget pattern throughout the codebase. Needs a `class:confirmed` delta and a loading state if reliability requirements increase.
+
+**W4 — Unit test mirrors tick logic instead of exercising GameRoom**
+`tests/unit/null-class-gate.test.ts` — `tickVelocity` re-implements the null-class condition locally rather than calling the actual GameRoom tick path. Regressions in `toMeters`/`SPEED`/`TICK_RATE_HZ` would not be caught by this test. Accepted approach per story spec ("pure function test"). Consider a lightweight GameRoom integration test if tick regressions become a pattern.
+
+**W5 — Stale consented-leave callback race on immediate re-join**
+`App.tsx:198-201` — After tapping Back (consented disconnect), if the user immediately re-joins a new room, `persistSession` for the new room can run before `handleDisconnect(4000)` fires `clearPersistedSession` for the old room. The old callback would then erase the new token. Practical window is <100ms — not reachable by human interaction. Pre-existing pattern.

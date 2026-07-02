@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { AuthChoiceScreen } from './screens/AuthChoiceScreen';
 import { SessionCodeEntryScreen } from './screens/SessionCodeEntryScreen';
 import { OrientationPromptScreen } from './screens/OrientationPromptScreen';
-import { ControllerScreen } from './screens/ControllerScreen';
+import { ControllerScreen, ClassSelectionScreen } from './screens/ControllerScreen';
 import { ReconnectScreen } from './screens/ReconnectScreen';
 import { joinSession, reconnectToSession, getPersistedSession, clearPersistedSession, type MobileSession } from './session/mobile-session';
 import type { GameState } from 'shared-types';
@@ -14,7 +14,7 @@ export interface CooldownState {
   expiresAt: number;
 }
 
-type AppScreen = 'auth-choice' | 'session-entry' | 'orientation-prompt' | 'controller' | 'reconnect';
+type AppScreen = 'auth-choice' | 'session-entry' | 'class-select-forced' | 'orientation-prompt' | 'controller' | 'reconnect';
 
 // CloseCode.CONSENTED = 4000 (Colyseus intentional leave — do not show reconnect screen)
 const CLOSE_CONSENTED = 4000;
@@ -148,8 +148,7 @@ export function App() {
       );
       setSession(s);
       history.replaceState(null, '', '?session=' + roomId);
-      // delay navigation so SessionCodeEntryScreen renders the accent-purify flash (AC4)
-      setTimeout(() => setScreen('orientation-prompt'), 500);
+      setScreen('class-select-forced');
     } catch (err) {
       throw err; // re-throw so SessionCodeEntryScreen can reset its loading state and show the error
     }
@@ -190,6 +189,21 @@ export function App() {
       <SessionCodeEntryScreen
         {...(sessionEntryInitialCode !== undefined ? { initialCode: sessionEntryInitialCode } : {})}
         onJoin={handleJoin}
+      />
+    );
+  }
+  if (screen === 'class-select-forced') {
+    return (
+      <ClassSelectionScreen
+        onBack={() => {
+          session?.disconnect();
+          setSession(null);
+          setScreen('session-entry');
+        }}
+        onPickClass={(classId) => {
+          session?.sendClassSelect({ type: 'class:select', classId });
+          setScreen('orientation-prompt');
+        }}
       />
     );
   }

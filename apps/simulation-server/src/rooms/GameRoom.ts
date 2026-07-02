@@ -720,7 +720,7 @@ export class GameRoom extends Room {
       const body = this.playerBodies.get(player.id);
       if (!body) continue;
 
-      if (player.isFrozen) {
+      if (player.isFrozen || player.class === null) {
         body.setLinearVelocity(Vec2(0, 0));
         continue;
       }
