@@ -971,3 +971,206 @@ So that we can detect regressions as the codebase grows and have data to validat
 **When** it runs
 **Then** it verifies: player drops → grace timer starts → player rejoins within 30s → slot restored → snapshot received
 
+---
+
+## Epic 5: Spirit Bond System
+
+After each dungeon level, a Spirit Bond is assigned to a random player pair. Bond buffs and prices apply per-tick. Colored particle tethers connect bonded pairs on the host canvas. Three bonds are active simultaneously by the boss fight. Bonded players see a full-screen bond card on their phone; others see a Continue prompt.
+
+### Story 5.1: Spirit Bond Shared Types & Protocol Contracts
+
+As a developer on the project,
+I want the Spirit Bond data types and wire message contracts defined in shared-types and net-protocol,
+So that all agent roles can implement bond logic, host visualization, and mobile UX against agreed-upon interfaces.
+
+**Acceptance Criteria:**
+
+**Given** `packages/shared-types/src/bond.ts` is updated
+**When** it is imported
+**Then** it exports `BondType` enum with at least `Proximity` and `Fate` variants
+**And** `BondState` interface with `{ playerA: string; playerB: string; type: BondType; color: string; }`
+**And** `GameState.activeBonds: BondState[]` field is present (initialized to `[]` in `createEmptyGameState`)
+
+**Given** the `SimEvents` interface in `packages/shared-types`
+**When** it is reviewed
+**Then** `'bond:assigned': { playerA: string; playerB: string; bondType: BondType }` is in the typed event map
+
+**Given** `packages/net-protocol/src/messages/server-to-host.ts`
+**When** delta events are reviewed
+**Then** `BondAssignedDelta` is in the `DeltaEventMsg` union: `{ type: 'bond:assigned'; playerA: string; playerB: string; bondType: BondType; bondColor: string; }`
+
+**Given** `packages/net-protocol/src/messages/server-to-mobile.ts`
+**When** it is reviewed
+**Then** `BondNotificationMsg` is exported: `{ type: 'bond:notification'; playerA: string; playerB: string; bondType: BondType; bondColor: string; bondDescription: string; bondMechanic: string; }`
+
+**Given** `tests/contract/net-protocol.test.ts`
+**When** bond message round-trip tests run
+**Then** `BondAssignedDelta` and `BondNotificationMsg` both survive `serialize → deserialize` with identical values
+
+---
+
+### Story 5.2: Bond Assignment Logic & Deterministic Pair Selection
+
+As a player,
+I want the Spirit Bond assignment to feel random each run but be perfectly consistent across all connected devices,
+So that every player sees the same bond pair at the same time without server-client desync.
+
+**Acceptance Criteria:**
+
+**Given** `packages/game-rules/src/systems/bonds.ts` is implemented
+**When** `assignBond(state: GameState, rng: () => number)` is called at level end
+**Then** it selects a player pair using the `createRng(seed ^ 0x04)` PRNG stream
+**And** returns `Result<BondAssignedEvt, GameError>` — never throws
+**And** pushes the new `BondState` into `state.activeBonds`
+
+**Given** a session with 3 players and 3 bond assignments across 3 levels
+**When** all three bond assignments complete
+**Then** each bond is a distinct `BondState` entry in `state.activeBonds` (bonds accumulate, not replace)
+**And** a player may appear in multiple bonds (required: 3 players × 3 bonds makes repeats inevitable)
+**And** `selectBondPair` does not throw or return undefined regardless of `activeBonds.length`
+
+**Given** two independent sim instances seeded identically
+**When** `tests/unit/bonds.test.ts` runs `assignBond()` three times in sequence on each
+**Then** both produce identical `[playerA, playerB, bondType]` sequences for all three assignments
+
+**Given** `selectBondType(rng)` is called
+**When** it returns
+**Then** the result is one of the `BondType` variants and each variant must be reachable (no dead code path)
+
+---
+
+### Story 5.3: Per-Tick Bond Effects — Proximity & Fate Bond Types
+
+As a player,
+I want Spirit Bonds to actively affect gameplay each tick — making bonded pair coordination matter,
+So that bonds feel consequential and create emergent team dynamics.
+
+**Acceptance Criteria:**
+
+**Given** a Proximity Bond is active and the bonded pair are within `BOND_PROXIMITY_RANGE_PX` (from `balance.ts`) of each other
+**When** `processBonds(state, world)` runs
+**Then** both players deal +20% damage on attacks that tick (buff applied as a multiplier in the damage path)
+**And** proximity is detected via a planck.js `isSensor` overlap sensor created by `createBondSensor()` in `physics/sensors.ts` — no manual distance polling in the tick
+
+**Given** the Proximity Bond pair has been in range for ≥ `BOND_DRAIN_THRESHOLD_S` seconds (from `balance.ts`)
+**When** `processBonds()` checks in-range duration
+**Then** both players' HP decreases by `BOND_DRAIN_HP_PER_TICK` per tick
+**And** a `bond:price-active` delta event is emitted for host visualization of the drain state
+
+**Given** a Fate Bond is active
+**When** `processBonds()` runs each tick
+**Then** both bonded players have +20% movement speed applied (multiplied in the movement system)
+**And** if either bonded player transitions to `isDown: true` in that tick, the other is immediately also set to `isDown: true` with their revive timer started
+
+**Given** `processBonds()` is called with zero active bonds
+**When** it returns
+**Then** the returned events array is empty and no planck.js bodies are created or destroyed
+
+**Given** `tests/unit/bonds.test.ts` Proximity Bond tests
+**When** they run
+**Then** damage buff toggles correctly with in/out-of-range sensor state changes
+**And** drain activates only after the threshold duration, not before
+**And** the Fate Bond wipe correctly downs both players when one is downed
+
+---
+
+### Story 5.4: Bond Assignment Integration at Level Completion
+
+As a group of players,
+I want a dramatic pause at the end of each dungeon level where the spirits assign a bond,
+So that the bond moment feels ceremonial and the group can read and acknowledge before advancing.
+
+**Acceptance Criteria:**
+
+**Given** a dungeon level's objective is completed (`level:complete` fires) for level index 0, 1, or 2
+**When** the server processes the completion
+**Then** `assignBond()` is called with the current `GameState` and the bond PRNG stream
+**And** the resulting `BondAssignedEvt` is broadcast as `BondAssignedDelta` to all clients
+**And** a `BondNotificationMsg` is unicast directly to each of the two bonded players' mobile clients (not broadcast to all)
+**And** the sim server enters a `bond-moment` pause — it does not auto-advance to the next level
+
+**Given** the `bond-moment` pause is active
+**When** any connected player sends a `CONTINUE` message to the server
+**Then** the server calls `loadLevel(nextIndex)` and the run resumes
+
+**Given** bonds accumulate across levels
+**When** levels 0, 1, and 2 each complete
+**Then** `state.activeBonds.length` is 1 after level 0, 2 after level 1, and 3 after level 2
+**And** all 3 bonds remain active and `processBonds()` processes all of them each tick during the boss level
+
+**Given** level index 3 (boss placeholder) completes
+**When** `level:complete` fires for index 3
+**Then** `assignBond()` is NOT called — no bond is assigned at boss completion
+**And** the existing run-complete flow proceeds unchanged
+
+**Given** `tests/e2e/full-run.test.ts` is extended
+**When** it runs the bond assignment path
+**Then** it verifies: level 0 completes → `BondAssignedDelta` received by host → one simulated `CONTINUE` → level 1 loads → `activeBonds.length === 1` in the next snapshot
+
+---
+
+### Story 5.5: Host Bond Visualization — Assignment Overlay & Particle Tethers
+
+As a group watching the host screen,
+I want to see a dramatic bond assignment announcement and colored particle tethers connecting bonded players,
+So that everyone can immediately see which players are bonded and what's at stake.
+
+**Acceptance Criteria:**
+
+**Given** the host client receives a `BondAssignedDelta`
+**When** the overlay renders
+**Then** it shows "{playerA} · {playerB} — {bondType} Bond" in Uncial Antiqua at `xl` (40px) minimum
+**And** the text has `text-shadow: 0 0 40px rgba(110,168,216,0.7)` (accent-spirit glow, per UX-DR12)
+**And** no panel or background frame is drawn — text floats over the live canvas
+**And** the overlay fades out after ~3 seconds; the particle tether appears at the same time and persists
+
+**Given** a `BondAssignedDelta` with a `bondColor`
+**When** the PixiJS render loop runs each frame
+**Then** a particle tether line is drawn between the bonded pair's current on-screen positions using the bond's distinct color
+**And** the tether updates position every frame as players move
+**And** the tether persists for the remainder of the run (does not fade)
+
+**Given** multiple bonds accumulate (up to 3)
+**When** the host canvas renders
+**Then** each active bond renders its own distinct-colored tether simultaneously
+**And** tethers render below player sprites but above the floor layer
+
+**Given** the player-chip component in the host top strip
+**When** a player has one or more active bonds
+**Then** a small colored dot appears in the chip for each bond that player participates in
+**And** the dot color matches the corresponding tether color
+
+---
+
+### Story 5.6: Mobile Bond Card & Continue UX
+
+As a player during a bond assignment moment,
+I want my phone to either show me a detailed bond card (if I'm bonded) or a simple Continue button (if I'm not),
+So that bonded players can read their bond terms before we advance to the next level.
+
+**Acceptance Criteria:**
+
+**Given** a player's mobile receives a `BondNotificationMsg` (they are in the newly assigned bond)
+**When** the bond moment begins
+**Then** the game controller disappears and is replaced by a full-screen `bond-card` component
+**And** the card shows: bond name (Uncial Antiqua `lg` 28px text-primary), bond description in direct personal address (Lora 400 italic base text-secondary), and bond mechanic summary (Lora 700 sm text-primary)
+**And** the phone frame wraps in the bond's color as a CSS `box-shadow`/`outline` glow
+**And** the Continue button appears after a ~1.5s mandatory read delay (transitions to `dismiss-ready` state)
+
+**Given** a player's mobile does NOT receive a `BondNotificationMsg` (they are not bonded)
+**When** the bond moment begins
+**Then** the controller layout remains visible but all skill cells are inactive (non-interactive)
+**And** the `interact-button` in `continue` variant slides in from the top
+**And** it is immediately tappable (no mandatory delay)
+
+**Given** any player (bonded or non-bonded) taps Continue
+**When** the server receives the `CONTINUE` message
+**Then** all phones transition back to the standard in-combat controller layout (or post-run screen if it was level 3)
+**And** the bond-card and continue overlay dismiss simultaneously on all phones
+
+**Given** the client-UX hook verification
+**When** bond-card renders
+**Then** all touch targets meet 44×44px minimum (NFR5)
+**And** the bond color frame glow is visible
+**And** skill cells on non-bonded phones are visually inactive but layout is unchanged
+
