@@ -553,3 +553,13 @@ If the host reconnects mid-post-run, `runOutcome` is `null` (snapshot doesn't ca
 
 **D-4.5-D — Player physics bodies retain linear velocity after hub teleport** [apps/simulation-server/src/rooms/GameRoom.ts:resetToHub]
 `body.setPosition(hubSpawn)` without `body.setLinearVelocity(Vec2(0,0))`. Sub-tick drift before next state broadcast. Add velocity reset alongside position reset.
+
+---
+
+## Deferred from: code review of 4-6-end-to-end-run-e2e-test-and-latency-baseline (2026-07-02)
+
+**W1 — measure.ts uses raw string literals instead of EventNames**
+`tools/latency-baseline/measure.ts:24,32` — `player.send('class:select', ...)` and `player.onMessage('delta', ...)` use hardcoded strings. Standalone tool by design (no monorepo dep); if event names change in net-protocol the tool silently stops collecting valid latency samples.
+
+**W2 — L1/L3 enemy counts (5 and 8) not asserted**
+`tests/e2e/full-run.test.ts:88,101` — AC1 says "5 enemies die" (L1) and "8 enemies die" (L3) but the test only checks `levelIndex` on completion. Requires reading `gameState.enemies.length` from a snapshot at enemy spawn time.

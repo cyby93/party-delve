@@ -1,21 +1,157 @@
-import { describe, it } from 'vitest';
+import { describe, it, beforeAll, afterAll, expect } from 'vitest';
+import * as Colyseus from '@colyseus/sdk';
+import { EventNames } from 'net-protocol';
+import type { SnapshotMsg } from 'net-protocol';
+import { startTestServer, stopTestServer } from '../helpers/server.js';
+import { waitForMessage, waitForDelta } from '../helpers/messages.js';
 
-/**
- * E2E test for disconnect grace period & reconnect flow.
- * Requires a running simulation server — marked as todo until test infrastructure
- * (server lifecycle management) is available. See epics.md Story 4.6 for full E2E setup.
- *
- * When implemented, this test verifies:
- * 1. Player drops → grace timer starts; player:disconnected delta broadcast to host
- * 2. Player rejoins within 30s via reconnectionToken → slot restored → SnapshotMsg received
- * 3. Host receives player:reconnected delta after successful reconnect
- * 4. Grace period expires → player:left broadcast; slot released from GameState
- * 5. Reconnect attempt after grace expiry → throws; fresh join is possible
- */
-describe('reconnect flow', () => {
-  it.todo('player drops and rejoins within grace period — slot restored and snapshot received');
-  it.todo('host receives player:disconnected delta immediately on drop');
-  it.todo('host receives player:reconnected delta on successful rejoin');
-  it.todo('grace period expires — player:left broadcast, slot released from GameState');
-  it.todo('reconnect attempt after grace expiry throws — player can rejoin fresh');
+// Use a distinct port so this file can run in parallel with full-run.test.ts
+const PORT = 2569;
+const TEST_URL = `ws://localhost:${PORT}`;
+
+const GRACE_MS = 30_000; // RECONNECT_GRACE_S from shared-types/constants.ts
+
+describe('reconnect flow', { timeout: 40_000 }, () => {
+  let client: Colyseus.Client;
+
+  beforeAll(async () => {
+    await startTestServer(PORT);
+    client = new Colyseus.Client(TEST_URL);
+  }, 65_000);
+
+  afterAll(() => stopTestServer());
+
+  it('player drops and rejoins within grace period — slot restored and snapshot received', async () => {
+    const host = await client.create('game_room', { isHost: true });
+    const p1JoinedSnap = waitForMessage<SnapshotMsg>(host, EventNames.SNAPSHOT, 5_000);
+    const p1 = await client.joinById(host.roomId, { playerName: 'Dropper' });
+    await p1JoinedSnap;
+
+    const token = p1.reconnectionToken;
+    const disconnectP = waitForDelta<any>(host, (d) => d.type === 'player:disconnected', 3_000);
+    p1.connection.close();
+    await disconnectP; // player is now frozen in server state
+
+    // Register predicate on host snapshot — resolves when player is unfrozen (= after reconnect).
+    // Periodic snapshot fires every 5s; reconnect snapshot is unicast to p1Back so we use host instead.
+    const unfrozenSnapP = new Promise<SnapshotMsg>((resolve, reject) => {
+      const timer = setTimeout(() => { unsub(); reject(new Error('timeout: unfrozen snapshot not received within 8000ms')); }, 8_000);
+      const unsub = host.onMessage<SnapshotMsg>(EventNames.SNAPSHOT, (snap) => {
+        const player = snap.state.players.find((p: any) => p.id === p1.sessionId);
+        if (player && !player.isFrozen) { clearTimeout(timer); unsub(); resolve(snap); }
+      });
+    });
+
+    const p1Back = await client.reconnect(token);
+    const snap = await unfrozenSnapP; // arrives within 5s (periodic snapshot interval)
+    expect(snap.state.players.find((p: any) => p.id === p1.sessionId)?.isFrozen).toBe(false);
+
+    await host.leave();
+    await p1Back.leave();
+  });
+
+  it('host receives player:disconnected delta immediately on drop', async () => {
+    const host = await client.create('game_room', { isHost: true });
+    const p1JoinedSnap = waitForMessage<SnapshotMsg>(host, EventNames.SNAPSHOT, 5_000);
+    const p1 = await client.joinById(host.roomId, { playerName: 'Dropper' });
+    await p1JoinedSnap;
+
+    // Register delta handler BEFORE dropping so we don't miss it
+    const disconnectP = waitForDelta<any>(
+      host,
+      (d) => d.type === 'player:disconnected' && d.playerId === p1.sessionId,
+      5_000
+    );
+    p1.connection.close();
+
+    const delta = await disconnectP;
+    expect(delta.type).toBe('player:disconnected');
+    expect(delta.playerId).toBe(p1.sessionId);
+
+    const token = p1.reconnectionToken;
+    const p1Back = await client.reconnect(token);
+    await host.leave();
+    await p1Back.leave();
+  });
+
+  it('host receives player:reconnected delta on successful rejoin', async () => {
+    const host = await client.create('game_room', { isHost: true });
+    const p1JoinedSnap = waitForMessage<SnapshotMsg>(host, EventNames.SNAPSHOT, 5_000);
+    const p1 = await client.joinById(host.roomId, { playerName: 'Rejoin' });
+    await p1JoinedSnap;
+
+    const token = p1.reconnectionToken;
+    const disconnectP = waitForDelta<any>(host, (d) => d.type === 'player:disconnected', 3_000);
+    p1.connection.close();
+    await disconnectP;
+
+    const reconnectDeltaP = waitForDelta<any>(
+      host,
+      (d) => d.type === 'player:reconnected' && d.playerId === p1.sessionId,
+      5_000
+    );
+    const p1Back = await client.reconnect(token);
+    const delta = await reconnectDeltaP;
+    expect(delta.playerId).toBe(p1.sessionId);
+
+    await host.leave();
+    await p1Back.leave();
+  });
+
+  // ponytail: 35s wait — exclude from short CI runs via: vitest run --exclude 'e2e/reconnect*'
+  it('grace period expires — player:left broadcast, slot released from GameState', { timeout: 45_000 }, async () => {
+    const host = await client.create('game_room', { isHost: true });
+    const p1JoinedSnap = waitForMessage<SnapshotMsg>(host, EventNames.SNAPSHOT, 5_000);
+    const p1 = await client.joinById(host.roomId, { playerName: 'Timeout' });
+    await p1JoinedSnap;
+
+    // Register player:left listener BEFORE drop so we don't miss it after 30s
+    const leftP = waitForDelta<any>(
+      host,
+      (d) => d.type === 'player:left' && d.playerId === p1.sessionId,
+      GRACE_MS + 5_000
+    );
+    p1.connection.close();
+
+    const leftDelta = await leftP;
+    expect(leftDelta.playerId).toBe(p1.sessionId);
+
+    // After grace expiry the slot is gone — confirmed by next periodic snapshot
+    const snap = await waitForMessage<SnapshotMsg>(host, EventNames.SNAPSHOT, 8_000);
+    expect(snap.state.players.find((p: any) => p.id === p1.sessionId)).toBeUndefined();
+
+    await host.leave();
+  });
+
+  // ponytail: 35s wait — exclude from short CI runs via: vitest run --exclude 'e2e/reconnect*'
+  it('reconnect attempt after grace expiry throws — player can rejoin fresh', { timeout: 45_000 }, async () => {
+    const host = await client.create('game_room', { isHost: true });
+    const p1JoinedSnap = waitForMessage<SnapshotMsg>(host, EventNames.SNAPSHOT, 5_000);
+    const p1 = await client.joinById(host.roomId, { playerName: 'GraceExpired' });
+    await p1JoinedSnap;
+
+    const token = p1.reconnectionToken;
+    const leftP = waitForDelta<any>(host, (d) => d.type === 'player:left', GRACE_MS + 5_000);
+    p1.connection.close();
+    await leftP;
+
+    // Reconnect with expired token should fail
+    await expect(client.reconnect(token)).rejects.toThrow();
+
+    // Fresh join succeeds as a new player slot.
+    // After grace expiry players.length=0; join snapshot has length=1 — use predicate to avoid catching periodic empty snapshot.
+    const freshJoinedSnap = new Promise<SnapshotMsg>((resolve, reject) => {
+      const timer = setTimeout(() => { unsub(); reject(new Error('timeout: fresh join snapshot not received within 6000ms')); }, 6_000);
+      const unsub = host.onMessage<SnapshotMsg>(EventNames.SNAPSHOT, (snap) => {
+        if (snap.state.players.length > 0) { clearTimeout(timer); unsub(); resolve(snap); }
+      });
+    });
+    const p1Fresh = await client.joinById(host.roomId, { playerName: 'GraceExpiredFresh' });
+    const snap = await freshJoinedSnap;
+    expect(p1Fresh.sessionId).not.toBe(p1.sessionId);
+    expect(snap.state.players.find((p: any) => p.id === p1Fresh.sessionId)).toBeDefined();
+
+    await host.leave();
+    await p1Fresh.leave();
+  });
 });
