@@ -14,12 +14,18 @@ function mockGameState(): GameState {
       maxPlayers: 8,
       runSeed: 42,
       levelIndex: 0,
+      difficulty: null,
+      levelObjective: 'clear' as const,
+      waveIndex: 0,
+      totalWaves: 0,
     },
     players: [],
     enemies: [],
     bonds: [],
     essenceDrops: [],
     tick: 0,
+    floorLayout: null,
+    runProposal: null,
   };
 }
 
@@ -270,6 +276,59 @@ describe('net-protocol contract tests', () => {
     });
   });
 
+  describe('Story 4.1 floorLayout in SnapshotMsg', () => {
+    it('SnapshotMsg with non-null floorLayout survives serialize → deserialize', () => {
+      const state = mockGameState();
+      state.floorLayout = {
+        rooms: [
+          { id: 'room-0', templateId: 'grassland-01', x: 280, y: 540, isExit: false },
+          { id: 'room-1', templateId: 'grassland-02', x: 840, y: 490, isExit: true },
+        ],
+        corridors: [{ fromRoomId: 'room-0', toRoomId: 'room-1' }],
+      };
+      const msg: SnapshotMsg = { type: 'snapshot', state };
+      expect(deserialize<SnapshotMsg>(serialize(msg))).toEqual(msg);
+    });
+
+    it('SnapshotMsg with null floorLayout survives serialize → deserialize', () => {
+      const msg: SnapshotMsg = { type: 'snapshot', state: mockGameState() };
+      expect(deserialize<SnapshotMsg>(serialize(msg))).toEqual(msg);
+    });
+  });
+
+  describe('Story 4.4 wave delta round-trips', () => {
+    it('wave:started delta survives serialize → deserialize', () => {
+      const delta = {
+        type: 'wave:started' as const,
+        waveIndex: 2,
+        totalWaves: 3,
+      } satisfies DeltaEventMsg;
+      expect(deserialize<DeltaEventMsg>(serialize(delta))).toEqual(delta);
+    });
+
+    it('wave:complete delta survives serialize → deserialize', () => {
+      const delta = {
+        type: 'wave:complete' as const,
+        waveIndex: 1,
+      } satisfies DeltaEventMsg;
+      expect(deserialize<DeltaEventMsg>(serialize(delta))).toEqual(delta);
+    });
+
+    it('applyDelta wave:started updates waveIndex and totalWaves', () => {
+      const state: GameState = mockGameState();
+      const next = applyDelta(state, { type: 'wave:started', waveIndex: 1, totalWaves: 3 });
+      expect(next.session.waveIndex).toBe(1);
+      expect(next.session.totalWaves).toBe(3);
+      expect(state.session.waveIndex).toBe(0); // original not mutated
+    });
+
+    it('applyDelta wave:complete returns state unchanged', () => {
+      const state: GameState = mockGameState();
+      const next = applyDelta(state, { type: 'wave:complete', waveIndex: 1 });
+      expect(next).toBe(state);
+    });
+  });
+
   describe('EventNames constants', () => {
     it('HOST_START matches the wire string expected by the server', () => {
       expect(EventNames.HOST_START).toBe('host:start');
@@ -378,6 +437,50 @@ describe('net-protocol contract tests', () => {
     it('player:downed delta with reviveWindowMs survives serialize → deserialize', () => {
       const delta = { type: 'player:downed' as const, playerId: 'p1', downCount: 2, reviveWindowMs: 40000 } satisfies PlayerDownedDelta;
       expect(deserialize<DeltaEventMsg>(serialize(delta))).toEqual(delta);
+    });
+  });
+
+  describe('Story 4.2 delta round-trips', () => {
+    it('run:proposed delta survives serialize → deserialize', () => {
+      const delta = {
+        type: 'run:proposed' as const,
+        biome: 'grassland' as const,
+        difficulty: DifficultyTier.NORMAL,
+        proposedBy: 'player-1',
+      } satisfies DeltaEventMsg;
+      expect(deserialize<DeltaEventMsg>(serialize(delta))).toEqual(delta);
+    });
+
+    it('run:starting delta survives serialize → deserialize', () => {
+      const delta = {
+        type: 'run:starting' as const,
+        biome: 'grassland' as const,
+        difficulty: DifficultyTier.HARD,
+      } satisfies DeltaEventMsg;
+      expect(deserialize<DeltaEventMsg>(serialize(delta))).toEqual(delta);
+    });
+
+    it('applyDelta run:proposed sets runProposal', () => {
+      const state: GameState = mockGameState();
+      const next = applyDelta(state, { type: 'run:proposed', biome: 'grassland', difficulty: DifficultyTier.NORMAL, proposedBy: 'p1' });
+      expect(next.runProposal).toEqual({ biome: 'grassland', difficulty: DifficultyTier.NORMAL, proposedBy: 'p1' });
+      expect(state.runProposal).toBeNull(); // original must not be mutated
+    });
+
+    it('applyDelta run:starting clears runProposal and sets phase to dungeon', () => {
+      const base: GameState = mockGameState();
+      const withProposal = applyDelta(base, { type: 'run:proposed', biome: 'grassland', difficulty: DifficultyTier.HARD, proposedBy: 'p1' });
+      const next = applyDelta(withProposal, { type: 'run:starting', biome: 'grassland', difficulty: DifficultyTier.HARD });
+      expect(next.runProposal).toBeNull();
+      expect(next.session.phase).toBe('dungeon');
+      expect(next.session.difficulty).toBe(DifficultyTier.HARD);
+    });
+
+    it('SnapshotMsg with runProposal survives serialize → deserialize', () => {
+      const state = mockGameState();
+      state.runProposal = { biome: 'grassland', difficulty: DifficultyTier.EASY, proposedBy: 'p1' };
+      const msg = { type: 'snapshot' as const, state };
+      expect(deserialize<typeof msg>(serialize(msg))).toEqual(msg);
     });
   });
 });

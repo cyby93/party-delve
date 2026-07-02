@@ -55,6 +55,15 @@ function renderFrame(
   }
 
   for (const player of state.players) {
+    if (player.class === null) {
+      const existing = playerGraphics.get(player.id);
+      if (existing) {
+        app.stage.removeChild(existing.circle); existing.circle.destroy();
+        app.stage.removeChild(existing.chatBubble); existing.chatBubble.destroy();
+        playerGraphics.delete(player.id);
+      }
+      continue;
+    }
     let entry = playerGraphics.get(player.id);
     if (!entry) {
       const circle = new Graphics();
@@ -62,7 +71,7 @@ function renderFrame(
       chatBubble.anchor.set(0.5, 1);
       app.stage.addChild(circle);
       app.stage.addChild(chatBubble);
-      entry = { circle, chatBubble, flashUntil: 0, knownClass: player.class };
+      entry = { circle, chatBubble, flashUntil: 0, knownClass: null };
       playerGraphics.set(player.id, entry);
     }
     const { circle, chatBubble } = entry;
@@ -216,24 +225,35 @@ export function HubWorldScreen({ gameState, session }: HubWorldScreenProps) {
           <PlayerChip key={player.id} name={player.displayName} isFrozen={player.isFrozen} playerClass={player.class} />
         ))}
         <div style={{ marginLeft: 'auto' }}>
-          <button
-            onClick={() => session?.sendStartGame()}
-            disabled={!allClassesConfirmed}
-            style={{
-              background: allClassesConfirmed ? 'var(--interactive)' : 'var(--bg-surface)',
-              color: allClassesConfirmed ? 'var(--bg-base)' : 'var(--text-secondary)',
-              border: allClassesConfirmed ? 'none' : '1px solid var(--border)',
+          {(gameState?.runProposal ?? null) !== null ? (
+            <span style={{
               fontFamily: 'var(--font-body)',
-              fontWeight: 700,
               fontSize: 'var(--text-sm)',
-              borderRadius: 6,
-              height: 32,
-              padding: '0 12px',
-              cursor: allClassesConfirmed ? 'pointer' : 'not-allowed',
-            }}
-          >
-            {allClassesConfirmed ? 'Start Dungeon' : 'Waiting for classes…'}
-          </button>
+              fontWeight: 700,
+              color: 'var(--accent-spirit)',
+            }}>
+              ⚔ Vote in progress…
+            </span>
+          ) : (
+            <button
+              onClick={() => session?.sendStartGame()}
+              disabled={!allClassesConfirmed}
+              style={{
+                background: allClassesConfirmed ? 'var(--interactive)' : 'var(--bg-surface)',
+                color: allClassesConfirmed ? 'var(--bg-base)' : 'var(--text-secondary)',
+                border: allClassesConfirmed ? 'none' : '1px solid var(--border)',
+                fontFamily: 'var(--font-body)',
+                fontWeight: 700,
+                fontSize: 'var(--text-sm)',
+                borderRadius: 6,
+                height: 32,
+                padding: '0 12px',
+                cursor: allClassesConfirmed ? 'pointer' : 'not-allowed',
+              }}
+            >
+              {allClassesConfirmed ? 'Start Dungeon' : 'Waiting for classes…'}
+            </button>
+          )}
         </div>
       </div>
     </div>

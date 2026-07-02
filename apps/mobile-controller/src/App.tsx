@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { AuthChoiceScreen } from './screens/AuthChoiceScreen';
 import { SessionCodeEntryScreen } from './screens/SessionCodeEntryScreen';
 import { OrientationPromptScreen } from './screens/OrientationPromptScreen';
-import { ControllerScreen } from './screens/ControllerScreen';
+import { ControllerScreen, ClassSelectionScreen } from './screens/ControllerScreen';
 import { ReconnectScreen } from './screens/ReconnectScreen';
 import { joinSession, reconnectToSession, getPersistedSession, clearPersistedSession, type MobileSession } from './session/mobile-session';
 import type { GameState } from 'shared-types';
@@ -14,10 +14,63 @@ export interface CooldownState {
   expiresAt: number;
 }
 
-type AppScreen = 'auth-choice' | 'session-entry' | 'orientation-prompt' | 'controller' | 'reconnect';
+type AppScreen = 'auth-choice' | 'session-entry' | 'class-select-forced' | 'orientation-prompt' | 'controller' | 'reconnect';
 
 // CloseCode.CONSENTED = 4000 (Colyseus intentional leave — do not show reconnect screen)
 const CLOSE_CONSENTED = 4000;
+
+function PostRunMobileScreen({ isVictory, onReturnToCamp }: { isVictory: boolean; onReturnToCamp: () => void }) {
+  const [returned, setReturned] = useState(false);
+  return (
+    <div style={{
+      width: '100%',
+      height: '100%',
+      background: isVictory ? 'var(--bg-base)' : 'var(--bg-surface)',
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 24,
+      padding: '0 32px',
+      boxSizing: 'border-box',
+    }}>
+      <div style={{
+        fontFamily: 'var(--font-display)',
+        fontSize: 28,
+        color: isVictory ? 'var(--accent-spirit)' : 'var(--text-secondary)',
+        textAlign: 'center',
+      }}>
+        {isVictory ? 'Victory!' : 'Run Ended'}
+      </div>
+      <button
+        disabled={returned}
+        onPointerDown={e => {
+          if (returned) return;
+          e.preventDefault();
+          setReturned(true);
+          onReturnToCamp();
+        }}
+        style={{
+          minHeight: 56,
+          minWidth: 200,
+          background: returned ? 'var(--bg-surface)' : 'var(--interactive)',
+          border: 'none',
+          borderRadius: 8,
+          cursor: returned ? 'default' : 'pointer',
+          opacity: returned ? 0.5 : 1,
+          pointerEvents: returned ? 'none' : 'auto',
+          fontFamily: 'var(--font-body)',
+          fontWeight: 700,
+          fontSize: 'var(--text-md)',
+          color: returned ? 'var(--text-secondary)' : 'var(--bg-base)',
+          touchAction: 'manipulation',
+        }}
+      >
+        {returned ? 'Waiting for others…' : 'Return to Camp'}
+      </button>
+    </div>
+  );
+}
 
 export function App() {
   const [screen, setScreen] = useState<AppScreen>('auth-choice');
@@ -94,8 +147,8 @@ export function App() {
         handleDisconnect,
       );
       setSession(s);
-      // delay navigation so SessionCodeEntryScreen renders the accent-purify flash (AC4)
-      setTimeout(() => setScreen('orientation-prompt'), 500);
+      history.replaceState(null, '', '?session=' + roomId);
+      setScreen('class-select-forced');
     } catch (err) {
       throw err; // re-throw so SessionCodeEntryScreen can reset its loading state and show the error
     }
@@ -139,6 +192,21 @@ export function App() {
       />
     );
   }
+  if (screen === 'class-select-forced') {
+    return (
+      <ClassSelectionScreen
+        onBack={() => {
+          session?.disconnect();
+          setSession(null);
+          setScreen('session-entry');
+        }}
+        onPickClass={(classId) => {
+          session?.sendClassSelect({ type: 'class:select', classId });
+          setScreen('orientation-prompt');
+        }}
+      />
+    );
+  }
   if (screen === 'orientation-prompt') {
     return <OrientationPromptScreen onDismiss={handleOrientationDismiss} />;
   }
@@ -151,68 +219,12 @@ export function App() {
       />
     );
   }
-  if (gameState?.session.phase === 'post-run' && runOutcome === 'failed') {
+  if (gameState?.session.phase === 'post-run' && session !== null) {
     return (
-      <div style={{
-        width: '100%',
-        height: '100%',
-        background: 'var(--corruption-blood)',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: 16,
-      }}>
-        <div style={{
-          fontFamily: 'var(--font-body)',
-          fontWeight: 700,
-          fontSize: 'var(--text-xl)',
-          color: 'var(--text-primary)',
-          textAlign: 'center',
-        }}>
-          Run Failed
-        </div>
-        <div style={{
-          fontFamily: 'var(--font-body)',
-          fontWeight: 400,
-          fontSize: 'var(--text-sm)',
-          color: 'var(--text-secondary)',
-        }}>
-          Return to Camp — coming soon.
-        </div>
-      </div>
-    );
-  }
-  if (gameState?.session.phase === 'post-run' && runOutcome === 'complete') {
-    return (
-      <div style={{
-        width: '100%',
-        height: '100%',
-        background: 'var(--bg-base)',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: 16,
-      }}>
-        <div style={{
-          fontFamily: 'var(--font-body)',
-          fontWeight: 700,
-          fontSize: 'var(--text-xl)',
-          color: 'var(--accent-spirit)',
-          textAlign: 'center',
-        }}>
-          Level Clear!
-        </div>
-        <div style={{
-          fontFamily: 'var(--font-body)',
-          fontWeight: 400,
-          fontSize: 'var(--text-sm)',
-          color: 'var(--text-muted)',
-        }}>
-          Return to Camp — coming soon.
-        </div>
-      </div>
+      <PostRunMobileScreen
+        isVictory={runOutcome === 'complete'}
+        onReturnToCamp={() => session.sendReturnToCamp()}
+      />
     );
   }
   return <ControllerScreen session={session} gameState={gameState} cooldowns={cooldowns} />;

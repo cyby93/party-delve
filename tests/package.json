@@ -11,7 +11,8 @@
   "dependencies": {
     "shared-types": "*",
     "net-protocol": "*",
-    "game-rules": "*"
+    "game-rules": "*",
+    "@colyseus/sdk": "^0.17.43"
   },
   "devDependencies": {
     "vitest": "^2.0.0",

@@ -1,0 +1,12 @@
+{
+  "name": "latency-baseline",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "measure": "npx tsx measure.ts"
+  },
+  "dependencies": {
+    "@colyseus/sdk": "^0.17.43"
+  }
+}

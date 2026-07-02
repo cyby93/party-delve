@@ -457,6 +457,25 @@ When a spirit player's class ability cooldown expires, the regular expiry loop s
 
 ---
 
+## Deferred from: code review of 4-1-deterministic-seed-system-and-floor-layout-generator (2026-06-30)
+
+**D-4.1-A — Second HOST_START from `post-run` accumulates stale enemies** [apps/simulation-server/src/rooms/GameRoom.ts:114]
+Phase guard only blocks re-entry when phase is `dungeon`; firing from `post-run` pushes new enemies onto the existing (non-cleared) array. Floor layout regenerates correctly (same deterministic overwrite). The enemy accumulation bug pre-dates Story 4.1. Fix: add `|| phase === 'post-run'` to the guard, or clear `gameState.enemies` / reset `floorLayout` before re-spawning. Address in Story 4.2 (dungeon entrance vote) which owns the run restart flow.
+
+**D-4.1-B — `floorLayout` not reset to null on phase transition to `post-run`** [apps/simulation-server/src/rooms/GameRoom.ts:792]
+AC5 specifies `floorLayout === null` in lobby/hub phases. Satisfied by `createEmptyGameState`, but no reset happens on dungeon→post-run transition. No return-to-hub path exists yet so this is latent. Story 4.2 should reset `floorLayout` to null when transitioning back to hub or initializing a new run.
+
+**D-4.1-C — `BOSS_FLOOR_LAYOUT` has `isExit: false` on its only room** [packages/game-rules/src/generation/room-pool.ts]
+If Story 4.3 uses `room.isExit` to detect advancement, the boss room will never satisfy the predicate. Either set `isExit: true` on the boss room, or the advancement trigger must be "boss dead" rather than "exit room". Intentional placeholder — Story 4.3 decides.
+
+**D-4.1-D — `Corridor` directionality not documented (directed vs. undirected)** [packages/shared-types/src/floor-layout.ts]
+Generator always produces a linear chain with `{ fromRoomId, toRoomId }` pairs. No contract says whether traversal is bidirectional. Story 4.3 host render work must document or encode the assumption.
+
+**D-4.1-E — Room y-position has no clamp to virtual 1080px space** [packages/game-rules/src/generation/floor-layout.ts]
+`y` range is [440, 640) with current constants. Safe with max heightPx=350. If a future template has `heightPx > 880`, top/bottom edges clip outside the 1080px virtual space. Add a clamp when template pool is expanded.
+
+---
+
 ## Deferred from: code review of 3-7-clear-objective-and-level-completion (2026-06-29)
 
 **D-3.7-A — `runOutcome` never resets between sessions** [apps/host-client/src/App.tsx, apps/mobile-controller/src/App.tsx]
@@ -473,3 +492,90 @@ On level clear with a downed player, `reviveTimerExpiresAt` is reset server-side
 
 **D-3.7-E — `enemies.length > 0` guard silently blocks clear on empty level** [apps/simulation-server/src/rooms/GameRoom.ts]
 The level-clear predicate guards on `enemies.length > 0` to avoid a vacuous clear on dungeon start. If a future `getEnemyCount` configuration returns 0 (e.g. a boss-only room with no grunt spawns), the clear condition can never fire. Add a fallback or log warning if `enemies.length === 0` and phase is still `dungeon` after N ticks.
+
+---
+
+## Deferred from: code review of 4-2-dungeon-entrance-vote-and-run-initialisation (2026-07-01)
+
+**D-4.2-A — HOST_START silently cancels active vote and overrides difficulty to EASY** [apps/simulation-server/src/rooms/GameRoom.ts:115]
+No `runProposal !== null` guard in HOST_START. In practice HubWorldScreen replaces the Start Dungeon button with the vote indicator, making this unreachable via normal UI. Dev-tool fallback; acceptable for current phase.
+
+**D-4.2-B — HOST_START accepts post-run phase** [apps/simulation-server/src/rooms/GameRoom.ts:117]
+HOST_START only guards `phase === 'dungeon'`, not `post-run`. HubWorldScreen is not rendered in post-run (App.tsx:69), so unreachable via normal UI. Noted in D-4.1-A from Story 4.1 review.
+
+**D-4.2-C — Late joiner added to active voters mid-vote with no timeout** [apps/simulation-server/src/rooms/GameRoom.ts:165]
+A player joining after a proposal is raised is correctly added to `activePlayers` and sees the VotePopup via snapshot. No vote timeout is in scope per story non-goals. Address in a UX polish story if the open-ended wait becomes a problem in practice.
+
+---
+
+## Deferred from: code review of 4-3-3-level-run-structure-and-level-transitions (2026-07-01)
+
+**D-4.3-A — HOST_START re-entry from post-run skips hub/class-selection flow** [apps/simulation-server/src/rooms/GameRoom.ts:~115]
+Guard only blocks re-entry when `phase === 'dungeon'`. From `post-run`, `startDungeon()` fires, `loadLevel(1)` correctly clears enemies and positions players, but host and mobile clients are never signalled to return to hub — they transition directly from the post-run overlay into a new dungeon snapshot with stale class selections. Pre-existing gap; `loadLevel`'s enemy-clearing fix (Story 4.3) removes the accumulation risk noted in D-4.1-A, but the client flow issue remains. Address in the return-to-hub story (post-E4).
+
+**D-4.3-B — Boss victory check `=== 4` narrower than `loadLevel` guard `>= 4`** [apps/simulation-server/src/rooms/GameRoom.ts:969]
+`loadLevel` branches on `index >= 4` to create the victory trigger; the tick-level run:complete check guards on `levelIndex === 4`. If `loadLevel(5+)` were ever called (currently unreachable: level 4 has no enemies so level-clear never fires there), the victory trigger body would exist but the `=== 4` check would never fire, permanently stalling the run. No impact today; align to `>= 4` in a future cleanup pass.
+
+**D-4.3-C — O(n²) indexOf in player spawn loop** [apps/simulation-server/src/rooms/GameRoom.ts:482]
+`this.gameState.players.indexOf(player)` inside a `for...of` over the same array. MAX_PLAYERS=8 so 64 comparisons max — negligible. Replace with an index-based `for` loop if the player cap grows.
+
+---
+
+## Deferred from: code review of 4-4-survive-the-waves-objective (2026-07-01)
+
+**D-4.4-A — Broadcast storm if loadLevel throws mid-tick** [apps/simulation-server/src/rooms/GameRoom.ts:tick()]
+Wave completion tick calls `loadLevel(nextIndex)` without a try/catch. If `loadLevel` throws (e.g., invalid index, planck error), the tick exits mid-broadcast, leaving room state inconsistent. Pre-existing pattern from Clear objective — the same unguarded call was there before Story 4.4.
+
+**D-4.4-B — Run-failure races wave-complete in same tick** [apps/simulation-server/src/rooms/GameRoom.ts:tick()]
+If the last alive player dies in the same tick that the last wave enemy dies, both the run-failure block and the wave-complete block can fire (order: run-fail → wave-complete, due to tick ordering). Intentional per AC5 ("run failure takes precedence"); the wave-complete branch is guarded by `allEnemiesDead && wavePauseUntil===0 && waveIndex>0` which doesn't check if run already failed. No user-visible issue; document in tick ordering comment if clarity is needed.
+
+**D-4.4-C — Tick block evaluation order is an undocumented load-bearing invariant** [apps/simulation-server/src/rooms/GameRoom.ts:~1040]
+`allEnemiesDead` is computed once before the survive-waves block but after the run-failure block. Block ordering determines correctness (run-fail before wave-clear). Not obvious from reading the code in isolation. Add a short ordering comment if a future story adds a third tick block in this region.
+
+**D-4.4-D — Wave timing non-deterministic under replay** [apps/simulation-server/src/rooms/GameRoom.ts:wavePauseUntil]
+`wavePauseUntil` uses `Date.now()` (wall clock), not tick count. Replay scenarios will produce different wave-pause durations depending on replay playback speed. Same systemic pre-existing issue as other Date.now() tick comparisons in the codebase. Address in Phase 5 deterministic replay work.
+
+**D-4.4-E — RNG seed fragile for waveNum ≥ 16 or future OFFSET_ENEMY_SPAWN bit changes** [apps/simulation-server/src/rooms/GameRoom.ts:478]
+Seed packing `OFFSET_ENEMY_SPAWN | (levelIndex << 8) | (waveNum << 4)` assumes `waveNum` fits in 4 bits (≤15). With `totalWaves=3` this is safe. If WAVE_COUNTS is raised above 15 or OFFSET_ENEMY_SPAWN grows into bits 4-5, seeds collide silently. Not a current concern; document the constraint in balance.ts if WAVE_COUNTS grows.
+
+---
+
+## Deferred from: code review of 4-5-post-run-summary-screen (2026-07-01)
+
+**D-4.5-A — runSeed not reset in resetToHub — same floor layout every run per session** [apps/simulation-server/src/rooms/GameRoom.ts:resetToHub]
+`runSeed` is only randomized in `onCreate`. Repeating runs in the same room replay identical floor layouts. Not a 4.5 concern (seed management is pre-existing design). Randomize `runSeed` in `resetToHub` when dungeon variety becomes important.
+
+**D-4.5-B — runOutcome ?? 'complete' fallback shows victory on null outcome (host reconnect)** [apps/host-client/src/App.tsx]
+If the host reconnects mid-post-run, `runOutcome` is `null` (snapshot doesn't carry it) and defaults to `'complete'`. Visual only — hub transition still correct. Intentional per Dev Notes; `GameState.session` would need a `runOutcome` field to fix cleanly. Address in Phase 5 session state hardening.
+
+**D-4.5-C — Stale dungeon fields in hub snapshot: levelObjective, waveIndex, totalWaves, difficulty** [apps/simulation-server/src/rooms/GameRoom.ts:resetToHub]
+`session.levelObjective/waveIndex/totalWaves/difficulty` are not cleared in `resetToHub`. Hub snapshot carries last-run values. HubWorldScreen doesn't render these so no visible regression now. Clear them in `resetToHub` before hub screens start reading session objective fields.
+
+**D-4.5-D — Player physics bodies retain linear velocity after hub teleport** [apps/simulation-server/src/rooms/GameRoom.ts:resetToHub]
+`body.setPosition(hubSpawn)` without `body.setLinearVelocity(Vec2(0,0))`. Sub-tick drift before next state broadcast. Add velocity reset alongside position reset.
+
+---
+
+## Deferred from: code review of 4-6-end-to-end-run-e2e-test-and-latency-baseline (2026-07-02)
+
+**W1 — measure.ts uses raw string literals instead of EventNames**
+`tools/latency-baseline/measure.ts:24,32` — `player.send('class:select', ...)` and `player.onMessage('delta', ...)` use hardcoded strings. Standalone tool by design (no monorepo dep); if event names change in net-protocol the tool silently stops collecting valid latency samples.
+
+**W2 — L1/L3 enemy counts (5 and 8) not asserted**
+`tests/e2e/full-run.test.ts:88,101` — AC1 says "5 enemies die" (L1) and "8 enemies die" (L3) but the test only checks `levelIndex` on completion. Requires reading `gameState.enemies.length` from a snapshot at enemy spawn time.
+
+---
+
+## Deferred from code review of 4-8-forced-class-selection-on-join (2026-07-02)
+
+**W3 — Reconnect during class-select-forced → permanent soft-lock (deferred by user)**
+`App.tsx:161-175, GameRoom.ts:723` — A player who disconnects before picking a class reconnects via `handleReconnect` straight to `'controller'`. The null-class velocity gate (Task 4) freezes their body; the null-class circle guard (Task 3) hides them on host. The class-select POI is 560px from spawn and unreachable while frozen. No UI recovery path. Story spec explicitly deferred the reconnect edge case; user chose to keep it deferred. Fix: check `player.class === null` in reconnect path and route to `'class-select-forced'` instead of `'controller'`.
+
+**W4 — Optimistic class:select with no server ack**
+`App.tsx:203-206` — `sendClassSelect` + `setScreen('orientation-prompt')` fires without waiting for server confirmation. A dropped message leaves `player.class === null` while the mobile believes class is set. Combined with the null-class velocity gate (GameRoom.ts:723), this would produce a soft-lock. Local WebSocket message loss is vanishingly rare; pre-existing fire-and-forget pattern throughout the codebase. Needs a `class:confirmed` delta and a loading state if reliability requirements increase.
+
+**W4 — Unit test mirrors tick logic instead of exercising GameRoom**
+`tests/unit/null-class-gate.test.ts` — `tickVelocity` re-implements the null-class condition locally rather than calling the actual GameRoom tick path. Regressions in `toMeters`/`SPEED`/`TICK_RATE_HZ` would not be caught by this test. Accepted approach per story spec ("pure function test"). Consider a lightweight GameRoom integration test if tick regressions become a pattern.
+
+**W5 — Stale consented-leave callback race on immediate re-join**
+`App.tsx:198-201` — After tapping Back (consented disconnect), if the user immediately re-joins a new room, `persistSession` for the new room can run before `handleDisconnect(4000)` fires `clearPersistedSession` for the old room. The old callback would then erase the new token. Practical window is <100ms — not reachable by human interaction. Pre-existing pattern.

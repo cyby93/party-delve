@@ -24,12 +24,18 @@ function createEmptyGameState(roomId: string): GameState {
       maxPlayers: 8,
       runSeed: 0,
       levelIndex: 0,
+      difficulty: null,
+      levelObjective: 'clear' as const,
+      waveIndex: 0,
+      totalWaves: 0,
     },
     players: [],
     enemies: [],
     bonds: [],
     essenceDrops: [],
     tick: 0,
+    floorLayout: null,
+    runProposal: null,
   };
 }
 

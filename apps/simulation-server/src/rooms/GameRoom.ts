@@ -2,20 +2,21 @@ import { Room, Client, CloseCode } from 'colyseus';
 import type { GameState, PlayerState } from 'shared-types';
 import { TICK_RATE_HZ, RECONNECT_GRACE_S, SNAPSHOT_INTERVAL_S, MAX_PLAYERS, PlayerClass, SessionColor, INTERACTIVE_HUB_POIS } from 'shared-types';
 import { EventNames } from 'net-protocol';
-import type { InputEventMsg, SnapshotMsg, DeltaEventMsg, CooldownUpdateMsg, SpiritFormMsg } from 'net-protocol';
+import type { InputEventMsg, SnapshotMsg, DeltaEventMsg, CooldownUpdateMsg, SpiritFormMsg, RunProposeMsg, VoteMsg } from 'net-protocol';
 import { randomInt } from 'node:crypto';
 import { Vec2, Body, Contact } from 'planck';
 import type { World } from 'planck';
 import {
   createPhysicsWorld, createPlayerBody, createPoiSensorBody, createEssenceSensorBody,
   extractPoiBeginContact, extractPoiEndContact, extractEssenceBeginContact, toMeters, toPixels,
+  createVictoryTriggerBody,
 } from '../physics/world.js';
-import type { PoiBeginContactEvent, PoiEndContactEvent, EssenceBeginContactEvent } from '../physics/world.js';
-import { createRng, tickEnemy, dispatchAbility, getEnemyCount, applyDamage, isInHitZone, ABILITY_HIT_RANGE_PX, ABILITY_HIT_RADIUS_PX, applyPlayerDamage, ENEMY_MELEE_DAMAGE, ENEMY_MELEE_RANGE_PX, ENEMY_ATTACK_COOLDOWN_MS, REVIVE_RADIUS_PX, REVIVE_HP, SPIRIT_ABILITY_COOLDOWN_MS, getReviveWindowMs } from 'game-rules';
+import type { PoiBeginContactEvent, PoiEndContactEvent, EssenceBeginContactEvent, PhysicsBodyData } from '../physics/world.js';
+import { createRng, tickEnemy, dispatchAbility, getEnemyCount, applyDamage, isInHitZone, ABILITY_HIT_RANGE_PX, ABILITY_HIT_RADIUS_PX, applyPlayerDamage, ENEMY_MELEE_DAMAGE, ENEMY_MELEE_RANGE_PX, ENEMY_ATTACK_COOLDOWN_MS, REVIVE_RADIUS_PX, REVIVE_HP, SPIRIT_ABILITY_COOLDOWN_MS, generateFloorLayout, GRASSLAND_ROOM_POOL, WAVE_COUNTS, WAVE_PAUSE_MS, WAVE_ENEMY_SCALE } from 'game-rules';
 import type { BehaviorLayer, EnemyContext, EnemyAIEvent } from 'game-rules';
 import { CLASS_DEFINITIONS } from 'shared-types';
 import type { EnemyState } from 'shared-types';
-import { EnemyType, DifficultyTier, EnemyFSMState, OFFSET_ENEMY_SPAWN } from 'shared-types';
+import { EnemyType, DifficultyTier, EnemyFSMState, OFFSET_ENEMY_SPAWN, OFFSET_FLOOR_LAYOUT, OFFSET_ROOM_POOL } from 'shared-types';
 import { createEnemyBody } from '../physics/world.js';
 import { logger } from '../logger.js';
 
@@ -31,6 +32,12 @@ const SPAWN_POSITIONS: ReadonlyArray<{ x: number; y: number }> = [
   { x: 1000, y: 480 }, { x: 880, y: 600 }, { x: 960, y: 600 }, { x: 1040, y: 600 },
 ];
 
+// Dungeon entry positions — left side of arena, clear of enemy spawn zone (x≥600)
+const DUNGEON_SPAWN_POSITIONS: ReadonlyArray<{ x: number; y: number }> = [
+  { x: 300, y: 540 }, { x: 300, y: 480 }, { x: 300, y: 600 }, { x: 240, y: 510 },
+  { x: 240, y: 570 }, { x: 360, y: 510 }, { x: 360, y: 570 }, { x: 300, y: 420 },
+];
+
 function createEmptyGameState(roomId: string): GameState {
   return {
     session: {
@@ -41,12 +48,18 @@ function createEmptyGameState(roomId: string): GameState {
       maxPlayers: 8,
       runSeed: 0,
       levelIndex: 0,
+      difficulty: null,
+      levelObjective: 'clear',
+      waveIndex: 0,
+      totalWaves: 0,
     },
     players: [],
     enemies: [],
     bonds: [],
     essenceDrops: [],
     tick: 0,
+    floorLayout: null,
+    runProposal: null,
   };
 }
 
@@ -100,6 +113,14 @@ export class GameRoom extends Room {
   private pendingEssenceBeginContacts: Array<EssenceBeginContactEvent> = [];
   private nextSlotIndex = 0;
   private enemyAttackCooldowns = new Map<string, number>(); // enemyId → expiry epoch ms
+  private runVotes = new Map<string, 'accept' | 'decline'>();
+  private victoryTriggerBody: Body | null = null;
+  private pendingVictoryContact = false;
+  private levelObjective: 'clear' | 'survive-waves' = 'clear';
+  private waveIndex = 0;
+  private totalWaves = 0;
+  private wavePauseUntil = 0;
+  private returnReadySet = new Set<string>();
 
   async onCreate(_options: unknown): Promise<void> {
     this.roomId = generateRoomCode();
@@ -117,13 +138,59 @@ export class GameRoom extends Room {
         logger.warn({ roomId: this.roomId, unready: unready.length }, 'host:start rejected — players without class');
         return;
       }
-      this.gameState.session.phase = 'dungeon';
-      this.gameState.session.levelIndex = 1;
-      for (const p of this.gameState.players) p.nearPoiId = null;
-      this.spawnEnemies();
-      const snapshot: SnapshotMsg = { type: 'snapshot', state: this.gameState };
-      this.broadcast(EventNames.SNAPSHOT, snapshot);
-      logger.info({ roomId: this.roomId }, 'dungeon phase started');
+      this.startDungeon(DifficultyTier.EASY);
+    });
+
+    this.onMessage(EventNames.RUN_PROPOSE, (client: Client, raw: unknown) => {
+      try {
+        const msg = (typeof raw === 'string' ? JSON.parse(raw) : raw) as RunProposeMsg;
+        // ponytail: server never transitions lobby→hub (LobbyScreen "Start Game" is UI-only); allow both
+        if (this.gameState.session.phase === 'dungeon' || this.gameState.session.phase === 'post-run') return;
+        if (this.gameState.runProposal !== null) return;
+        const player = this.gameState.players.find(p => p.id === client.sessionId);
+        if (!player || player.isFrozen) return;
+        if (msg.biome !== 'grassland') {
+          logger.warn({ clientId: client.sessionId, roomId: this.roomId }, 'RUN_PROPOSE invalid biome — discarded');
+          return;
+        }
+        if (!Object.values(DifficultyTier).includes(msg.difficulty as DifficultyTier)) {
+          logger.warn({ clientId: client.sessionId, roomId: this.roomId }, 'RUN_PROPOSE invalid difficulty — discarded');
+          return;
+        }
+
+        this.runVotes.clear();
+        this.gameState.runProposal = { biome: msg.biome, difficulty: msg.difficulty, proposedBy: client.sessionId };
+        const delta: DeltaEventMsg = { type: 'run:proposed', biome: msg.biome, difficulty: msg.difficulty, proposedBy: client.sessionId };
+        this.broadcast(EventNames.DELTA, delta);
+        logger.info({ roomId: this.roomId, proposedBy: client.sessionId, difficulty: msg.difficulty }, 'run proposed');
+      } catch {
+        logger.warn({ clientId: client.sessionId, roomId: this.roomId }, 'failed to parse RUN_PROPOSE — discarded');
+      }
+    });
+
+    this.onMessage(EventNames.VOTE, (client: Client, raw: unknown) => {
+      try {
+        const msg = (typeof raw === 'string' ? JSON.parse(raw) : raw) as VoteMsg;
+        if (this.gameState.session.phase === 'dungeon' || this.gameState.session.phase === 'post-run') return;
+        if (this.gameState.runProposal === null) return;
+        const player = this.gameState.players.find(p => p.id === client.sessionId);
+        if (!player || player.isFrozen) return;
+
+        if (!msg.accept) {
+          this.gameState.runProposal = null;
+          this.runVotes.clear();
+          const snapshot: SnapshotMsg = { type: 'snapshot', state: this.gameState };
+          this.broadcast(EventNames.SNAPSHOT, snapshot);
+          logger.info({ roomId: this.roomId, declinedBy: client.sessionId }, 'run proposal declined');
+          return;
+        }
+
+        this.runVotes.set(client.sessionId, 'accept');
+
+        this.resolveVoteIfComplete();
+      } catch {
+        logger.warn({ clientId: client.sessionId, roomId: this.roomId }, 'failed to parse VOTE — discarded');
+      }
     });
 
     this.onMessage(EventNames.CLASS_SELECT, (client: Client, raw: unknown) => {
@@ -171,6 +238,29 @@ export class GameRoom extends Room {
       }
     });
 
+    this.onMessage(EventNames.RETURN_TO_CAMP, (client: Client) => {
+      if (this.gameState.session.phase !== 'post-run') return;
+      this.returnReadySet.add(client.sessionId);
+      this.checkReturnReady();
+    });
+
+    this.onMessage('debug:kill-all', (_client: Client) => {
+      if (this.gameState.session.phase !== 'dungeon') return;
+      for (const enemy of this.gameState.enemies) {
+        if (!enemy.isAlive) continue;
+        enemy.isAlive = false;
+        this.broadcast(EventNames.DELTA, {
+          type: 'enemy:killed' as const,
+          enemyId: enemy.id,
+          byPlayerId: '',
+        } satisfies DeltaEventMsg);
+        const body = this.enemyBodies.get(enemy.id);
+        if (body) { this.physicsWorld.destroyBody(body); this.enemyBodies.delete(enemy.id); }
+        this.enemyAttackCooldowns.delete(enemy.id);
+      }
+      logger.info({ roomId: this.roomId }, 'debug:kill-all — all enemies killed');
+    });
+
     // Initialize physics world
     this.physicsWorld = createPhysicsWorld();
 
@@ -185,6 +275,20 @@ export class GameRoom extends Room {
       if (poiEvt) this.pendingPoiBeginContacts.push(poiEvt);
       const essenceEvt = extractEssenceBeginContact(contact);
       if (essenceEvt) this.pendingEssenceBeginContacts.push(essenceEvt);
+      if (this.victoryTriggerBody) {
+        const bodyA = contact.getFixtureA().getBody();
+        const bodyB = contact.getFixtureB().getBody();
+        if (bodyA === this.victoryTriggerBody || bodyB === this.victoryTriggerBody) {
+          const otherBody = bodyA === this.victoryTriggerBody ? bodyB : bodyA;
+          const data = otherBody.getUserData() as PhysicsBodyData | null;
+          if (data?.type === 'player') {
+            const player = this.gameState.players.find(p => p.id === data.playerId);
+            if (player && !player.isFrozen && !player.isDown && !player.isSpirit) {
+              this.pendingVictoryContact = true;
+            }
+          }
+        }
+      }
     });
     this.physicsWorld.on('end-contact', (contact: Contact) => {
       const evt = extractPoiEndContact(contact);
@@ -259,6 +363,9 @@ export class GameRoom extends Room {
     } satisfies DeltaEventMsg;
     this.broadcast(EventNames.DELTA, disconnectDelta);
     logger.info({ roomId: this.roomId, clientId: client.sessionId }, 'player disconnected — grace period started');
+    // Freezing this player may unblock a unanimous vote or return-to-camp confirmation.
+    this.resolveVoteIfComplete();
+    this.checkReturnReady();
 
     try {
       const reconnectedClient = await this.allowReconnection(client, RECONNECT_GRACE_S);
@@ -286,6 +393,9 @@ export class GameRoom extends Room {
       const delta = { type: 'player:left' as const, playerId: client.sessionId } satisfies DeltaEventMsg;
       this.broadcast(EventNames.DELTA, delta);
       logger.info({ roomId: this.roomId, clientId: client.sessionId }, 'reconnect grace expired — player removed');
+      // Removing this player may unblock a unanimous vote or return-to-camp confirmation.
+      this.resolveVoteIfComplete();
+      this.checkReturnReady();
     }
   }
 
@@ -309,18 +419,50 @@ export class GameRoom extends Room {
       this.physicsWorld.destroyBody(body);
     }
     this.essenceSensorBodies.clear();
+    if (this.victoryTriggerBody) {
+      this.physicsWorld.destroyBody(this.victoryTriggerBody);
+      this.victoryTriggerBody = null;
+    }
     this.pendingPoiBeginContacts.length = 0;
     this.pendingPoiEndContacts.length = 0;
     this.pendingEssenceBeginContacts.length = 0;
     logger.info({ roomId: this.roomId }, 'GameRoom disposed');
   }
 
-  private spawnEnemies(): void {
-    const count = getEnemyCount(this.gameState.players.length, 'early');
-    const enemyPrng = createRng(this.gameState.session.runSeed ^ OFFSET_ENEMY_SPAWN);
+  private resolveVoteIfComplete(): void {
+    if (this.gameState.runProposal === null) return;
+    const activePlayers = this.gameState.players.filter(p => !p.isFrozen);
+    if (activePlayers.length === 0) return;
+    if (activePlayers.some(p => p.class === null)) return;
+    if (!activePlayers.every(p => this.runVotes.get(p.id) === 'accept')) return;
+    const proposal = this.gameState.runProposal;
+    const startDelta: DeltaEventMsg = { type: 'run:starting', biome: proposal.biome, difficulty: proposal.difficulty };
+    this.broadcast(EventNames.DELTA, startDelta);
+    this.startDungeon(proposal.difficulty);
+    logger.info({ roomId: this.roomId, difficulty: proposal.difficulty }, 'run starting — unanimous accept');
+  }
+
+  private startDungeon(difficulty: DifficultyTier): void {
+    this.gameState.session.phase = 'dungeon';
+    this.gameState.session.difficulty = difficulty;
+    this.gameState.runProposal = null;
+    for (const p of this.gameState.players) p.nearPoiId = null;
+    const floorRng = createRng(this.gameState.session.runSeed ^ OFFSET_FLOOR_LAYOUT);
+    const roomRng  = createRng(this.gameState.session.runSeed ^ OFFSET_ROOM_POOL);
+    this.gameState.floorLayout = generateFloorLayout(floorRng, roomRng, 'early', GRASSLAND_ROOM_POOL);
+    this.loadLevel(1);
+    const snapshot: SnapshotMsg = { type: 'snapshot', state: this.gameState };
+    this.broadcast(EventNames.SNAPSHOT, snapshot);
+    logger.info({ roomId: this.roomId, difficulty }, 'dungeon phase started');
+  }
+
+  private spawnEnemies(tier: 'early' | 'mid' | 'late', levelIndex: number): void {
+    const count = getEnemyCount(this.gameState.players.length, tier);
+    const enemyPrng = createRng(this.gameState.session.runSeed ^ (OFFSET_ENEMY_SPAWN | (levelIndex << 8)));
+    const difficulty = this.gameState.session.difficulty ?? DifficultyTier.EASY;
     for (let i = 0; i < count; i++) {
-      const id = `enemy-${i}`;
-      const x = 200 + enemyPrng() * 1520;
+      const id = `enemy-L${levelIndex}-${i}`;
+      const x = 600 + enemyPrng() * 1120;
       const y = 200 + enemyPrng() * 680;
       const enemy: EnemyState = {
         id,
@@ -329,7 +471,7 @@ export class GameRoom extends Room {
         y,
         hp: 60,
         maxHp: 60,
-        difficultyTier: DifficultyTier.EASY,
+        difficultyTier: difficulty,
         isAlive: true,
         fsmState: EnemyFSMState.IDLE,
         attackCooldownTicks: 0,
@@ -339,7 +481,200 @@ export class GameRoom extends Room {
       this.enemyBodies.set(id, body);
       this.enemyAttackCooldowns.set(id, 0);
     }
-    logger.info({ roomId: this.roomId, count }, 'enemies spawned');
+    logger.info({ roomId: this.roomId, count, tier, levelIndex }, 'enemies spawned');
+  }
+
+  private spawnWave(waveNum: number, tier: 'early' | 'mid' | 'late', levelIndex: number): void {
+    // Remove dead bodies from previous wave
+    for (const enemy of this.gameState.enemies) {
+      if (!enemy.isAlive) {
+        const body = this.enemyBodies.get(enemy.id);
+        if (body) {
+          this.physicsWorld.destroyBody(body);
+          this.enemyBodies.delete(enemy.id);
+        }
+        this.enemyAttackCooldowns.delete(enemy.id);
+      }
+    }
+    this.gameState.enemies = this.gameState.enemies.filter(e => e.isAlive);
+
+    const baseCount = getEnemyCount(this.gameState.players.length, tier);
+    const scaleIndex = Math.min(waveNum - 1, WAVE_ENEMY_SCALE.length - 1);
+    const count = Math.max(1, Math.ceil(baseCount * (WAVE_ENEMY_SCALE[scaleIndex] ?? 1.0)));
+    const waveRng = createRng(
+      this.gameState.session.runSeed ^ (OFFSET_ENEMY_SPAWN | (levelIndex << 8) | (waveNum << 4))
+    );
+    const difficulty = this.gameState.session.difficulty ?? DifficultyTier.EASY;
+
+    for (let i = 0; i < count; i++) {
+      const id = `enemy-L${levelIndex}-W${waveNum}-${i}`;
+      const x = 1200 + waveRng() * 650;  // right-half spawn: 1200–1850
+      const y = 100  + waveRng() * 880;
+      const enemy: EnemyState = {
+        id, type: EnemyType.GRUNT, x, y,
+        hp: 60, maxHp: 60, difficultyTier: difficulty,
+        isAlive: true, fsmState: EnemyFSMState.IDLE, attackCooldownTicks: 0,
+      };
+      this.gameState.enemies.push(enemy);
+      const body = createEnemyBody(this.physicsWorld, id, x, y);
+      this.enemyBodies.set(id, body);
+      this.enemyAttackCooldowns.set(id, 0);
+    }
+
+    this.waveIndex = waveNum;
+    this.gameState.session.waveIndex = waveNum;
+    this.wavePauseUntil = 0;
+
+    this.broadcast(EventNames.DELTA, {
+      type: 'wave:started' as const,
+      waveIndex: waveNum,
+      totalWaves: this.totalWaves,
+    } satisfies DeltaEventMsg);
+    logger.info({ roomId: this.roomId, levelIndex, waveNum, count, tier }, 'wave started');
+  }
+
+  private checkReturnReady(): void {
+    if (this.gameState.session.phase !== 'post-run') return;
+    const activePlayers = this.gameState.players.filter(p => !p.isFrozen);
+    if (activePlayers.length > 0 && activePlayers.every(p => this.returnReadySet.has(p.id))) {
+      this.resetToHub();
+    }
+  }
+
+  private resetToHub(): void {
+    // Destroy enemy physics bodies
+    for (const [id, body] of this.enemyBodies) {
+      this.physicsWorld.destroyBody(body);
+      this.enemyBodies.delete(id);
+    }
+    this.enemyLayers.clear();
+    // Destroy victory trigger body if present
+    if (this.victoryTriggerBody) {
+      this.physicsWorld.destroyBody(this.victoryTriggerBody);
+      this.victoryTriggerBody = null;
+    }
+    // Destroy essence sensor bodies
+    for (const [, body] of this.essenceSensorBodies) {
+      this.physicsWorld.destroyBody(body);
+    }
+    this.essenceSensorBodies.clear();
+
+    // Clear game state arrays
+    this.gameState.enemies = [];
+    this.gameState.essenceDrops = [];
+    this.gameState.bonds = [];
+
+    // Reset each player to hub spawn
+    for (let i = 0; i < this.gameState.players.length; i++) {
+      const player = this.gameState.players[i]!;
+      const spawn = SPAWN_POSITIONS[i] ?? { x: 960, y: 540 };
+      player.x = spawn.x;
+      player.y = spawn.y;
+      player.hp = player.maxHp;
+      player.isDown = false;
+      player.isSpirit = false;
+      player.isFrozen = false;
+      player.nearPoiId = null;
+      player.reviveTimerExpiresAt = 0;
+      player.essenceTotal = 0;
+      player.downCount = 0;
+      const body = this.playerBodies.get(player.id);
+      if (body) {
+        body.setPosition(Vec2(toMeters(spawn.x), toMeters(spawn.y)));
+        body.setLinearVelocity(Vec2(0, 0));
+      }
+    }
+
+    // Reset session
+    this.gameState.session.phase = 'hub';
+    this.gameState.session.levelIndex = 0;
+
+    // Clear server-local dungeon state
+    this.returnReadySet.clear();
+    this.inputQueue = [];
+    this.cooldownMap.clear();
+    this.spiritCooldownMap.clear();
+    for (const p of this.gameState.players) {
+      this.cooldownMap.set(p.id, [0, 0, 0, 0]);
+      this.spiritCooldownMap.set(p.id, 0);
+    }
+    this.lastKnownJoystick.clear();
+    this.enemyAttackCooldowns.clear();
+    this.runVotes.clear();
+    this.pendingPoiBeginContacts = [];
+    this.pendingPoiEndContacts = [];
+    this.pendingEssenceBeginContacts = [];
+    this.pendingVictoryContact = false;
+    this.waveIndex = 0;
+    this.totalWaves = 0;
+    this.wavePauseUntil = 0;
+    this.levelObjective = 'clear';
+
+    const snapshot: SnapshotMsg = { type: 'snapshot', state: this.gameState };
+    this.broadcast(EventNames.SNAPSHOT, snapshot);
+    logger.info({ roomId: this.roomId }, 'all players returned to camp — hub reset');
+  }
+
+  private loadLevel(index: number): void {
+    // Clear current enemies
+    for (const body of this.enemyBodies.values()) this.physicsWorld.destroyBody(body);
+    this.enemyBodies.clear();
+    this.enemyLayers.clear();
+    this.enemyAttackCooldowns.clear();
+    this.gameState.enemies = [];
+
+    // Clear essence drops
+    for (const body of this.essenceSensorBodies.values()) this.physicsWorld.destroyBody(body);
+    this.essenceSensorBodies.clear();
+    this.gameState.essenceDrops = [];
+
+    // Clear previous victory trigger
+    if (this.victoryTriggerBody) {
+      this.physicsWorld.destroyBody(this.victoryTriggerBody);
+      this.victoryTriggerBody = null;
+    }
+    this.pendingVictoryContact = false;
+
+    // Auto-revive downed/spirit players; carry downCount (shorter next revive window)
+    for (const player of this.gameState.players) {
+      if (player.isDown || player.isSpirit) {
+        player.isDown = false;
+        player.isSpirit = false;
+        player.reviveTimerExpiresAt = 0;
+        player.hp = REVIVE_HP;
+      }
+      const spawnIdx = this.gameState.players.indexOf(player);
+      const spawn = DUNGEON_SPAWN_POSITIONS[spawnIdx] ?? { x: 400, y: 540 };
+      player.x = spawn.x;
+      player.y = spawn.y;
+      const body = this.playerBodies.get(player.id);
+      if (body) body.setPosition(Vec2(toMeters(spawn.x), toMeters(spawn.y)));
+    }
+
+    this.gameState.session.levelIndex = index;
+
+    if (index >= 4) {
+      // Boss placeholder: empty room with a victory trigger zone at the far end
+      this.victoryTriggerBody = createVictoryTriggerBody(this.physicsWorld, 1700, 540, 120);
+      logger.info({ roomId: this.roomId }, 'boss placeholder level loaded — victory trigger at (1700, 540)');
+    } else if (index === 2) {
+      this.levelObjective = 'survive-waves';
+      this.totalWaves = WAVE_COUNTS['mid'];
+      this.waveIndex = 0;
+      this.wavePauseUntil = 0;
+      this.gameState.session.levelObjective = 'survive-waves';
+      this.gameState.session.waveIndex = 0;
+      this.gameState.session.totalWaves = this.totalWaves;
+      this.spawnWave(1, 'mid', index);
+    } else {
+      this.levelObjective = 'clear';
+      this.waveIndex = 0; this.totalWaves = 0; this.wavePauseUntil = 0;
+      this.gameState.session.levelObjective = 'clear';
+      this.gameState.session.waveIndex = 0;
+      this.gameState.session.totalWaves = 0;
+      const tier = index === 1 ? 'early' : 'late';
+      this.spawnEnemies(tier, index);
+    }
   }
 
   private buildEnemyContext(enemy: EnemyState): EnemyContext {
@@ -385,7 +720,7 @@ export class GameRoom extends Room {
       const body = this.playerBodies.get(player.id);
       if (!body) continue;
 
-      if (player.isFrozen) {
+      if (player.isFrozen || player.class === null) {
         body.setLinearVelocity(Vec2(0, 0));
         continue;
       }
@@ -794,33 +1129,60 @@ export class GameRoom extends Room {
       }
     }
 
-    // ── Level clear: all enemies defeated → level:complete + run:complete ────
+    // ── Level clear / wave objective check ───────────────────────────────────
     if (this.gameState.session.phase === 'dungeon') {
       const enemies = this.gameState.enemies;
-      if (enemies.length > 0 && enemies.every(e => !e.isAlive)) {
-        const levelIndex = this.gameState.session.levelIndex;
-        this.gameState.session.phase = 'post-run';
+      const allEnemiesDead = enemies.length > 0 && enemies.every(e => !e.isAlive);
 
-        this.broadcast(EventNames.DELTA, {
-          type: 'level:complete' as const,
-          levelIndex,
-        } satisfies DeltaEventMsg);
+      if (this.levelObjective === 'survive-waves') {
+        if (allEnemiesDead && this.wavePauseUntil === 0 && this.waveIndex > 0) {
+          const completedWave = this.waveIndex;
+          this.broadcast(EventNames.DELTA, {
+            type: 'wave:complete' as const,
+            waveIndex: completedWave,
+          } satisfies DeltaEventMsg);
 
-        // ponytail: silent reset; E4 will broadcast a new player:downed when the next level loads
-        const nowClear = Date.now();
-        for (const player of this.gameState.players) {
-          if (player.isDown) {
-            player.reviveTimerExpiresAt = nowClear + getReviveWindowMs(player.downCount);
+          if (completedWave >= this.totalWaves) {
+            const levelIndex = this.gameState.session.levelIndex;
+            this.broadcast(EventNames.DELTA, { type: 'level:complete' as const, levelIndex } satisfies DeltaEventMsg);
+            this.loadLevel(levelIndex + 1);
+            this.broadcast(EventNames.SNAPSHOT, { type: 'snapshot', state: this.gameState } satisfies SnapshotMsg);
+            logger.info({ roomId: this.roomId, levelIndex, waves: completedWave }, 'survive-waves level complete');
+          } else {
+            this.wavePauseUntil = Date.now() + WAVE_PAUSE_MS;
+            logger.info({ roomId: this.roomId, completedWave, nextWave: completedWave + 1 }, 'wave cleared — pausing before next wave');
           }
         }
 
-        const totalEssence = this.gameState.players.reduce((sum, p) => sum + (p.essenceTotal ?? 0), 0);
-        this.broadcast(EventNames.DELTA, {
-          type: 'run:complete' as const,
-          totalEssence,
-        } satisfies DeltaEventMsg);
+        if (this.wavePauseUntil > 0 && Date.now() >= this.wavePauseUntil) {
+          this.wavePauseUntil = 0;
+          const nextWave = this.waveIndex + 1;
+          this.spawnWave(nextWave, 'mid', this.gameState.session.levelIndex);
+          this.broadcast(EventNames.SNAPSHOT, { type: 'snapshot', state: this.gameState } satisfies SnapshotMsg);
+        }
+      } else {
+        if (allEnemiesDead) {
+          const levelIndex = this.gameState.session.levelIndex;
+          this.broadcast(EventNames.DELTA, { type: 'level:complete' as const, levelIndex } satisfies DeltaEventMsg);
+          this.loadLevel(levelIndex + 1);
+          this.broadcast(EventNames.SNAPSHOT, { type: 'snapshot', state: this.gameState } satisfies SnapshotMsg);
+          logger.info({ roomId: this.roomId, nextLevel: levelIndex + 1 }, 'level complete — loading next level');
+        }
+      }
+    }
 
-        logger.info({ roomId: this.roomId, levelIndex, totalEssence }, 'level clear — run complete');
+    // ── Boss placeholder: victory trigger contact → run:complete ─────────────
+    if (this.gameState.session.phase === 'dungeon'
+        && this.gameState.session.levelIndex === 4
+        && this.pendingVictoryContact) {
+      this.pendingVictoryContact = false;
+      const totalEssence = this.gameState.players.reduce((sum, p) => sum + (p.essenceTotal ?? 0), 0);
+      this.gameState.session.phase = 'post-run';
+      this.broadcast(EventNames.DELTA, { type: 'run:complete' as const, totalEssence } satisfies DeltaEventMsg);
+      logger.info({ roomId: this.roomId, totalEssence }, 'boss placeholder — victory zone reached, run complete');
+      if (this.victoryTriggerBody) {
+        this.physicsWorld.destroyBody(this.victoryTriggerBody);
+        this.victoryTriggerBody = null;
       }
     }
 
