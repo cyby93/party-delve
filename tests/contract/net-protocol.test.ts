@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { serialize, deserialize, applyDelta, EventNames } from 'net-protocol';
-import type { SnapshotMsg, DeltaEventMsg, InputEventMsg, PlayerPoiEnteredDelta, PlayerPoiExitedDelta, AbilityFiredDelta, EnemyDamagedDelta, PlayerDownedDelta, BondNotificationMsg } from 'net-protocol';
+import type { SnapshotMsg, DeltaEventMsg, InputEventMsg, PlayerPoiEnteredDelta, PlayerPoiExitedDelta, AbilityFiredDelta, EnemyDamagedDelta, PlayerDownedDelta, BondNotificationMsg, ContinueMsg } from 'net-protocol';
 import type { GameState, PlayerState } from 'shared-types';
 import { PlayerClass, SessionColor, EnemyType, DifficultyTier, EnemyFSMState, BondType } from 'shared-types';
 
@@ -481,6 +481,21 @@ describe('net-protocol contract tests', () => {
       state.runProposal = { biome: 'grassland', difficulty: DifficultyTier.EASY, proposedBy: 'p1' };
       const msg = { type: 'snapshot' as const, state };
       expect(deserialize<typeof msg>(serialize(msg))).toEqual(msg);
+    });
+  });
+
+  describe('Story 5.4 ContinueMsg round-trip', () => {
+    it('ContinueMsg survives serialize → deserialize', () => {
+      const msg: ContinueMsg = { type: 'bond:continue' };
+      expect(deserialize<ContinueMsg>(serialize(msg))).toEqual(msg);
+    });
+
+    it('EventNames.CONTINUE matches wire string', () => {
+      expect(EventNames.CONTINUE).toBe('bond:continue');
+    });
+
+    it('EventNames.BOND_NOTIFICATION matches wire string', () => {
+      expect(EventNames.BOND_NOTIFICATION).toBe('bond:notification');
     });
   });
 

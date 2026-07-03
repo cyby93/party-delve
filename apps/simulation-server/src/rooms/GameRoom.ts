@@ -2,7 +2,7 @@ import { Room, Client, CloseCode } from 'colyseus';
 import type { GameState, PlayerState } from 'shared-types';
 import { TICK_RATE_HZ, RECONNECT_GRACE_S, SNAPSHOT_INTERVAL_S, MAX_PLAYERS, PlayerClass, SessionColor, INTERACTIVE_HUB_POIS } from 'shared-types';
 import { EventNames } from 'net-protocol';
-import type { InputEventMsg, SnapshotMsg, DeltaEventMsg, CooldownUpdateMsg, SpiritFormMsg, RunProposeMsg, VoteMsg } from 'net-protocol';
+import type { InputEventMsg, SnapshotMsg, DeltaEventMsg, CooldownUpdateMsg, SpiritFormMsg, RunProposeMsg, VoteMsg, BondNotificationMsg } from 'net-protocol';
 import { randomInt } from 'node:crypto';
 import { Vec2, Body, Contact, Fixture } from 'planck';
 import type { World } from 'planck';
@@ -12,11 +12,11 @@ import {
   createVictoryTriggerBody,
 } from '../physics/world.js';
 import type { PoiBeginContactEvent, PoiEndContactEvent, EssenceBeginContactEvent, PhysicsBodyData } from '../physics/world.js';
-import { createRng, tickEnemy, dispatchAbility, getEnemyCount, applyDamage, isInHitZone, ABILITY_HIT_RANGE_PX, ABILITY_HIT_RADIUS_PX, applyPlayerDamage, ENEMY_MELEE_DAMAGE, ENEMY_MELEE_RANGE_PX, ENEMY_ATTACK_COOLDOWN_MS, REVIVE_RADIUS_PX, REVIVE_HP, SPIRIT_ABILITY_COOLDOWN_MS, generateFloorLayout, GRASSLAND_ROOM_POOL, WAVE_COUNTS, WAVE_PAUSE_MS, WAVE_ENEMY_SCALE, bondKey, getProximityBuffedPlayers, getFateBuffedPlayers, getFateBondWipeTargets, getProximityDrainTargets, BOND_PROXIMITY_RANGE_PX, BOND_DRAIN_THRESHOLD_S, BOND_DRAIN_HP_PER_TICK, BOND_DAMAGE_MULT, BOND_SPEED_MULT } from 'game-rules';
+import { createRng, tickEnemy, dispatchAbility, getEnemyCount, applyDamage, isInHitZone, ABILITY_HIT_RANGE_PX, ABILITY_HIT_RADIUS_PX, applyPlayerDamage, ENEMY_MELEE_DAMAGE, ENEMY_MELEE_RANGE_PX, ENEMY_ATTACK_COOLDOWN_MS, REVIVE_RADIUS_PX, REVIVE_HP, SPIRIT_ABILITY_COOLDOWN_MS, generateFloorLayout, GRASSLAND_ROOM_POOL, WAVE_COUNTS, WAVE_PAUSE_MS, WAVE_ENEMY_SCALE, bondKey, getProximityBuffedPlayers, getFateBuffedPlayers, getFateBondWipeTargets, getProximityDrainTargets, BOND_PROXIMITY_RANGE_PX, BOND_DRAIN_THRESHOLD_S, BOND_DRAIN_HP_PER_TICK, BOND_DAMAGE_MULT, BOND_SPEED_MULT, assignBond, BOND_DESCRIPTIONS, BOND_MECHANICS } from 'game-rules';
 import type { BehaviorLayer, EnemyContext, EnemyAIEvent } from 'game-rules';
 import { CLASS_DEFINITIONS } from 'shared-types';
 import type { EnemyState } from 'shared-types';
-import { EnemyType, DifficultyTier, EnemyFSMState, OFFSET_ENEMY_SPAWN, OFFSET_FLOOR_LAYOUT, OFFSET_ROOM_POOL } from 'shared-types';
+import { EnemyType, DifficultyTier, EnemyFSMState, OFFSET_ENEMY_SPAWN, OFFSET_FLOOR_LAYOUT, OFFSET_ROOM_POOL, OFFSET_SPIRIT_BOND } from 'shared-types';
 import { createEnemyBody } from '../physics/world.js';
 import { createBondSensor, extractBondSensorContact } from '../physics/sensors.js';
 import type { BondProximityEvent } from '../physics/sensors.js';
@@ -129,6 +129,8 @@ export class GameRoom extends Room {
   private totalWaves = 0;
   private wavePauseUntil = 0;
   private returnReadySet = new Set<string>();
+  private bondRng!: () => number;
+  private bondMomentNextLevel = -1; // -1 = not in bond-moment; ≥0 = next level to load on CONTINUE
 
   async onCreate(_options: unknown): Promise<void> {
     this.roomId = generateRoomCode();
@@ -250,6 +252,15 @@ export class GameRoom extends Room {
       if (this.gameState.session.phase !== 'post-run') return;
       this.returnReadySet.add(client.sessionId);
       this.checkReturnReady();
+    });
+
+    this.onMessage(EventNames.CONTINUE, (_client: Client) => {
+      if (this.bondMomentNextLevel === -1 || this.gameState.session.phase !== 'dungeon') return;
+      const nextLevel = this.bondMomentNextLevel;
+      this.bondMomentNextLevel = -1;
+      this.loadLevel(nextLevel);
+      this.broadcast(EventNames.SNAPSHOT, { type: 'snapshot', state: this.gameState } satisfies SnapshotMsg);
+      logger.info({ roomId: this.roomId, nextLevel }, 'bond-moment CONTINUE — loading next level');
     });
 
     this.onMessage('debug:kill-all', (_client: Client) => {
@@ -484,6 +495,8 @@ export class GameRoom extends Room {
     const floorRng = createRng(this.gameState.session.runSeed ^ OFFSET_FLOOR_LAYOUT);
     const roomRng  = createRng(this.gameState.session.runSeed ^ OFFSET_ROOM_POOL);
     this.gameState.floorLayout = generateFloorLayout(floorRng, roomRng, 'early', GRASSLAND_ROOM_POOL);
+    this.bondRng = createRng(this.gameState.session.runSeed ^ OFFSET_SPIRIT_BOND);
+    this.bondMomentNextLevel = -1;
     this.loadLevel(1);
     const snapshot: SnapshotMsg = { type: 'snapshot', state: this.gameState };
     this.broadcast(EventNames.SNAPSHOT, snapshot);
@@ -597,6 +610,7 @@ export class GameRoom extends Room {
     this.gameState.enemies = [];
     this.gameState.essenceDrops = [];
     this.gameState.activeBonds = [];
+    this.bondMomentNextLevel = -1;
 
     // Remove bond sensor fixtures from player bodies
     for (const fixture of this.bondSensorFixtures.values()) {
@@ -658,6 +672,59 @@ export class GameRoom extends Room {
     const snapshot: SnapshotMsg = { type: 'snapshot', state: this.gameState };
     this.broadcast(EventNames.SNAPSHOT, snapshot);
     logger.info({ roomId: this.roomId }, 'all players returned to camp — hub reset');
+  }
+
+  private enterBondMoment(levelIndex: number): void {
+    if (levelIndex >= 4) {
+      this.loadLevel(levelIndex + 1);
+      this.broadcast(EventNames.SNAPSHOT, { type: 'snapshot', state: this.gameState } satisfies SnapshotMsg);
+      return;
+    }
+    const result = assignBond(this.gameState, this.bondRng);
+    if (!result.ok) {
+      logger.warn({ roomId: this.roomId, error: result.error }, 'assignBond failed — skipping bond-moment');
+      this.loadLevel(levelIndex + 1);
+      this.broadcast(EventNames.SNAPSHOT, { type: 'snapshot', state: this.gameState } satisfies SnapshotMsg);
+      return;
+    }
+    const { playerA, playerB, bondType, bondColor } = result.value;
+    const key = bondKey(playerA, playerB);
+
+    this.broadcast(EventNames.DELTA, {
+      type: 'bond:assigned' as const,
+      playerA,
+      playerB,
+      bondType,
+      bondColor,
+    } satisfies DeltaEventMsg);
+
+    const bondNotif: BondNotificationMsg = {
+      type: 'bond:notification',
+      playerA,
+      playerB,
+      bondType,
+      bondColor,
+      bondDescription: BOND_DESCRIPTIONS[bondType],
+      bondMechanic:    BOND_MECHANICS[bondType],
+    };
+    for (const id of [playerA, playerB]) {
+      const target = this.clients.find(c => c.sessionId === id);
+      if (target) target.send(EventNames.BOND_NOTIFICATION, bondNotif);
+    }
+
+    const bodyA = this.playerBodies.get(playerA);
+    if (bodyA) {
+      const prevFixture = this.bondSensorFixtures.get(key);
+      if (prevFixture) prevFixture.getBody().destroyFixture(prevFixture);
+      const fixture = createBondSensor(bodyA, toMeters(BOND_PROXIMITY_RANGE_PX), key, playerB);
+      this.bondSensorFixtures.set(key, fixture);
+    } else {
+      logger.warn({ roomId: this.roomId, playerA }, 'bond sensor skipped — player body missing');
+    }
+
+    this.bondMomentNextLevel = levelIndex + 1;
+    this.broadcast(EventNames.SNAPSHOT, { type: 'snapshot', state: this.gameState } satisfies SnapshotMsg);
+    logger.info({ roomId: this.roomId, levelIndex, playerA, playerB, bondType }, 'bond assigned — bond-moment pause started');
   }
 
   private loadLevel(index: number): void {
@@ -1278,6 +1345,7 @@ export class GameRoom extends Room {
       if (players.length > 0 && players.every(p => p.isSpirit)) {
         const partialEssence = players.reduce((sum, p) => sum + (p.essenceTotal ?? 0), 0);
         this.gameState.session.phase = 'post-run';
+        this.bondMomentNextLevel = -1;
         this.broadcast(EventNames.DELTA, {
           type: 'run:failed' as const,
           partialEssence,
@@ -1292,7 +1360,7 @@ export class GameRoom extends Room {
       const allEnemiesDead = enemies.length > 0 && enemies.every(e => !e.isAlive);
 
       if (this.levelObjective === 'survive-waves') {
-        if (allEnemiesDead && this.wavePauseUntil === 0 && this.waveIndex > 0) {
+        if (this.bondMomentNextLevel === -1 && allEnemiesDead && this.wavePauseUntil === 0 && this.waveIndex > 0) {
           const completedWave = this.waveIndex;
           this.broadcast(EventNames.DELTA, {
             type: 'wave:complete' as const,
@@ -1302,8 +1370,7 @@ export class GameRoom extends Room {
           if (completedWave >= this.totalWaves) {
             const levelIndex = this.gameState.session.levelIndex;
             this.broadcast(EventNames.DELTA, { type: 'level:complete' as const, levelIndex } satisfies DeltaEventMsg);
-            this.loadLevel(levelIndex + 1);
-            this.broadcast(EventNames.SNAPSHOT, { type: 'snapshot', state: this.gameState } satisfies SnapshotMsg);
+            this.enterBondMoment(levelIndex);
             logger.info({ roomId: this.roomId, levelIndex, waves: completedWave }, 'survive-waves level complete');
           } else {
             this.wavePauseUntil = Date.now() + WAVE_PAUSE_MS;
@@ -1318,12 +1385,11 @@ export class GameRoom extends Room {
           this.broadcast(EventNames.SNAPSHOT, { type: 'snapshot', state: this.gameState } satisfies SnapshotMsg);
         }
       } else {
-        if (allEnemiesDead) {
+        if (this.bondMomentNextLevel === -1 && allEnemiesDead) {
           const levelIndex = this.gameState.session.levelIndex;
           this.broadcast(EventNames.DELTA, { type: 'level:complete' as const, levelIndex } satisfies DeltaEventMsg);
-          this.loadLevel(levelIndex + 1);
-          this.broadcast(EventNames.SNAPSHOT, { type: 'snapshot', state: this.gameState } satisfies SnapshotMsg);
-          logger.info({ roomId: this.roomId, nextLevel: levelIndex + 1 }, 'level complete — loading next level');
+          this.enterBondMoment(levelIndex);
+          logger.info({ roomId: this.roomId, levelIndex }, 'level complete — entering bond moment');
         }
       }
     }

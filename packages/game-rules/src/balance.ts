@@ -103,6 +103,16 @@ export function getEnemyCount(
   return Math.ceil(playerCount * ENEMY_RATIO[levelTier]);
 }
 
+export const BOND_DESCRIPTIONS: Record<BondType, string> = {
+  proximity: 'Your spirits entwine — drawing power from closeness, but paying a toll when you linger.',
+  fate:      'Your fates are now bound. What befalls one, befalls the other.',
+};
+
+export const BOND_MECHANICS: Record<BondType, string> = {
+  proximity: '+20% damage when in range · HP drain after 5 s together',
+  fate:      '+20% movement speed always · If one falls, both fall',
+};
+
 // ponytail: type-based colors for alpha; per-bond-instance colors if Story 5.5 needs them
 export const BOND_TYPE_COLORS: Record<BondType, string> = {
   proximity: '#6ea8d8',  // accent-spirit — matches 5.1 contract test fixture

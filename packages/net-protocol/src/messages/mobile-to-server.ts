@@ -29,3 +29,7 @@ export interface VoteMsg {
 export interface ReturnToCampMsg {
   type: 'return:to-camp';
 }
+
+export interface ContinueMsg {
+  type: 'bond:continue';
+}

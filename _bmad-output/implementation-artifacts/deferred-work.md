@@ -4,6 +4,22 @@ Items surfaced during reviews that are real findings but pre-exist the triggerin
 
 ---
 
+## Deferred from: code review of 5-4-bond-assignment-integration-at-level-completion (2026-07-03)
+
+**D1 — Bond-moment state not visible to reconnecting client**
+When a player disconnects and reconnects during bond-moment, the snapshot on reconnect contains `phase: 'dungeon'` with no enemies and the new bond, but no signal that the server is paused awaiting CONTINUE. The mobile client can't show the bond UI or prompt the player. Out of scope for 5.4 — story 5.6 covers mobile bond card UX.
+
+**D2 — Bond sensor fixture not cleaned when non-owner (playerB) leaves**
+Bond sensor is attached to playerA's body. When playerB leaves, the `onLeave` cleanup loop checks `fixture.getBody() === expireBody` (playerB's body), which never matches. The stale fixture lives on playerA's body until `resetToHub`. Inert in practice (no contacts with the departed body), but wastes broadphase slots. Pre-existing 5.3 issue.
+
+**D3 — `selectBondPair` is statistically biased at 3 players**
+With 3 players, the slot-shift mechanic produces pair (A,C) with 2× the probability of (A,B) and (B,C). All three pairs have an equal 1-in-3 chance intuitively but the implementation is skewed. Pre-existing 5.3 issue in `bonds.ts:19`.
+
+**D4 — `bondRng` reuses the same `runSeed` on a 2nd run in the same room**
+`runSeed` is set once at room creation and never re-randomized on subsequent runs. `startDungeon` always creates `bondRng = createRng(runSeed ^ OFFSET_SPIRIT_BOND)`, so every run in the same room produces an identical bond sequence. Pre-existing design from epic 4's RNG system.
+
+---
+
 ## From INFRA-001 — cascade auto-advance (2026-06-13)
 
 **D1 — All-failed terminal state not handled in dispatch loop**
