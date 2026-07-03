@@ -4,7 +4,7 @@ import { TICK_RATE_HZ, RECONNECT_GRACE_S, SNAPSHOT_INTERVAL_S, MAX_PLAYERS, Play
 import { EventNames } from 'net-protocol';
 import type { InputEventMsg, SnapshotMsg, DeltaEventMsg, CooldownUpdateMsg, SpiritFormMsg, RunProposeMsg, VoteMsg } from 'net-protocol';
 import { randomInt } from 'node:crypto';
-import { Vec2, Body, Contact } from 'planck';
+import { Vec2, Body, Contact, Fixture } from 'planck';
 import type { World } from 'planck';
 import {
   createPhysicsWorld, createPlayerBody, createPoiSensorBody, createEssenceSensorBody,
@@ -12,12 +12,14 @@ import {
   createVictoryTriggerBody,
 } from '../physics/world.js';
 import type { PoiBeginContactEvent, PoiEndContactEvent, EssenceBeginContactEvent, PhysicsBodyData } from '../physics/world.js';
-import { createRng, tickEnemy, dispatchAbility, getEnemyCount, applyDamage, isInHitZone, ABILITY_HIT_RANGE_PX, ABILITY_HIT_RADIUS_PX, applyPlayerDamage, ENEMY_MELEE_DAMAGE, ENEMY_MELEE_RANGE_PX, ENEMY_ATTACK_COOLDOWN_MS, REVIVE_RADIUS_PX, REVIVE_HP, SPIRIT_ABILITY_COOLDOWN_MS, generateFloorLayout, GRASSLAND_ROOM_POOL, WAVE_COUNTS, WAVE_PAUSE_MS, WAVE_ENEMY_SCALE } from 'game-rules';
+import { createRng, tickEnemy, dispatchAbility, getEnemyCount, applyDamage, isInHitZone, ABILITY_HIT_RANGE_PX, ABILITY_HIT_RADIUS_PX, applyPlayerDamage, ENEMY_MELEE_DAMAGE, ENEMY_MELEE_RANGE_PX, ENEMY_ATTACK_COOLDOWN_MS, REVIVE_RADIUS_PX, REVIVE_HP, SPIRIT_ABILITY_COOLDOWN_MS, generateFloorLayout, GRASSLAND_ROOM_POOL, WAVE_COUNTS, WAVE_PAUSE_MS, WAVE_ENEMY_SCALE, bondKey, getProximityBuffedPlayers, getFateBuffedPlayers, getFateBondWipeTargets, getProximityDrainTargets, BOND_PROXIMITY_RANGE_PX, BOND_DRAIN_THRESHOLD_S, BOND_DRAIN_HP_PER_TICK, BOND_DAMAGE_MULT, BOND_SPEED_MULT } from 'game-rules';
 import type { BehaviorLayer, EnemyContext, EnemyAIEvent } from 'game-rules';
 import { CLASS_DEFINITIONS } from 'shared-types';
 import type { EnemyState } from 'shared-types';
 import { EnemyType, DifficultyTier, EnemyFSMState, OFFSET_ENEMY_SPAWN, OFFSET_FLOOR_LAYOUT, OFFSET_ROOM_POOL } from 'shared-types';
 import { createEnemyBody } from '../physics/world.js';
+import { createBondSensor, extractBondSensorContact } from '../physics/sensors.js';
+import type { BondProximityEvent } from '../physics/sensors.js';
 import { logger } from '../logger.js';
 
 // Distinct session colors assigned per player slot index
@@ -116,6 +118,12 @@ export class GameRoom extends Room {
   private runVotes = new Map<string, 'accept' | 'decline'>();
   private victoryTriggerBody: Body | null = null;
   private pendingVictoryContact = false;
+  // ── Bond proximity tracking ───────────────────────────────────────────────
+  private bondSensorFixtures = new Map<string, Fixture>(); // bondKey → sensor fixture on playerA's body
+  private bondsInRange        = new Set<string>();          // bondKeys currently in planck sensor overlap
+  private bondEnterTime       = new Map<string, number>();  // bondKey → epoch ms when pair entered range
+  private pendingBondProximityBegin: BondProximityEvent[] = [];
+  private pendingBondProximityEnd:   BondProximityEvent[] = [];
   private levelObjective: 'clear' | 'survive-waves' = 'clear';
   private waveIndex = 0;
   private totalWaves = 0;
@@ -289,10 +297,15 @@ export class GameRoom extends Room {
           }
         }
       }
+      // Bond proximity sensor
+      const bondBeginEvt = extractBondSensorContact(contact);
+      if (bondBeginEvt) this.pendingBondProximityBegin.push(bondBeginEvt);
     });
     this.physicsWorld.on('end-contact', (contact: Contact) => {
       const evt = extractPoiEndContact(contact);
       if (evt) this.pendingPoiEndContacts.push(evt);
+      const bondEndEvt = extractBondSensorContact(contact);
+      if (bondEndEvt) this.pendingBondProximityEnd.push(bondEndEvt);
     });
 
     this.tickTimer = setInterval(() => {
@@ -349,6 +362,15 @@ export class GameRoom extends Room {
         this.physicsWorld.destroyBody(leaveBody);
         this.playerBodies.delete(client.sessionId);
       }
+      // Remove any bond sensor fixtures associated with this player (body already destroyed)
+      for (const [key, fixture] of this.bondSensorFixtures) {
+        if (fixture.getBody() === leaveBody) {
+          this.bondSensorFixtures.delete(key);
+          this.bondsInRange.delete(key);
+          this.bondEnterTime.delete(key);
+        }
+      }
+      this.gameState.activeBonds = this.gameState.activeBonds.filter(b => b.playerA !== client.sessionId && b.playerB !== client.sessionId);
       const delta = { type: 'player:left' as const, playerId: client.sessionId } satisfies DeltaEventMsg;
       this.broadcast(EventNames.DELTA, delta);
       logger.info({ roomId: this.roomId, clientId: client.sessionId }, 'player left (consented)');
@@ -390,6 +412,15 @@ export class GameRoom extends Room {
         this.physicsWorld.destroyBody(expireBody);
         this.playerBodies.delete(client.sessionId);
       }
+      // Remove any bond sensor fixtures associated with this player (body already destroyed)
+      for (const [key, fixture] of this.bondSensorFixtures) {
+        if (fixture.getBody() === expireBody) {
+          this.bondSensorFixtures.delete(key);
+          this.bondsInRange.delete(key);
+          this.bondEnterTime.delete(key);
+        }
+      }
+      this.gameState.activeBonds = this.gameState.activeBonds.filter(b => b.playerA !== client.sessionId && b.playerB !== client.sessionId);
       const delta = { type: 'player:left' as const, playerId: client.sessionId } satisfies DeltaEventMsg;
       this.broadcast(EventNames.DELTA, delta);
       logger.info({ roomId: this.roomId, clientId: client.sessionId }, 'reconnect grace expired — player removed');
@@ -408,6 +439,9 @@ export class GameRoom extends Room {
       this.physicsWorld.destroyBody(body);
     }
     this.playerBodies.clear();
+    this.bondSensorFixtures.clear();
+    this.bondsInRange.clear();
+    this.bondEnterTime.clear();
     for (const body of this.enemyBodies.values()) {
       this.physicsWorld.destroyBody(body);
     }
@@ -564,6 +598,17 @@ export class GameRoom extends Room {
     this.gameState.essenceDrops = [];
     this.gameState.activeBonds = [];
 
+    // Remove bond sensor fixtures from player bodies
+    for (const fixture of this.bondSensorFixtures.values()) {
+      const body = fixture.getBody();
+      body.destroyFixture(fixture);
+    }
+    this.bondSensorFixtures.clear();
+    this.bondsInRange.clear();
+    this.bondEnterTime.clear();
+    this.pendingBondProximityBegin.length = 0;
+    this.pendingBondProximityEnd.length = 0;
+
     // Reset each player to hub spawn
     for (let i = 0; i < this.gameState.players.length; i++) {
       const player = this.gameState.players[i]!;
@@ -635,6 +680,12 @@ export class GameRoom extends Room {
     }
     this.pendingVictoryContact = false;
 
+    // Clear bond proximity tracking so drain doesn't fire immediately on level entry
+    this.bondsInRange.clear();
+    this.bondEnterTime.clear();
+    this.pendingBondProximityBegin.length = 0;
+    this.pendingBondProximityEnd.length = 0;
+
     // Auto-revive downed/spirit players; carry downCount (shorter next revive window)
     for (const player of this.gameState.players) {
       if (player.isDown || player.isSpirit) {
@@ -703,6 +754,14 @@ export class GameRoom extends Room {
     this.tickCount++;
     this.gameState.tick = this.tickCount;
 
+    // Pre-compute bond buff sets for this tick (empty unless activeBonds is populated by 5.4)
+    const proximityBuffed = this.gameState.activeBonds.length > 0
+      ? getProximityBuffedPlayers(this.gameState.activeBonds, this.bondsInRange)
+      : new Set<string>();
+    const fateBuffed = this.gameState.activeBonds.length > 0
+      ? getFateBuffedPlayers(this.gameState.activeBonds)
+      : new Set<string>();
+
     // Drain joystick events into persistent map (latest entry per player wins).
     // WARNING: both this loop and the ability loop below read inputQueue before it is cleared.
     // Do not move the inputQueue.length = 0 clear above either loop.
@@ -730,9 +789,10 @@ export class GameRoom extends Room {
       const jy = joystick?.y ?? 0;
       const inDeadzone = Math.abs(jx) < 0.05 && Math.abs(jy) < 0.05;
 
+      const speed = fateBuffed.has(player.id) ? SPEED * BOND_SPEED_MULT : SPEED;
       body.setLinearVelocity(inDeadzone
         ? Vec2(0, 0)
-        : Vec2(toMeters(jx * SPEED), toMeters(jy * SPEED))
+        : Vec2(toMeters(jx * speed), toMeters(jy * speed))
       );
     }
 
@@ -818,6 +878,23 @@ export class GameRoom extends Room {
     }
     this.pendingEssenceBeginContacts.length = 0;
 
+    // ── Flush bond proximity contacts ────────────────────────────────────────
+    if (this.gameState.session.phase === 'dungeon') {
+      const nowBond = Date.now();
+      for (const { bondKey: key } of this.pendingBondProximityBegin) {
+        if (!this.bondsInRange.has(key)) {
+          this.bondsInRange.add(key);
+          this.bondEnterTime.set(key, nowBond);
+        }
+      }
+      for (const { bondKey: key } of this.pendingBondProximityEnd) {
+        this.bondsInRange.delete(key);
+        this.bondEnterTime.delete(key);
+      }
+    }
+    this.pendingBondProximityBegin.length = 0;
+    this.pendingBondProximityEnd.length = 0;
+
     // ── Enemy AI phase ──────────────────────────────────────────────────────────
     // Loop is no-op until enemies are spawned (Story 3.3+)
     for (const enemy of this.gameState.enemies) {
@@ -901,8 +978,11 @@ export class GameRoom extends Room {
         const isDirectional = abilityDef.inputType !== 'TAP';
         const hitRange  = ABILITY_HIT_RANGE_PX[player.class][abilityIndex] ?? 0;
         const hitRadius = ABILITY_HIT_RADIUS_PX[player.class][abilityIndex] ?? 60;
-        const damage    = result.value.damage;
-        if (damage <= 0) continue;  // ponytail: skip hit-scan for buff/heal abilities (damage=0 in balance table)
+        const rawDamage = result.value.damage;
+        if (rawDamage <= 0) continue;  // ponytail: skip hit-scan for buff/heal abilities (damage=0 in balance table)
+        const damage = proximityBuffed.has(clientId)
+          ? Math.round(rawDamage * BOND_DAMAGE_MULT)
+          : rawDamage;
 
         for (let ei = 0; ei < this.gameState.enemies.length; ei++) {
           const enemy = this.gameState.enemies[ei]!;
@@ -1046,6 +1126,83 @@ export class GameRoom extends Room {
           }
 
           logger.info({ roomId: this.roomId, playerId: targetPlayer.id, downCount: dmgResult.value.player.downCount, windowMs }, 'player downed');
+
+          // Fate Bond wipe cascade
+          if (this.gameState.activeBonds.length > 0) {
+            const justDowned = [targetPlayer.id];
+            while (justDowned.length > 0) {
+              const downedId = justDowned.pop()!;
+              const wipeTargets = getFateBondWipeTargets(
+                this.gameState.activeBonds,
+                downedId,
+                this.gameState.players,
+              );
+              for (const partnerId of wipeTargets) {
+                const partnerIdx = this.gameState.players.findIndex(p => p.id === partnerId);
+                const partner = this.gameState.players[partnerIdx];
+                if (!partner) continue;
+                const wipeResult = applyPlayerDamage(partner, partner.hp);
+                if (!wipeResult.ok) continue; // already down/spirit/frozen
+                this.gameState.players[partnerIdx] = wipeResult.value.player;
+                const wipeWindowMs = wipeResult.value.reviveWindowMs!;
+                this.gameState.players[partnerIdx]!.reviveTimerExpiresAt = nowMelee + wipeWindowMs;
+                this.broadcast(EventNames.DELTA, {
+                  type: 'player:hp-updated' as const,
+                  playerId: partnerId,
+                  hp: 0,
+                } satisfies DeltaEventMsg);
+                this.broadcast(EventNames.DELTA, {
+                  type: 'player:downed' as const,
+                  playerId: partnerId,
+                  downCount: wipeResult.value.player.downCount,
+                  reviveWindowMs: wipeWindowMs,
+                } satisfies DeltaEventMsg);
+                const wipeClient = this.clients.find(c => c.sessionId === partnerId);
+                if (wipeClient) {
+                  wipeClient.send(EventNames.SPIRIT_FORM, { type: 'spirit:form', isActive: false } satisfies SpiritFormMsg);
+                }
+                logger.info({ roomId: this.roomId, playerId: partnerId, downedBy: downedId }, 'fate bond wipe — partner downed');
+                justDowned.push(partnerId); // cascade: partner may also have a Fate Bond
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // ── Proximity bond drain ─────────────────────────────────────────────────
+    if (this.gameState.session.phase === 'dungeon' && this.gameState.activeBonds.length > 0) {
+      const nowDrain = Date.now();
+      const drainTargets = getProximityDrainTargets(
+        this.gameState.activeBonds,
+        this.bondsInRange,
+        this.bondEnterTime,
+        BOND_DRAIN_THRESHOLD_S * 1000,
+        nowDrain,
+      );
+      for (const { playerA, playerB } of drainTargets) {
+        let drained = false;
+        for (const playerId of [playerA, playerB]) {
+          const pi = this.gameState.players.findIndex(p => p.id === playerId);
+          const player = this.gameState.players[pi];
+          if (!player || player.isDown || player.isSpirit || player.isFrozen) continue;
+          const newHp = Math.max(1, player.hp - BOND_DRAIN_HP_PER_TICK); // ponytail: drain never kills
+          if (newHp !== player.hp) {
+            player.hp = newHp;
+            drained = true;
+            this.broadcast(EventNames.DELTA, {
+              type: 'player:hp-updated' as const,
+              playerId,
+              hp: newHp,
+            } satisfies DeltaEventMsg);
+          }
+        }
+        if (drained) {
+          this.broadcast(EventNames.DELTA, {
+            type: 'bond:price-active' as const,
+            playerA,
+            playerB,
+          } satisfies DeltaEventMsg);
         }
       }
     }

@@ -68,6 +68,12 @@ export type BondAssignedDelta = {
   bondColor: string;
 };
 
+export type BondPriceActiveDelta = {
+  type: 'bond:price-active';
+  playerA: string;
+  playerB: string;
+};
+
 export type EssenceDroppedDelta = {
   type: 'essence:dropped';
   drop: EssenceDrop;
@@ -181,6 +187,7 @@ export type DeltaEventMsg =
   | EnemyMovedDelta
   | EnemyStompedDelta
   | BondAssignedDelta
+  | BondPriceActiveDelta
   | EssenceDroppedDelta
   | EssenceCollectedDelta
   | PlayerPoiEnteredDelta

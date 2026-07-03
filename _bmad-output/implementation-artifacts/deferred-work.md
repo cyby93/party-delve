@@ -614,3 +614,16 @@ With 2 players and 3 `assignBond` calls, all 3 entries share the same pair. No d
 
 **D-5.2-D — N=8 max players and `rng()=0.0` boundary not tested** [`bonds.test.ts`]
 Tests cover N=2 and N=3. N=8 (session maxPlayers) exercises `adjustedB` reaching index 7. `rng()=0.0` pins the exact `idxA=0, idxB=0 → adjustedB=1` path. Both are nice-to-have regression guards against future shift-up refactors.
+
+---
+
+## Deferred from: code review of 5-3-per-tick-bond-effects-proximity-and-fate-bond-types (2026-07-03)
+
+**D-5.3-A — No server-side duplicate-bond guard in `assignBond`** [`game-rules/src/systems/bonds.ts:39`]
+`assignBond` pushes unconditionally; calling it twice for the same pair results in two identical entries in `activeBonds`, causing double drain and double buff. The client-side `applyDelta` dedup prevents this showing in the mirror state, but the server runs the drain loop twice per tick. Story 5.4, which is the only caller of `assignBond`, must guard against re-assigning an already-bonded pair — or add a server-side dedup check in `assignBond` itself before pushing.
+
+**D-5.3-B — Downed/spirit players receive physics movement and Fate speed buff** [`GameRoom.ts:770`]
+The movement loop only guards on `isFrozen` and `class === null`, not `isDown` or `isSpirit`. Downed players can still move their physics body, triggering bond sensor enter/exit contacts and resetting the proximity drain timer for their pair. Pre-existing issue (logged in D-1.5 scope as D22); new consequence with story 5.3 bond drain. Fix: add `|| player.isDown || player.isSpirit` to the movement freeze guard.
+
+**D-5.3-C — `getFateBondWipeTargets` does not filter `isFrozen` partners** [`game-rules/src/systems/bonds.ts:99`]
+The cascade correctly skips `isDown` and `isSpirit` partners, but not `isFrozen` (disconnected-and-in-grace) partners. `applyPlayerDamage` currently rejects frozen players (`ok: false`), which prevents the cascade from including them — but this guard is implicit. If `applyPlayerDamage` is ever relaxed or the function is called from a different context, the frozen check would be missing. Document the invariant or add an explicit `isFrozen` filter to `getFateBondWipeTargets`.

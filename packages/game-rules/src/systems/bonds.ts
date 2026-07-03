@@ -41,3 +41,94 @@ export function assignBond(
 
   return { ok: true, value: { playerA, playerB, bondType, bondColor } };
 }
+
+// ─── Story 5.3: per-tick effects helpers ────────────────────────────────────
+
+/** Stable bond identifier: always playerA+playerB in assignment order. */
+export function bondKey(playerA: string, playerB: string): string {
+  return `${playerA}+${playerB}`;
+}
+
+/**
+ * Returns IDs of players currently buffed by an in-range Proximity Bond.
+ * inRangeKeys: Set of bondKey strings whose planck sensor is overlapping this tick.
+ */
+export function getProximityBuffedPlayers(
+  bonds: BondState[],
+  inRangeKeys: ReadonlySet<string>,
+): Set<string> {
+  const buffed = new Set<string>();
+  for (const bond of bonds) {
+    if (bond.type !== BondType.Proximity) continue;
+    if (!inRangeKeys.has(bondKey(bond.playerA, bond.playerB))) continue;
+    buffed.add(bond.playerA);
+    buffed.add(bond.playerB);
+  }
+  return buffed;
+}
+
+/** Returns IDs of all players in any Fate Bond (speed buff is always active). */
+export function getFateBuffedPlayers(bonds: BondState[]): Set<string> {
+  const buffed = new Set<string>();
+  for (const bond of bonds) {
+    if (bond.type !== BondType.Fate) continue;
+    buffed.add(bond.playerA);
+    buffed.add(bond.playerB);
+  }
+  return buffed;
+}
+
+/**
+ * Returns partner IDs that should be force-downed due to Fate Bond wipe.
+ * downedPlayerId: the player who just became isDown === true this tick.
+ * Skips partners already isDown or isSpirit (no double-wipe).
+ */
+export function getFateBondWipeTargets(
+  bonds: BondState[],
+  downedPlayerId: string,
+  players: ReadonlyArray<{ id: string; isDown: boolean; isSpirit: boolean }>,
+): string[] {
+  const targets: string[] = [];
+  for (const bond of bonds) {
+    if (bond.type !== BondType.Fate) continue;
+    let partnerId: string | null = null;
+    if (bond.playerA === downedPlayerId) partnerId = bond.playerB;
+    else if (bond.playerB === downedPlayerId) partnerId = bond.playerA;
+    if (partnerId === null) continue;
+    const partner = players.find(p => p.id === partnerId);
+    if (!partner || partner.isDown || partner.isSpirit) continue;
+    targets.push(partnerId);
+  }
+  return targets;
+}
+
+export interface ProximityDrainTarget {
+  playerA: string;
+  playerB: string;
+}
+
+/**
+ * Returns Proximity Bond pairs that have been in-range long enough to drain HP.
+ * enterTimes: Map of bondKey → epoch ms when pair entered sensor range.
+ * drainThresholdMs: computed from BOND_DRAIN_THRESHOLD_S * 1000 by caller.
+ */
+export function getProximityDrainTargets(
+  bonds: BondState[],
+  inRangeKeys: ReadonlySet<string>,
+  enterTimes: ReadonlyMap<string, number>,
+  drainThresholdMs: number,
+  nowMs: number,
+): ProximityDrainTarget[] {
+  const result: ProximityDrainTarget[] = [];
+  for (const bond of bonds) {
+    if (bond.type !== BondType.Proximity) continue;
+    const key = bondKey(bond.playerA, bond.playerB);
+    if (!inRangeKeys.has(key)) continue;
+    const enterTime = enterTimes.get(key);
+    if (enterTime === undefined) continue;
+    if (nowMs - enterTime >= drainThresholdMs) {
+      result.push({ playerA: bond.playerA, playerB: bond.playerB });
+    }
+  }
+  return result;
+}

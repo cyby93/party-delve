@@ -484,6 +484,19 @@ describe('net-protocol contract tests', () => {
     });
   });
 
+  describe('Story 5.3 bond:price-active contract', () => {
+    it('BondPriceActiveDelta survives serialize → deserialize', () => {
+      const delta: DeltaEventMsg = { type: 'bond:price-active', playerA: 'p0', playerB: 'p1' };
+      expect(deserialize<DeltaEventMsg>(serialize(delta))).toEqual(delta);
+    });
+
+    it('applyDelta bond:price-active returns state unchanged', () => {
+      const state = mockGameState();
+      const delta: DeltaEventMsg = { type: 'bond:price-active', playerA: 'p0', playerB: 'p1' };
+      expect(applyDelta(state, delta)).toBe(state); // same reference — no mutation
+    });
+  });
+
   describe('Story 5.1 bond contract round-trips', () => {
     it('BondAssignedDelta survives serialize → deserialize', () => {
       const delta = {

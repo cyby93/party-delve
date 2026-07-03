@@ -135,6 +135,8 @@ export function applyDelta(state: GameState, evt: DeltaEventMsg): GameState {
           { playerA: evt.playerA, playerB: evt.playerB, type: evt.bondType, color: evt.bondColor },
         ],
       };
+    case 'bond:price-active':
+      return state; // ponytail: visual indicator only; HP changes come via separate player:hp-updated deltas
     case 'ability:fired':
       return state;  // ponytail: no-op on state — visual effect only; DungeonScreen reads raw delta
     case 'spirit-ability:fired':

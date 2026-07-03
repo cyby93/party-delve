@@ -108,3 +108,10 @@ export const BOND_TYPE_COLORS: Record<BondType, string> = {
   proximity: '#6ea8d8',  // accent-spirit — matches 5.1 contract test fixture
   fate:      '#f5a623',  // warm amber
 };
+
+// ── Spirit Bond effects ───────────────────────────────────────────────────────
+export const BOND_PROXIMITY_RANGE_PX = 200;  // planck sensor radius — tunable
+export const BOND_DRAIN_THRESHOLD_S  = 5;    // seconds in-range before drain starts
+export const BOND_DRAIN_HP_PER_TICK  = 1;    // HP drained per 30hz tick (~30/s at threshold)
+export const BOND_DAMAGE_MULT        = 1.2;  // Proximity buff: +20% damage
+export const BOND_SPEED_MULT         = 1.2;  // Fate buff: +20% movement speed

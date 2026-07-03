@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { createRng, assignBond, selectBondType, selectBondPair } from 'game-rules';
+import {
+  createRng, assignBond, selectBondType, selectBondPair,
+  bondKey, getProximityBuffedPlayers, getFateBuffedPlayers,
+  getFateBondWipeTargets, getProximityDrainTargets,
+  BOND_DRAIN_THRESHOLD_S,
+} from 'game-rules';
 import { BondType, SessionColor, DifficultyTier, OFFSET_SPIRIT_BOND } from 'shared-types';
 import type { GameState } from 'shared-types';
 
@@ -124,5 +129,146 @@ describe('assignBond', () => {
     }
 
     expect(state1.activeBonds).toEqual(state2.activeBonds);
+  });
+});
+
+// ─── Story 5.3: per-tick bond effect helpers ───────────────────────────────
+
+function makeProximityBond(playerA: string, playerB: string) {
+  return { playerA, playerB, type: BondType.Proximity, color: '#6ea8d8' };
+}
+function makeFateBond(playerA: string, playerB: string) {
+  return { playerA, playerB, type: BondType.Fate, color: '#f5a623' };
+}
+
+describe('bondKey', () => {
+  it('returns a stable string for a pair', () => {
+    expect(bondKey('p0', 'p1')).toBe('p0+p1');
+    expect(bondKey('abc', 'xyz')).toBe('abc+xyz');
+  });
+});
+
+describe('getProximityBuffedPlayers', () => {
+  it('returns empty set when no bonds are in range', () => {
+    const bonds = [makeProximityBond('p0', 'p1')];
+    expect(getProximityBuffedPlayers(bonds, new Set()).size).toBe(0);
+  });
+
+  it('buffs both players when their bond key is in range', () => {
+    const bonds = [makeProximityBond('p0', 'p1')];
+    const inRange = new Set(['p0+p1']);
+    const result = getProximityBuffedPlayers(bonds, inRange);
+    expect(result.has('p0')).toBe(true);
+    expect(result.has('p1')).toBe(true);
+  });
+
+  it('ignores Fate bonds', () => {
+    const bonds = [makeFateBond('p0', 'p1')];
+    const inRange = new Set(['p0+p1']); // even if key is in set, Fate bonds are not proximity
+    expect(getProximityBuffedPlayers(bonds, inRange).size).toBe(0);
+  });
+
+  it('handles multiple proximity bonds independently', () => {
+    const bonds = [makeProximityBond('p0', 'p1'), makeProximityBond('p0', 'p2')];
+    const inRange = new Set(['p0+p1']); // only first bond in range
+    const result = getProximityBuffedPlayers(bonds, inRange);
+    expect(result.has('p0')).toBe(true);  // p0 is in the in-range bond
+    expect(result.has('p1')).toBe(true);
+    expect(result.has('p2')).toBe(false); // second bond not in range
+  });
+});
+
+describe('getFateBuffedPlayers', () => {
+  it('includes all players in Fate bonds', () => {
+    const bonds = [makeFateBond('p0', 'p1')];
+    const result = getFateBuffedPlayers(bonds);
+    expect(result.has('p0')).toBe(true);
+    expect(result.has('p1')).toBe(true);
+  });
+
+  it('ignores Proximity bonds', () => {
+    const bonds = [makeProximityBond('p0', 'p1')];
+    expect(getFateBuffedPlayers(bonds).size).toBe(0);
+  });
+
+  it('returns empty for no bonds', () => {
+    expect(getFateBuffedPlayers([]).size).toBe(0);
+  });
+});
+
+describe('getFateBondWipeTargets', () => {
+  const alivePlayers = [
+    { id: 'p0', isDown: false, isSpirit: false },
+    { id: 'p1', isDown: false, isSpirit: false },
+    { id: 'p2', isDown: false, isSpirit: false },
+  ];
+
+  it('returns the partner when a Fate bonded player is downed', () => {
+    const bonds = [makeFateBond('p0', 'p1')];
+    expect(getFateBondWipeTargets(bonds, 'p0', alivePlayers)).toEqual(['p1']);
+    expect(getFateBondWipeTargets(bonds, 'p1', alivePlayers)).toEqual(['p0']);
+  });
+
+  it('skips a partner who is already isDown', () => {
+    const bonds = [makeFateBond('p0', 'p1')];
+    const players = [
+      { id: 'p0', isDown: false, isSpirit: false },
+      { id: 'p1', isDown: true,  isSpirit: false }, // already down
+    ];
+    expect(getFateBondWipeTargets(bonds, 'p0', players)).toEqual([]);
+  });
+
+  it('skips a partner who is isSpirit', () => {
+    const bonds = [makeFateBond('p0', 'p1')];
+    const players = [
+      { id: 'p0', isDown: false, isSpirit: false },
+      { id: 'p1', isDown: false, isSpirit: true },
+    ];
+    expect(getFateBondWipeTargets(bonds, 'p0', players)).toEqual([]);
+  });
+
+  it('returns empty for Proximity bonds', () => {
+    const bonds = [makeProximityBond('p0', 'p1')];
+    expect(getFateBondWipeTargets(bonds, 'p0', alivePlayers)).toEqual([]);
+  });
+
+  it('returns empty when the downed player is not in any Fate bond', () => {
+    const bonds = [makeFateBond('p1', 'p2')];
+    expect(getFateBondWipeTargets(bonds, 'p0', alivePlayers)).toEqual([]);
+  });
+});
+
+describe('getProximityDrainTargets', () => {
+  const NOW = 10_000;
+  const THRESHOLD_MS = BOND_DRAIN_THRESHOLD_S * 1000;
+
+  it('does not drain before threshold', () => {
+    const bonds = [makeProximityBond('p0', 'p1')];
+    const inRange = new Set(['p0+p1']);
+    const enterTimes = new Map([['p0+p1', NOW - THRESHOLD_MS + 1]]); // 1ms short
+    expect(getProximityDrainTargets(bonds, inRange, enterTimes, THRESHOLD_MS, NOW)).toHaveLength(0);
+  });
+
+  it('drains at exactly the threshold', () => {
+    const bonds = [makeProximityBond('p0', 'p1')];
+    const inRange = new Set(['p0+p1']);
+    const enterTimes = new Map([['p0+p1', NOW - THRESHOLD_MS]]); // exactly at threshold
+    const result = getProximityDrainTargets(bonds, inRange, enterTimes, THRESHOLD_MS, NOW);
+    expect(result).toHaveLength(1);
+    expect(result[0]).toEqual({ playerA: 'p0', playerB: 'p1' });
+  });
+
+  it('does not drain when pair is out of range', () => {
+    const bonds = [makeProximityBond('p0', 'p1')];
+    const inRange = new Set<string>(); // not in range
+    const enterTimes = new Map([['p0+p1', NOW - THRESHOLD_MS * 2]]); // long past threshold
+    expect(getProximityDrainTargets(bonds, inRange, enterTimes, THRESHOLD_MS, NOW)).toHaveLength(0);
+  });
+
+  it('ignores Fate bonds', () => {
+    const bonds = [makeFateBond('p0', 'p1')];
+    const inRange = new Set(['p0+p1']);
+    const enterTimes = new Map([['p0+p1', NOW - THRESHOLD_MS * 2]]);
+    expect(getProximityDrainTargets(bonds, inRange, enterTimes, THRESHOLD_MS, NOW)).toHaveLength(0);
   });
 });
