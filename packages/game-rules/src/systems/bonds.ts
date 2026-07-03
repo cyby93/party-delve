@@ -16,12 +16,18 @@ export function selectBondType(rng: () => number): BondType {
   return rng() < 0.5 ? BondType.Proximity : BondType.Fate;
 }
 
-export function selectBondPair(players: PlayerState[], rng: () => number): [string, string] {
-  const idxA = Math.floor(rng() * players.length);
-  const idxB = Math.floor(rng() * (players.length - 1));
-  // shift-up: skip the slot idxA occupies so playerA ≠ playerB, exactly 2 rng calls
-  const adjustedB = idxB >= idxA ? idxB + 1 : idxB;
-  return [players[idxA]!.id, players[adjustedB]!.id];
+export function selectBondPair(players: PlayerState[], bonds: BondState[], rng: () => number): [string, string] {
+  const bondedIds = new Set(bonds.flatMap(b => [b.playerA, b.playerB]));
+  const unbonded = players.filter(p => !bondedIds.has(p.id));
+
+  // Prefer unbonded for first pick; if 2+ unbonded also prefer unbonded for second pick
+  const poolA = unbonded.length >= 1 ? unbonded : players;
+  const idxA = Math.floor(rng() * poolA.length);
+  const chosen = poolA[idxA]!;
+
+  const poolB = (unbonded.length >= 2 ? unbonded : players).filter(p => p.id !== chosen.id);
+  const idxB = Math.floor(rng() * poolB.length);
+  return [chosen.id, poolB[idxB]!.id];
 }
 
 export function assignBond(
@@ -32,7 +38,7 @@ export function assignBond(
     return { ok: false, error: { code: 'NOT_ENOUGH_PLAYERS' } };
   }
 
-  const [playerA, playerB] = selectBondPair(state.players, rng);
+  const [playerA, playerB] = selectBondPair(state.players, state.activeBonds, rng);
   const bondType = selectBondType(rng);
   const bondColor = BOND_TYPE_COLORS[bondType];
 

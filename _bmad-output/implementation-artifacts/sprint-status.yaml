@@ -42,7 +42,7 @@
 # Phase2 legacy stories (old Phase-based keys) are tracked below under PHASE 2 STORIES.
 
 generated: 2026-06-22
-last_updated: 2026-07-03 (5-5 done)
+last_updated: 2026-07-03 (5-6 done)
 project: party-delve
 project_key: NOKEY
 tracking_system: file-system
@@ -114,13 +114,13 @@ development_status:
   # Bond assigned at level end, buff+price pairs, in-canvas particle tethers,
   # 3 bonds accumulate across 3 levels.
   # FRs: FR14, FR15, FR16
-  epic-5: in-progress
+  epic-5: done
   5-1-spirit-bond-shared-types-and-protocol-contracts: done
   5-2-bond-assignment-logic-and-deterministic-pair-selection: done
   5-3-per-tick-bond-effects-proximity-and-fate-bond-types: done
   5-4-bond-assignment-integration-at-level-completion: done
   5-5-host-bond-visualization-assignment-overlay-and-particle-tethers: done
-  5-6-mobile-bond-card-and-continue-ux: backlog
+  5-6-mobile-bond-card-and-continue-ux: done
   epic-5-retrospective: optional
 
   # ─── E6: Grassland Boss Encounter ───────────────────────────────────────────

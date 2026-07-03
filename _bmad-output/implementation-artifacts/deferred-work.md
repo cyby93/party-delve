@@ -17,6 +17,13 @@ React hooks/exhaustive-deps lint warning. No runtime bug: display names are stab
 
 ---
 
+## Deferred from: code review of bond-overlay-and-pair-priority-bugfixes (2026-07-03)
+
+**D1 — `selectBondPair` can re-pair an already-bonded pair when all players are bonded**
+When `unbonded.length === 0`, the fallback picks any pair from all players, including pairs that already share a bond. The function receives `bonds` but doesn't filter `poolB` to exclude players already bonded to `chosen`. Pre-existing gap (old code had the same behaviour); more conspicuous now that `bonds` is a param. Fix when duplicate-bond gameplay issues are reported.
+
+---
+
 ## Deferred from: code review of 5-4-bond-assignment-integration-at-level-completion (2026-07-03)
 
 **D1 — Bond-moment state not visible to reconnecting client**
@@ -656,3 +663,22 @@ The movement loop only guards on `isFrozen` and `class === null`, not `isDown` o
 
 **D-5.3-C — `getFateBondWipeTargets` does not filter `isFrozen` partners** [`game-rules/src/systems/bonds.ts:99`]
 The cascade correctly skips `isDown` and `isSpirit` partners, but not `isFrozen` (disconnected-and-in-grace) partners. `applyPlayerDamage` currently rejects frozen players (`ok: false`), which prevents the cascade from including them — but this guard is implicit. If `applyPlayerDamage` is ever relaxed or the function is called from a different context, the frozen check would be missing. Document the invariant or add an explicit `isFrozen` filter to `getFateBondWipeTargets`.
+
+---
+
+## Deferred from: code review of 5-6-mobile-bond-card-and-continue-ux (2026-07-03)
+
+**D-5.6-A — `room.reconnection.enabled = false` is a silent no-op** [`apps/mobile-controller/src/session/mobile-session.ts:99`]
+Colyseus JS SDK `Room` class has no `reconnection` property. The assignment silently does nothing. The intent was to disable SDK auto-reconnect so `onLeave` fires immediately on network drop. Verify the actual Colyseus 0.17 API for disabling auto-reconnect; may need `room.connection.isOpen` polling or another approach. Pre-existing code, not introduced by 5.6.
+
+**D-5.6-B — `reconnectToSession` silently skips token refresh if sessionStorage was cleared** [`apps/mobile-controller/src/session/mobile-session.ts:153`]
+`persistSession` is only called inside the `if (existing)` guard. If `clearPersistedSession` was called from another tab or path between disconnect and reconnect, the fresh `reconnectionToken` is never saved. A subsequent disconnect has no token and cannot reconnect. Pre-existing.
+
+**D-5.6-C — Own player `isFrozen`/`isReconnected` flags never applied locally** [`apps/mobile-controller/src/App.tsx:105`]
+`handleDelta` early-returns for self-targeted `player:disconnected` / `player:reconnected` deltas without calling `setGameState`. The local player's `isFrozen` remains `false` even when the server has it as `true`. Pre-existing from Story 1.6.
+
+**D-5.6-D — `handleJoin` re-throws with no caller error boundary** [`apps/mobile-controller/src/App.tsx:152`]
+`try/catch { throw err }` re-throws to `SessionCodeEntryScreen` which handles it for reset. However any unhandled rejection in the async chain leaves the user stuck with no feedback. Pre-existing pattern.
+
+**D-5.6-E — `sessionRef` is null during window between `wireRoomHandlers` and `setSession`** [`apps/mobile-controller/src/session/mobile-session.ts:119`]
+Message handlers are registered before the session is passed to `setSession`. A `player:disconnected` delta arriving in that window compares against `sessionRef.current?.playerId === null` and misses the early-return guard. Pre-existing.

@@ -57,14 +57,14 @@ describe('selectBondPair', () => {
     const rng = createRng(SEED);
     const players = makeState(3).players;
     for (let i = 0; i < 50; i++) {
-      const [a, b] = selectBondPair(players, rng);
+      const [a, b] = selectBondPair(players, [], rng);
       expect(a).not.toBe(b);
     }
   });
 
   it('works with exactly 2 players', () => {
     const rng = createRng(42);
-    const [a, b] = selectBondPair(makeState(2).players, rng);
+    const [a, b] = selectBondPair(makeState(2).players, [], rng);
     expect(a).not.toBe(b);
     expect(['p0', 'p1']).toContain(a);
     expect(['p0', 'p1']).toContain(b);
@@ -73,7 +73,7 @@ describe('selectBondPair', () => {
   it('with 3 players, a player may appear in multiple bonds (repeats expected)', () => {
     const rng = createRng(SEED);
     const players = makeState(3).players;
-    const pairs: [string, string][] = Array.from({ length: 50 }, () => selectBondPair(players, rng));
+    const pairs: [string, string][] = Array.from({ length: 50 }, () => selectBondPair(players, [], rng));
     const allIds = pairs.flat();
     expect(allIds).toContain('p0');
     expect(allIds).toContain('p1');
@@ -81,6 +81,28 @@ describe('selectBondPair', () => {
     // at least one ID must appear more than once — repeats are expected
     const counts = allIds.reduce<Record<string, number>>((acc, id) => { acc[id] = (acc[id] ?? 0) + 1; return acc; }, {});
     expect(Math.max(...Object.values(counts))).toBeGreaterThan(1);
+  });
+
+  it('prioritizes unbonded players — with 4 players and p0+p1 bonded, always picks p2 and p3', () => {
+    const rng = createRng(SEED);
+    const players = makeState(4).players;
+    const existingBond = { playerA: 'p0', playerB: 'p1', type: BondType.Proximity, color: '#6ea8d8' };
+    for (let i = 0; i < 50; i++) {
+      const [a, b] = selectBondPair(players, [existingBond], rng);
+      expect(['p2', 'p3']).toContain(a);
+      expect(['p2', 'p3']).toContain(b);
+    }
+  });
+
+  it('with 1 unbonded player, always includes them in the pair', () => {
+    const rng = createRng(SEED);
+    const players = makeState(3).players; // p0, p1, p2
+    const bonds = [{ playerA: 'p0', playerB: 'p1', type: BondType.Proximity, color: '#6ea8d8' }];
+    // p2 is the only unbonded player — must always appear in the pair
+    for (let i = 0; i < 30; i++) {
+      const pair = selectBondPair(players, bonds, rng);
+      expect(pair).toContain('p2');
+    }
   });
 });
 

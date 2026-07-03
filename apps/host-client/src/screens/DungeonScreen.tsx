@@ -213,6 +213,7 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
   const [, setTimerTick] = useState(0);
   const [levelClearFlash, setLevelClearFlash] = useState(false);
   const [bondOverlay, setBondOverlay] = useState<{ text: string; fading: boolean } | null>(null);
+  const [bondOverlayTrigger, setBondOverlayTrigger] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -277,15 +278,11 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
       const nameA = gameState?.players.find(p => p.id === latestTransientDelta.playerA)?.displayName ?? latestTransientDelta.playerA;
       const nameB = gameState?.players.find(p => p.id === latestTransientDelta.playerB)?.displayName ?? latestTransientDelta.playerB;
       const label = latestTransientDelta.bondType === 'fate' ? 'Fate' : 'Proximity';
+      // ponytail: timers live in a separate effect keyed on trigger counter so they survive latestTransientDelta being cleared at 400ms
       setBondOverlay({ text: `${nameA} · ${nameB} — ${label} Bond`, fading: false });
-      const fadeTimer = setTimeout(() => setBondOverlay(o => o ? { ...o, fading: true } : o), 2700);
-      const clearTimer = setTimeout(() => setBondOverlay(null), 3200);
-      return () => { clearTimeout(fadeTimer); clearTimeout(clearTimer); };
+      setBondOverlayTrigger(c => c + 1);
     } else if (latestTransientDelta.type === 'level:complete') {
-      // ponytail: level:complete flash may be skipped when bond-moment follows in same batch; deferred
       setLevelClearFlash(true);
-      const flashTimer = setTimeout(() => setLevelClearFlash(false), 300);
-      return () => clearTimeout(flashTimer);
     } else if (latestTransientDelta.type === 'ability:fired') {
       const entry = playerGraphicsRef.current.get(latestTransientDelta.playerId);
       if (entry) entry.flashUntil = Date.now() + ABILITY_FLASH_MS;
@@ -341,6 +338,22 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
       if (!player?.isDown) reviveDeadlinesRef.current.delete(id);
     }
   }, [gameState]);
+
+  // Bond overlay fade/clear lifecycle — keyed on trigger counter so timers survive latestTransientDelta being cleared at 400ms
+  // and correctly restart if the same pair is bonded again (same text, different trigger)
+  useEffect(() => {
+    if (bondOverlayTrigger === 0) return;
+    const fadeTimer = setTimeout(() => setBondOverlay(o => o ? { ...o, fading: true } : o), 2700);
+    const clearTimer = setTimeout(() => setBondOverlay(null), 3200);
+    return () => { clearTimeout(fadeTimer); clearTimeout(clearTimer); };
+  }, [bondOverlayTrigger]);
+
+  // Level-clear flash auto-clear — separate effect so it survives bond:assigned arriving right after level:complete
+  useEffect(() => {
+    if (!levelClearFlash) return;
+    const timer = setTimeout(() => setLevelClearFlash(false), 300);
+    return () => clearTimeout(timer);
+  }, [levelClearFlash]);
 
   // Force re-render at 100ms intervals while any revive timers are active
   const anyTimerActive = reviveDeadlinesRef.current.size > 0;
