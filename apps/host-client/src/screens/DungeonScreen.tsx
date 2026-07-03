@@ -53,6 +53,7 @@ function renderFrame(
   playerGraphics: Map<string, PlayerEntry>,
   enemyGraphics: Map<string, EnemyEntry>,
   essenceFlashes: Map<string, EssenceFlash>,
+  tetherGraphics: Map<string, Graphics>,
 ): void {
   app.stage.scale.set(app.screen.width / VIRTUAL_W, app.screen.height / VIRTUAL_H);
 
@@ -153,6 +154,30 @@ function renderFrame(
     entry.healthBar.rect(-15, -32, 30 * hpRatio, 4).fill({ color: 0xff0000 });
   }
 
+  // ── Bond tethers ─────────────────────────────────────────────────────────────
+  const activeBondKeys = new Set(state.activeBonds.map(b => `${b.playerA}+${b.playerB}`));
+  for (const [key, g] of tetherGraphics) {
+    if (!activeBondKeys.has(key)) {
+      app.stage.removeChild(g); g.destroy(); tetherGraphics.delete(key);
+    }
+  }
+  for (const bond of state.activeBonds) {
+    const key = `${bond.playerA}+${bond.playerB}`;
+    let g = tetherGraphics.get(key);
+    if (!g) {
+      g = new Graphics();
+      app.stage.addChildAt(g, 0); // ponytail: addChildAt(0) keeps tethers below all sprites
+      tetherGraphics.set(key, g);
+    }
+    const pA = state.players.find(p => p.id === bond.playerA);
+    const pB = state.players.find(p => p.id === bond.playerB);
+    g.clear();
+    if (pA && pB) {
+      const color = parseInt(bond.color.slice(1), 16);
+      g.moveTo(pA.x, pA.y).lineTo(pB.x, pB.y).stroke({ color, width: 2, alpha: 0.7 });
+    }
+  }
+
   // ── Essence flashes ───────────────────────────────────────────────────────────
   for (const [dropId, flash] of essenceFlashes) {
     const remaining = flash.deadline - now;
@@ -181,11 +206,13 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
   const playerGraphicsRef = useRef<Map<string, PlayerEntry>>(new Map());
   const enemyGraphicsRef = useRef<Map<string, EnemyEntry>>(new Map());
   const essenceFlashesRef = useRef<Map<string, EssenceFlash>>(new Map());
+  const tetherGraphicsRef = useRef<Map<string, Graphics>>(new Map());
   const latestGameStateRef = useRef<GameState | null>(null);
   latestGameStateRef.current = gameState;
   const reviveDeadlinesRef = useRef<Map<string, ReviveDeadline>>(new Map());
   const [, setTimerTick] = useState(0);
   const [levelClearFlash, setLevelClearFlash] = useState(false);
+  const [bondOverlay, setBondOverlay] = useState<{ text: string; fading: boolean } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -211,6 +238,7 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
             playerGraphicsRef.current,
             enemyGraphicsRef.current,
             essenceFlashesRef.current,
+            tetherGraphicsRef.current,
           );
         }
       });
@@ -227,6 +255,7 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
       playerGraphicsRef.current.clear();
       enemyGraphicsRef.current.clear();
       essenceFlashesRef.current.clear();
+      tetherGraphicsRef.current.clear();
     };
   }, []);
 
@@ -243,7 +272,17 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
     if (!latestTransientDelta) return;
     const app = pixiAppRef.current;
 
-    if (latestTransientDelta.type === 'level:complete') {
+    if (latestTransientDelta.type === 'bond:assigned') {
+      // ponytail: level:complete flash may be skipped when bond-moment follows in same batch; deferred
+      const nameA = gameState?.players.find(p => p.id === latestTransientDelta.playerA)?.displayName ?? latestTransientDelta.playerA;
+      const nameB = gameState?.players.find(p => p.id === latestTransientDelta.playerB)?.displayName ?? latestTransientDelta.playerB;
+      const label = latestTransientDelta.bondType === 'fate' ? 'Fate' : 'Proximity';
+      setBondOverlay({ text: `${nameA} · ${nameB} — ${label} Bond`, fading: false });
+      const fadeTimer = setTimeout(() => setBondOverlay(o => o ? { ...o, fading: true } : o), 2700);
+      const clearTimer = setTimeout(() => setBondOverlay(null), 3200);
+      return () => { clearTimeout(fadeTimer); clearTimeout(clearTimer); };
+    } else if (latestTransientDelta.type === 'level:complete') {
+      // ponytail: level:complete flash may be skipped when bond-moment follows in same batch; deferred
       setLevelClearFlash(true);
       const flashTimer = setTimeout(() => setLevelClearFlash(false), 300);
       return () => clearTimeout(flashTimer);
@@ -335,9 +374,12 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
           pointerEvents: 'none',
         }}
       >
-        {players.map(player => (
-          <PlayerChipHUD key={player.id} player={player} />
-        ))}
+        {players.map(player => {
+          const playerBondColors = gameState?.activeBonds
+            .filter(b => b.playerA === player.id || b.playerB === player.id)
+            .map(b => b.color) ?? [];
+          return <PlayerChipHUD key={player.id} player={player} bondColors={playerBondColors} />;
+        })}
         {gameState?.session.phase === 'dungeon' && (
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12, pointerEvents: 'auto' }}>
             {session && (
@@ -393,6 +435,30 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
           pointerEvents: 'none',
         }} />
       )}
+      {/* Bond assignment overlay — centered, fades out after 3s */}
+      {bondOverlay && (
+        <div style={{
+          position: 'absolute',
+          inset: 0,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 30,
+          pointerEvents: 'none',
+          opacity: bondOverlay.fading ? 0 : 1,
+          transition: bondOverlay.fading ? 'opacity 0.5s' : 'opacity 0.3s',
+        }}>
+          <div style={{
+            fontFamily: 'var(--font-display)',
+            fontSize: 'var(--text-xl)',
+            color: 'var(--accent-spirit)',
+            textShadow: '0 0 40px rgba(110,168,216,0.7)',
+            textAlign: 'center',
+          }}>
+            {bondOverlay.text}
+          </div>
+        </div>
+      )}
       {/* Revive timer overlay — bottom-center */}
       <div style={{
         position: 'absolute',
@@ -439,7 +505,7 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
   );
 }
 
-function PlayerChipHUD({ player }: { player: PlayerState }) {
+function PlayerChipHUD({ player, bondColors = [] }: { player: PlayerState; bondColors: string[] }) {
   const pips = [0, 1, 2, 3, 4].map(i => player.hp > i * 20);
   const spiritGlow = player.isSpirit ? { boxShadow: '0 0 6px var(--accent-spirit)' } : {};
 
@@ -450,7 +516,8 @@ function PlayerChipHUD({ player }: { player: PlayerState }) {
         border: player.isFrozen ? '1px dashed var(--border)' : '1px solid var(--border)',
         borderRadius: 6,
         padding: '2px 8px',
-        height: 40,
+        minHeight: 40,
+        height: 'auto',
         display: 'flex',
         flexDirection: 'column',
         justifyContent: 'center',
@@ -488,6 +555,13 @@ function PlayerChipHUD({ player }: { player: PlayerState }) {
                 border: '1px solid var(--border)',
               }}
             />
+          ))}
+        </div>
+      )}
+      {bondColors.length > 0 && (
+        <div style={{ display: 'flex', gap: 3, marginTop: 2 }}>
+          {bondColors.map((c, i) => (
+            <div key={i} style={{ width: 8, height: 8, borderRadius: '50%', background: c }} />
           ))}
         </div>
       )}

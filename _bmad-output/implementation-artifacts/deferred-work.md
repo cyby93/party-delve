@@ -4,6 +4,19 @@ Items surfaced during reviews that are real findings but pre-exist the triggerin
 
 ---
 
+## Deferred from: code review of 5-5-host-bond-visualization-assignment-overlay-and-particle-tethers (2026-07-03)
+
+**D1 — Stale ticker rAF callback on unmount**
+`app.destroy(true, {children:true})` stops the PixiJS ticker, but a pending `requestAnimationFrame` callback might fire once more post-destroy calling `renderFrame` on a destroyed stage. Pre-existing pattern shared by all player/enemy renderFrame code; not introduced by 5.5.
+
+**D2 — `onTransientDelta` fires before `applyDelta` in host-session.ts**
+`onTransientDelta(delta)` is called at line 59 before `applyDelta` at line 61. No practical bug for `bond:assigned` (players don't change on this delta; React 18 batching keeps gameState current in the effect). Fixing it would require swapping the call order across all delta types — broader refactor.
+
+**D3 — Missing `gameState` in `latestTransientDelta` useEffect dependency array**
+React hooks/exhaustive-deps lint warning. No runtime bug: display names are stable during a run and React 18 batching ensures gameState is post-delta when the effect runs. Would require adding `gameState` to the dep array (safe) or extracting the lookup into the delta handler separately.
+
+---
+
 ## Deferred from: code review of 5-4-bond-assignment-integration-at-level-completion (2026-07-03)
 
 **D1 — Bond-moment state not visible to reconnecting client**
