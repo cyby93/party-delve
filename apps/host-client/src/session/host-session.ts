@@ -53,7 +53,8 @@ export async function createHostSession(
         delta.type === 'player:hp-updated' ||
         delta.type === 'run:failed' ||
         delta.type === 'level:complete' ||
-        delta.type === 'run:complete'
+        delta.type === 'run:complete' ||
+        delta.type === 'bond:assigned'
       )) {
         onTransientDelta(delta);
       }

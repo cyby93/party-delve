@@ -4,6 +4,42 @@ Items surfaced during reviews that are real findings but pre-exist the triggerin
 
 ---
 
+## Deferred from: code review of 5-5-host-bond-visualization-assignment-overlay-and-particle-tethers (2026-07-03)
+
+**D1 — Stale ticker rAF callback on unmount**
+`app.destroy(true, {children:true})` stops the PixiJS ticker, but a pending `requestAnimationFrame` callback might fire once more post-destroy calling `renderFrame` on a destroyed stage. Pre-existing pattern shared by all player/enemy renderFrame code; not introduced by 5.5.
+
+**D2 — `onTransientDelta` fires before `applyDelta` in host-session.ts**
+`onTransientDelta(delta)` is called at line 59 before `applyDelta` at line 61. No practical bug for `bond:assigned` (players don't change on this delta; React 18 batching keeps gameState current in the effect). Fixing it would require swapping the call order across all delta types — broader refactor.
+
+**D3 — Missing `gameState` in `latestTransientDelta` useEffect dependency array**
+React hooks/exhaustive-deps lint warning. No runtime bug: display names are stable during a run and React 18 batching ensures gameState is post-delta when the effect runs. Would require adding `gameState` to the dep array (safe) or extracting the lookup into the delta handler separately.
+
+---
+
+## Deferred from: code review of bond-overlay-and-pair-priority-bugfixes (2026-07-03)
+
+**D1 — `selectBondPair` can re-pair an already-bonded pair when all players are bonded**
+When `unbonded.length === 0`, the fallback picks any pair from all players, including pairs that already share a bond. The function receives `bonds` but doesn't filter `poolB` to exclude players already bonded to `chosen`. Pre-existing gap (old code had the same behaviour); more conspicuous now that `bonds` is a param. Fix when duplicate-bond gameplay issues are reported.
+
+---
+
+## Deferred from: code review of 5-4-bond-assignment-integration-at-level-completion (2026-07-03)
+
+**D1 — Bond-moment state not visible to reconnecting client**
+When a player disconnects and reconnects during bond-moment, the snapshot on reconnect contains `phase: 'dungeon'` with no enemies and the new bond, but no signal that the server is paused awaiting CONTINUE. The mobile client can't show the bond UI or prompt the player. Out of scope for 5.4 — story 5.6 covers mobile bond card UX.
+
+**D2 — Bond sensor fixture not cleaned when non-owner (playerB) leaves**
+Bond sensor is attached to playerA's body. When playerB leaves, the `onLeave` cleanup loop checks `fixture.getBody() === expireBody` (playerB's body), which never matches. The stale fixture lives on playerA's body until `resetToHub`. Inert in practice (no contacts with the departed body), but wastes broadphase slots. Pre-existing 5.3 issue.
+
+**D3 — `selectBondPair` is statistically biased at 3 players**
+With 3 players, the slot-shift mechanic produces pair (A,C) with 2× the probability of (A,B) and (B,C). All three pairs have an equal 1-in-3 chance intuitively but the implementation is skewed. Pre-existing 5.3 issue in `bonds.ts:19`.
+
+**D4 — `bondRng` reuses the same `runSeed` on a 2nd run in the same room**
+`runSeed` is set once at room creation and never re-randomized on subsequent runs. `startDungeon` always creates `bondRng = createRng(runSeed ^ OFFSET_SPIRIT_BOND)`, so every run in the same room produces an identical bond sequence. Pre-existing design from epic 4's RNG system.
+
+---
+
 ## From INFRA-001 — cascade auto-advance (2026-06-13)
 
 **D1 — All-failed terminal state not handled in dispatch loop**
@@ -579,3 +615,70 @@ If the host reconnects mid-post-run, `runOutcome` is `null` (snapshot doesn't ca
 
 **W5 — Stale consented-leave callback race on immediate re-join**
 `App.tsx:198-201` — After tapping Back (consented disconnect), if the user immediately re-joins a new room, `persistSession` for the new room can run before `handleDisconnect(4000)` fires `clearPersistedSession` for the old room. The old callback would then erase the new token. Practical window is <100ms — not reachable by human interaction. Pre-existing pattern.
+
+---
+
+## Deferred from: code review of 5-1-spirit-bond-shared-types-and-protocol-contracts (2026-07-02)
+
+**D-5.1-A — `bondColor` (wire) vs `color` (state) naming split** [`packages/net-protocol/src/apply-delta.ts:135`]
+`BondAssignedDelta.bondColor` maps to `BondState.color`; `apply-delta.ts` manually bridges them. TypeScript catches any accidental mismatch. The asymmetry is consistent with how `bondType→type` works in the same delta-to-state mapping — prefixed wire fields, unprefixed state fields. Intentional convention; revisit if the pattern causes confusion in story 5.4 broadcast construction.
+
+**D-5.1-B — `bondDescription`/`bondMechanic` unconstrained `string` in `BondNotificationMsg`** [`packages/net-protocol/src/messages/server-to-mobile.ts`]
+No union type, schema validation, or lookup table constrains these fields. Valid values per bond type will be defined in story 5.4 (level-completion integration). Add a per-BondType lookup or narrow union when story 5.4 populates these strings, or define them in `game-rules` so they are derivable from `BondType`.
+
+**D-5.1-C — `BondAssignedDelta` not individually exported from net-protocol index** [`packages/net-protocol/src/index.ts`]
+Only `DeltaEventMsg` (the union) is exported. Switch-narrowing in host-client code works without a named import, and `satisfies DeltaEventMsg` in tests enforces the correct shape. Pre-existing pattern — no other delta types are individually exported either. If consumers frequently need to annotate explicit `BondAssignedDelta` variables, add it to the index alongside `DeltaEventMsg` in a net-protocol cleanup pass.
+
+**D-5.1-D — Mobile lacks `bondDescription`/`bondMechanic` after reconnect** [`packages/net-protocol/src/messages/server-to-mobile.ts`, story 5.6]
+Snapshot carries `activeBonds: BondState[]` (playerA, playerB, type, color only). The unicast `BondNotificationMsg` is not re-sent on reconnect. A reconnecting mobile client can display who they're bonded with and the color, but not the human-readable description or mechanic. Story 5.6 (mobile bond card) should re-derive description/mechanic from `bondType` on the client (lookup table in `game-rules` or `shared-types`), or the server should re-unicast `BondNotificationMsg` on reconnect.
+
+**D-5.1-E — `SimEvents['bond:assigned']` missing `bondColor` — story 5.4 handoff hazard** [`packages/shared-types/src/session.ts:25`]
+The internal sim-server event bus type `SimEvents['bond:assigned']` has `{ playerA, playerB, bondType }` — no `bondColor`. When story 5.4 wires up bond-assigned broadcasting in `GameRoom.ts`, it cannot forward the `SimEvents` payload directly to `BondAssignedDelta` — it must independently compute and append `bondColor`. This is by design (color is a rendering concern added at broadcast time), but story 5.4 must be aware of this gap to avoid a silent `undefined` for `bondColor` on the wire.
+
+---
+
+## Deferred from: code review of 5-2-bond-assignment-logic-and-deterministic-pair-selection (2026-07-03)
+
+**D-5.2-A — `selectBondPair` has no internal guard for 1-player input** [`bonds.ts:19-24`]
+Function is exported for tests but has no guard on `players.length >= 2`. The `!` non-null assertion suppresses TypeScript's check; a 1-player call would throw at runtime on `players[adjustedB]!.id`. Pre-existing by design: all call sites route through `assignBond` which guards length. Consider a JSDoc precondition comment if the export surface grows.
+
+**D-5.2-B — Same pair can bond multiple times in `activeBonds`** [`bonds.ts:39`]
+With 2 players and 3 `assignBond` calls, all 3 entries share the same pair. No dedup guard exists. This is intentional per story non-goals ("Bond cooldown / dedup across runs"). Story 5.3 (per-tick bond effects) must account for this when applying buffs/drains to avoid stacking.
+
+**D-5.2-C — `selectBondPair` index math fragile if `rng()` ever returns ≥ 1.0** [`bonds.ts:20-21`]
+`Math.floor(rng() * N)` is safe only while `rng()` is strictly `[0,1)`. The xoshiro128 implementation satisfies this but there's no runtime assertion. If the RNG is ever swapped for one that can return `1.0`, `players[N]!.id` would throw. Pre-existing RNG contract assumption.
+
+**D-5.2-D — N=8 max players and `rng()=0.0` boundary not tested** [`bonds.test.ts`]
+Tests cover N=2 and N=3. N=8 (session maxPlayers) exercises `adjustedB` reaching index 7. `rng()=0.0` pins the exact `idxA=0, idxB=0 → adjustedB=1` path. Both are nice-to-have regression guards against future shift-up refactors.
+
+---
+
+## Deferred from: code review of 5-3-per-tick-bond-effects-proximity-and-fate-bond-types (2026-07-03)
+
+**D-5.3-A — No server-side duplicate-bond guard in `assignBond`** [`game-rules/src/systems/bonds.ts:39`]
+`assignBond` pushes unconditionally; calling it twice for the same pair results in two identical entries in `activeBonds`, causing double drain and double buff. The client-side `applyDelta` dedup prevents this showing in the mirror state, but the server runs the drain loop twice per tick. Story 5.4, which is the only caller of `assignBond`, must guard against re-assigning an already-bonded pair — or add a server-side dedup check in `assignBond` itself before pushing.
+
+**D-5.3-B — Downed/spirit players receive physics movement and Fate speed buff** [`GameRoom.ts:770`]
+The movement loop only guards on `isFrozen` and `class === null`, not `isDown` or `isSpirit`. Downed players can still move their physics body, triggering bond sensor enter/exit contacts and resetting the proximity drain timer for their pair. Pre-existing issue (logged in D-1.5 scope as D22); new consequence with story 5.3 bond drain. Fix: add `|| player.isDown || player.isSpirit` to the movement freeze guard.
+
+**D-5.3-C — `getFateBondWipeTargets` does not filter `isFrozen` partners** [`game-rules/src/systems/bonds.ts:99`]
+The cascade correctly skips `isDown` and `isSpirit` partners, but not `isFrozen` (disconnected-and-in-grace) partners. `applyPlayerDamage` currently rejects frozen players (`ok: false`), which prevents the cascade from including them — but this guard is implicit. If `applyPlayerDamage` is ever relaxed or the function is called from a different context, the frozen check would be missing. Document the invariant or add an explicit `isFrozen` filter to `getFateBondWipeTargets`.
+
+---
+
+## Deferred from: code review of 5-6-mobile-bond-card-and-continue-ux (2026-07-03)
+
+**D-5.6-A — `room.reconnection.enabled = false` is a silent no-op** [`apps/mobile-controller/src/session/mobile-session.ts:99`]
+Colyseus JS SDK `Room` class has no `reconnection` property. The assignment silently does nothing. The intent was to disable SDK auto-reconnect so `onLeave` fires immediately on network drop. Verify the actual Colyseus 0.17 API for disabling auto-reconnect; may need `room.connection.isOpen` polling or another approach. Pre-existing code, not introduced by 5.6.
+
+**D-5.6-B — `reconnectToSession` silently skips token refresh if sessionStorage was cleared** [`apps/mobile-controller/src/session/mobile-session.ts:153`]
+`persistSession` is only called inside the `if (existing)` guard. If `clearPersistedSession` was called from another tab or path between disconnect and reconnect, the fresh `reconnectionToken` is never saved. A subsequent disconnect has no token and cannot reconnect. Pre-existing.
+
+**D-5.6-C — Own player `isFrozen`/`isReconnected` flags never applied locally** [`apps/mobile-controller/src/App.tsx:105`]
+`handleDelta` early-returns for self-targeted `player:disconnected` / `player:reconnected` deltas without calling `setGameState`. The local player's `isFrozen` remains `false` even when the server has it as `true`. Pre-existing from Story 1.6.
+
+**D-5.6-D — `handleJoin` re-throws with no caller error boundary** [`apps/mobile-controller/src/App.tsx:152`]
+`try/catch { throw err }` re-throws to `SessionCodeEntryScreen` which handles it for reset. However any unhandled rejection in the async chain leaves the user stuck with no feedback. Pre-existing pattern.
+
+**D-5.6-E — `sessionRef` is null during window between `wireRoomHandlers` and `setSession`** [`apps/mobile-controller/src/session/mobile-session.ts:119`]
+Message handlers are registered before the session is passed to `setSession`. A `player:disconnected` delta arriving in that window compares against `sessionRef.current?.playerId === null` and misses the early-return guard. Pre-existing.

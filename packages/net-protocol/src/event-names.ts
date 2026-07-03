@@ -12,4 +12,6 @@ export enum EventNames {
   VOTE           = 'run:vote',
   RUN_STARTING   = 'run:starting',
   RETURN_TO_CAMP = 'return:to-camp',
+  CONTINUE = 'bond:continue',
+  BOND_NOTIFICATION = 'bond:notification',
 }

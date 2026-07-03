@@ -1,4 +1,4 @@
-import type { BondState, SessionColor } from 'shared-types';
+import type { BondType, SessionColor } from 'shared-types';
 
 export interface CooldownUpdateMsg {
   type: 'cooldown:update';
@@ -8,7 +8,12 @@ export interface CooldownUpdateMsg {
 
 export interface BondNotificationMsg {
   type: 'bond:notification';
-  bond: BondState;
+  playerA: string;
+  playerB: string;
+  bondType: BondType;
+  bondColor: string;
+  bondDescription: string;
+  bondMechanic: string;
 }
 
 export interface SpiritFormMsg {

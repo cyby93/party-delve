@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import type { InputEventMsg } from 'net-protocol';
+import type { InputEventMsg, BondNotificationMsg } from 'net-protocol';
 import type { MobileSession } from '../session/mobile-session';
 import type { GameState } from 'shared-types';
 import type { ClassDef } from 'shared-types';
@@ -13,6 +13,9 @@ interface ControllerScreenProps {
   session: MobileSession | null;
   gameState: GameState | null;
   cooldowns: (CooldownState | null)[];
+  bondNotification: BondNotificationMsg | null;
+  inBondMoment: boolean;
+  onContinue: () => void;
 }
 
 const JOYSTICK_MAX_RADIUS = 60;
@@ -22,9 +25,10 @@ const INPUT_INTERVAL_MS = 33; // ~30hz throttle to match sim tick rate
 interface InteractButtonProps {
   visible: boolean;
   onTap: () => void;
+  label?: string;
 }
 
-function InteractButton({ visible, onTap }: InteractButtonProps) {
+function InteractButton({ visible, onTap, label = 'Interact' }: InteractButtonProps) {
   return (
     <div
       style={{
@@ -56,7 +60,7 @@ function InteractButton({ visible, onTap }: InteractButtonProps) {
           color: 'var(--text-primary)',
         }}
       >
-        Interact
+        {label}
       </span>
     </div>
   );
@@ -874,6 +878,60 @@ function SkillCell({ index, ability, cooldownState: cd, isInteractive, badgeBord
   );
 }
 
+interface BondCardProps {
+  bondNotification: BondNotificationMsg;
+  bondName: string;
+  partnerName: string;
+  onContinue: () => void;
+}
+
+function BondCard({ bondNotification, bondName, partnerName, onContinue }: BondCardProps) {
+  const [dismissReady, setDismissReady] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setDismissReady(true), 1500);
+    return () => clearTimeout(t);
+  }, []);
+  const frameColor = bondNotification.bondColor;
+  return (
+    <div style={{
+      position: 'absolute', inset: 0, zIndex: 70,
+      background: 'var(--bg-base)',
+      boxShadow: `inset 0 0 0 6px ${frameColor}, inset 0 0 40px ${frameColor}40`,
+      display: 'flex', flexDirection: 'column', alignItems: 'center',
+      justifyContent: 'center', gap: 20, padding: '32px 24px', boxSizing: 'border-box',
+    }}>
+      <span style={{ fontFamily: 'var(--font-display)', fontSize: 28, color: 'var(--text-primary)', textAlign: 'center' }}>
+        {bondName}
+      </span>
+      <span style={{ fontFamily: 'var(--font-body)', fontWeight: 400, fontStyle: 'italic', fontSize: 'var(--text-base)',
+        color: 'var(--text-secondary)', textAlign: 'center', lineHeight: 1.5 }}>
+        You and {partnerName} — {bondNotification.bondDescription}
+      </span>
+      <span style={{ fontFamily: 'var(--font-body)', fontWeight: 700, fontSize: 'var(--text-sm)',
+        color: 'var(--text-primary)', textAlign: 'center' }}>
+        {bondNotification.bondMechanic}
+      </span>
+      <button
+        onPointerDown={e => { if (!dismissReady) return; e.preventDefault(); onContinue(); }}
+        style={{
+          marginTop: 16, width: '80%', minHeight: 48, borderRadius: 8,
+          background: dismissReady ? 'var(--interactive)' : 'var(--bg-surface)',
+          border: `2px solid ${dismissReady ? 'var(--accent-spirit)' : 'var(--border)'}`,
+          color: dismissReady ? 'var(--bg-base)' : 'var(--text-secondary)',
+          fontFamily: 'var(--font-body)', fontWeight: 700, fontSize: 'var(--text-md)',
+          cursor: dismissReady ? 'pointer' : 'default',
+          opacity: dismissReady ? 1 : 0.3,
+          transition: 'opacity 0.3s ease-out, background 0.3s, color 0.3s',
+          pointerEvents: dismissReady ? 'auto' : 'none',
+          touchAction: 'manipulation',
+        }}
+      >
+        Continue
+      </button>
+    </div>
+  );
+}
+
 const SESSION_COLOR_GLOW: Record<SessionColor, string> = {
   [SessionColor.RED]:    'rgba(231,76,60,0.25)',
   [SessionColor.BLUE]:   'rgba(52,152,219,0.25)',
@@ -885,7 +943,7 @@ const SESSION_COLOR_GLOW: Record<SessionColor, string> = {
   [SessionColor.TEAL]:   'rgba(26,188,156,0.25)',
 };
 
-export function ControllerScreen({ session, gameState, cooldowns }: ControllerScreenProps) {
+export function ControllerScreen({ session, gameState, cooldowns, bondNotification, inBondMoment, onContinue }: ControllerScreenProps) {
   const myPlayer = gameState?.players.find(p => p.id === session?.playerId) ?? null;
   const activePoi = myPlayer?.nearPoiId ?? null;
   const confirmedClass = myPlayer?.class ?? null;
@@ -894,6 +952,15 @@ export function ControllerScreen({ session, gameState, cooldowns }: ControllerSc
   const isSpirit = myPlayer?.isSpirit ?? false;
   const isFrozen = myPlayer?.isFrozen ?? false;
   const hpFraction = myPlayer && myPlayer.maxHp > 0 ? myPlayer.hp / myPlayer.maxHp : 1;
+  const bondedPartnerId = bondNotification
+    ? (bondNotification.playerA === session?.playerId ? bondNotification.playerB : bondNotification.playerA)
+    : null;
+  const partnerName = bondedPartnerId
+    ? (gameState?.players.find(p => p.id === bondedPartnerId)?.displayName ?? 'your partner')
+    : null;
+  const bondName = bondNotification
+    ? (bondNotification.bondType === 'fate' ? 'Fate Bond' : 'Proximity Bond')
+    : null;
   const joystickZoneRef = useRef<HTMLDivElement>(null);
 
   // Refs for values read inside event handlers — avoids stale closure issues
@@ -1113,8 +1180,10 @@ export function ControllerScreen({ session, gameState, cooldowns }: ControllerSc
         </div>
       )}
       <InteractButton
-        visible={activePoi !== null}
+        visible={activePoi !== null || (inBondMoment && bondNotification === null)}
+        label={inBondMoment && bondNotification === null ? 'Continue' : 'Interact'}
         onTap={() => {
+          if (inBondMoment && bondNotification === null) { onContinue(); return; }
           if (activePoi === 'class-select') setClassSelectionOpen(true);
           if (activePoi === 'training-dummy' && confirmedClass !== null) setTrainingDummyActive(true);
           if (activePoi === 'dungeon-entrance') setDungeonEntranceOpen(true);
@@ -1226,8 +1295,8 @@ export function ControllerScreen({ session, gameState, cooldowns }: ControllerSc
           const now = Date.now();
           const isOnCooldown = cd !== null && cd.expiresAt > now;
           const isInteractive = isSpiritCell
-            ? !isOnCooldown && !isFrozen
-            : (trainingDummyActive || (inDungeon && !isDown && !isSpirit)) && ability !== null && !isOnCooldown;
+            ? !isOnCooldown && !isFrozen && !inBondMoment
+            : (trainingDummyActive || (inDungeon && !isDown && !isSpirit)) && ability !== null && !isOnCooldown && !inBondMoment;
           const badgeBorderColor = ability !== null
             ? (ability.inputType === 'AUTO' ? 'var(--accent-spirit)'
               : ability.inputType === 'RELEASE' ? 'var(--accent-warm)'
@@ -1285,6 +1354,16 @@ export function ControllerScreen({ session, gameState, cooldowns }: ControllerSc
               s.sendClassSelect({ type: 'class:select', classId });
             }
           }}
+        />
+      )}
+
+      {/* Bond card — bonded players only; sits above all other overlays */}
+      {bondNotification !== null && bondName !== null && partnerName !== null && (
+        <BondCard
+          bondNotification={bondNotification}
+          bondName={bondName}
+          partnerName={partnerName}
+          onContinue={onContinue}
         />
       )}
     </div>

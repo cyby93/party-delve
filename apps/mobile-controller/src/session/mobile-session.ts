@@ -1,6 +1,6 @@
 import * as Colyseus from '@colyseus/sdk';
 import { EventNames, deserialize } from 'net-protocol';
-import type { SnapshotMsg, DeltaEventMsg, InputEventMsg, ClassSelectMsg, CooldownUpdateMsg, RunProposeMsg, VoteMsg, ReturnToCampMsg } from 'net-protocol';
+import type { SnapshotMsg, DeltaEventMsg, InputEventMsg, ClassSelectMsg, CooldownUpdateMsg, BondNotificationMsg, RunProposeMsg, VoteMsg, ReturnToCampMsg, ContinueMsg } from 'net-protocol';
 import type { GameState } from 'shared-types';
 
 const SIM_URL = import.meta.env['VITE_SIM_URL'] ?? `ws://${window.location.hostname || 'localhost'}:2567`;
@@ -20,6 +20,7 @@ export interface MobileSession {
   sendRunPropose: (msg: RunProposeMsg) => void;
   sendVote: (msg: VoteMsg) => void;
   sendReturnToCamp: () => void;
+  sendContinue: () => void;
   disconnect: () => void;
 }
 
@@ -53,6 +54,7 @@ function wireRoomHandlers(
   onStateUpdate: (state: GameState) => void,
   onDelta: (delta: DeltaEventMsg) => void,
   onCooldownUpdate: (msg: CooldownUpdateMsg) => void,
+  onBondNotification: (msg: BondNotificationMsg) => void,
   onError: (code: number, message: string) => void,
   onDisconnect: (code: number) => void,
 ): void {
@@ -77,6 +79,13 @@ function wireRoomHandlers(
     } catch { /* ignore malformed */ }
   });
 
+  room.onMessage(EventNames.BOND_NOTIFICATION, (data: unknown) => {
+    try {
+      const msg = decode<BondNotificationMsg>(data);
+      onBondNotification(msg);
+    } catch { /* ignore malformed */ }
+  });
+
   room.onError((code: number, message?: string) => {
     onError(code, message ?? 'connection error');
   });
@@ -96,6 +105,7 @@ export async function joinSession(
   onStateUpdate: (state: GameState) => void,
   onDelta: (delta: DeltaEventMsg) => void,
   onCooldownUpdate: (msg: CooldownUpdateMsg) => void,
+  onBondNotification: (msg: BondNotificationMsg) => void,
   onError: (code: number, message: string) => void,
   onDisconnect: (code: number) => void,
 ): Promise<MobileSession> {
@@ -106,7 +116,7 @@ export async function joinSession(
   // Persist before wiring handlers — ensures token is available if onLeave fires during setup.
   persistSession(room.reconnectionToken, room.roomId, playerName);
 
-  wireRoomHandlers(room, onStateUpdate, onDelta, onCooldownUpdate, onError, onDisconnect);
+  wireRoomHandlers(room, onStateUpdate, onDelta, onCooldownUpdate, onBondNotification, onError, onDisconnect);
 
   return {
     playerId: room.sessionId,
@@ -118,6 +128,7 @@ export async function joinSession(
     sendRunPropose: (msg: RunProposeMsg) => room.send(EventNames.RUN_PROPOSE, msg),
     sendVote: (msg: VoteMsg) => room.send(EventNames.VOTE, msg),
     sendReturnToCamp: () => room.send(EventNames.RETURN_TO_CAMP, { type: 'return:to-camp' } satisfies ReturnToCampMsg),
+    sendContinue: () => room.send(EventNames.CONTINUE, { type: 'bond:continue' } satisfies ContinueMsg),
     disconnect: () => {
       try { room.leave(); } catch { /* socket may already be closed */ }
     },
@@ -129,6 +140,7 @@ export async function reconnectToSession(
   onStateUpdate: (state: GameState) => void,
   onDelta: (delta: DeltaEventMsg) => void,
   onCooldownUpdate: (msg: CooldownUpdateMsg) => void,
+  onBondNotification: (msg: BondNotificationMsg) => void,
   onError: (code: number, message: string) => void,
   onDisconnect: (code: number) => void,
 ): Promise<MobileSession> {
@@ -143,7 +155,7 @@ export async function reconnectToSession(
     persistSession(room.reconnectionToken, existing.roomId, existing.playerName);
   }
 
-  wireRoomHandlers(room, onStateUpdate, onDelta, onCooldownUpdate, onError, onDisconnect);
+  wireRoomHandlers(room, onStateUpdate, onDelta, onCooldownUpdate, onBondNotification, onError, onDisconnect);
 
   return {
     playerId: room.sessionId,
@@ -153,6 +165,7 @@ export async function reconnectToSession(
     sendRunPropose: (msg: RunProposeMsg) => room.send(EventNames.RUN_PROPOSE, msg),
     sendVote: (msg: VoteMsg) => room.send(EventNames.VOTE, msg),
     sendReturnToCamp: () => room.send(EventNames.RETURN_TO_CAMP, { type: 'return:to-camp' } satisfies ReturnToCampMsg),
+    sendContinue: () => room.send(EventNames.CONTINUE, { type: 'bond:continue' } satisfies ContinueMsg),
     disconnect: () => {
       try { room.leave(); } catch { /* socket may already be closed */ }
     },

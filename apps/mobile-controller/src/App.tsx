@@ -6,7 +6,7 @@ import { ControllerScreen, ClassSelectionScreen } from './screens/ControllerScre
 import { ReconnectScreen } from './screens/ReconnectScreen';
 import { joinSession, reconnectToSession, getPersistedSession, clearPersistedSession, type MobileSession } from './session/mobile-session';
 import type { GameState } from 'shared-types';
-import type { DeltaEventMsg, CooldownUpdateMsg } from 'net-protocol';
+import type { DeltaEventMsg, CooldownUpdateMsg, BondNotificationMsg } from 'net-protocol';
 import { applyDelta } from 'net-protocol';
 
 export interface CooldownState {
@@ -78,12 +78,16 @@ export function App() {
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [cooldowns, setCooldowns] = useState<(CooldownState | null)[]>([null, null, null, null]);
   const [runOutcome, setRunOutcome] = useState<'complete' | 'failed' | null>(null);
+  const [bondNotification, setBondNotification] = useState<BondNotificationMsg | null>(null);
+  const [inBondMoment, setInBondMoment] = useState(false);
   const [reconnectRoomId, setReconnectRoomId] = useState<string>('');
   const [sessionEntryInitialCode, setSessionEntryInitialCode] = useState<string | undefined>(undefined);
   // Ref keeps handleDelta dep-free while always reading the live playerId.
   // The callback is wired into room.onMessage once at join time — a closure
   // over `session` state would capture null and never update.
   const sessionRef = useRef<MobileSession | null>(null);
+  const bondMomentLevelRef = useRef<number | null>(null);
+  const gameStateRef = useRef<GameState | null>(null);
 
   useEffect(() => {
     return () => { session?.disconnect(); };
@@ -92,6 +96,8 @@ export function App() {
   useEffect(() => {
     sessionRef.current = session;
   }, [session]);
+
+  useEffect(() => { gameStateRef.current = gameState; }, [gameState]);
 
   const handleDelta = useCallback((delta: DeltaEventMsg) => {
     // Skip self-targeted freeze/thaw deltas — the mobile controller should not
@@ -102,8 +108,12 @@ export function App() {
     ) {
       return;
     }
-    if (delta.type === 'run:complete') setRunOutcome('complete');
-    else if (delta.type === 'run:failed') setRunOutcome('failed');
+    if (delta.type === 'bond:assigned') {
+      bondMomentLevelRef.current = gameStateRef.current?.session.levelIndex ?? null;
+      setInBondMoment(true);
+    }
+    if (delta.type === 'run:complete') { setRunOutcome('complete'); setInBondMoment(false); setBondNotification(null); }
+    else if (delta.type === 'run:failed') { setRunOutcome('failed'); setInBondMoment(false); setBondNotification(null); }
     setGameState(prev => prev !== null ? applyDelta(prev, delta) : prev);
   }, []);
 
@@ -135,6 +145,10 @@ export function App() {
     setScreen('session-entry');
   }, []);
 
+  const handleBondNotification = useCallback((msg: BondNotificationMsg) => {
+    setBondNotification(msg);
+  }, []);
+
   const handleJoin = useCallback(async (roomId: string, playerName: string) => {
     try {
       const s = await joinSession(
@@ -143,6 +157,7 @@ export function App() {
         setGameState,
         handleDelta,
         handleCooldownUpdate,
+        handleBondNotification,
         (code, msg) => { console.warn('[session] room error after join', code, msg); },
         handleDisconnect,
       );
@@ -152,7 +167,7 @@ export function App() {
     } catch (err) {
       throw err; // re-throw so SessionCodeEntryScreen can reset its loading state and show the error
     }
-  }, [handleDelta, handleCooldownUpdate, handleDisconnect]);
+  }, [handleDelta, handleCooldownUpdate, handleBondNotification, handleDisconnect]);
 
   const handleOrientationDismiss = useCallback(() => {
     setScreen('controller');
@@ -166,13 +181,29 @@ export function App() {
       setGameState,
       handleDelta,
       handleCooldownUpdate,
+      handleBondNotification,
       (code, msg) => { console.warn('[session] reconnect error', code, msg); },
       handleDisconnect,
     );
     setSession(s);
     setCooldowns([null, null, null, null]);
+    setInBondMoment(false);
+    setBondNotification(null);
+    bondMomentLevelRef.current = null;
     setScreen('controller');
-  }, [handleDelta, handleCooldownUpdate, handleDisconnect]);
+  }, [handleDelta, handleCooldownUpdate, handleBondNotification, handleDisconnect]);
+
+  useEffect(() => {
+    if (!inBondMoment || bondMomentLevelRef.current === null) return;
+    const level = gameState?.session.levelIndex;
+    if (level !== undefined && level !== bondMomentLevelRef.current) {
+      setInBondMoment(false);
+      setBondNotification(null);
+      bondMomentLevelRef.current = null;
+    }
+  }, [gameState?.session.levelIndex, inBondMoment]);
+
+  const handleContinue = useCallback(() => { sessionRef.current?.sendContinue(); }, []);
 
   const handleGiveUp = useCallback(() => {
     clearPersistedSession();
@@ -227,5 +258,5 @@ export function App() {
       />
     );
   }
-  return <ControllerScreen session={session} gameState={gameState} cooldowns={cooldowns} />;
+  return <ControllerScreen session={session} gameState={gameState} cooldowns={cooldowns} bondNotification={bondNotification} inBondMoment={inBondMoment} onContinue={handleContinue} />;
 }

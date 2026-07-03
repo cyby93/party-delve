@@ -1,4 +1,4 @@
-import type { PlayerClass } from 'shared-types';
+import type { PlayerClass, BondType } from 'shared-types';
 
 // ── Revive system ─────────────────────────────────────────────────────────────
 // Escalating revive windows per down (1-indexed: downCount=1 → index 0 → 60s).
@@ -102,3 +102,26 @@ export function getEnemyCount(
 ): number {
   return Math.ceil(playerCount * ENEMY_RATIO[levelTier]);
 }
+
+export const BOND_DESCRIPTIONS: Record<BondType, string> = {
+  proximity: 'Your spirits entwine — drawing power from closeness, but paying a toll when you linger.',
+  fate:      'Your fates are now bound. What befalls one, befalls the other.',
+};
+
+export const BOND_MECHANICS: Record<BondType, string> = {
+  proximity: '+20% damage when in range · HP drain after 5 s together',
+  fate:      '+20% movement speed always · If one falls, both fall',
+};
+
+// ponytail: type-based colors for alpha; per-bond-instance colors if Story 5.5 needs them
+export const BOND_TYPE_COLORS: Record<BondType, string> = {
+  proximity: '#6ea8d8',  // accent-spirit — matches 5.1 contract test fixture
+  fate:      '#f5a623',  // warm amber
+};
+
+// ── Spirit Bond effects ───────────────────────────────────────────────────────
+export const BOND_PROXIMITY_RANGE_PX = 200;  // planck sensor radius — tunable
+export const BOND_DRAIN_THRESHOLD_S  = 5;    // seconds in-range before drain starts
+export const BOND_DRAIN_HP_PER_TICK  = 1;    // HP drained per 30hz tick (~30/s at threshold)
+export const BOND_DAMAGE_MULT        = 1.2;  // Proximity buff: +20% damage
+export const BOND_SPEED_MULT         = 1.2;  // Fate buff: +20% movement speed

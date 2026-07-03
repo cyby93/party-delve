@@ -127,7 +127,16 @@ export function applyDelta(state: GameState, evt: DeltaEventMsg): GameState {
       return { ...state, enemies };
     }
     case 'bond:assigned':
-      return state;  // ponytail: bond display in Story 3.6
+      if (state.activeBonds.some(b => b.playerA === evt.playerA && b.playerB === evt.playerB)) return state;
+      return {
+        ...state,
+        activeBonds: [
+          ...state.activeBonds,
+          { playerA: evt.playerA, playerB: evt.playerB, type: evt.bondType, color: evt.bondColor },
+        ],
+      };
+    case 'bond:price-active':
+      return state; // ponytail: visual indicator only; HP changes come via separate player:hp-updated deltas
     case 'ability:fired':
       return state;  // ponytail: no-op on state — visual effect only; DungeonScreen reads raw delta
     case 'spirit-ability:fired':
