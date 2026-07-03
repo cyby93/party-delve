@@ -31,7 +31,7 @@ function createEmptyGameState(roomId: string): GameState {
     },
     players: [],
     enemies: [],
-    bonds: [],
+    activeBonds: [],
     essenceDrops: [],
     tick: 0,
     floorLayout: null,

@@ -42,7 +42,7 @@
 # Phase2 legacy stories (old Phase-based keys) are tracked below under PHASE 2 STORIES.
 
 generated: 2026-06-22
-last_updated: 2026-07-02 (epic-5 stories defined)
+last_updated: 2026-07-03 (5-2 done)
 project: party-delve
 project_key: NOKEY
 tracking_system: file-system
@@ -114,9 +114,9 @@ development_status:
   # Bond assigned at level end, buff+price pairs, in-canvas particle tethers,
   # 3 bonds accumulate across 3 levels.
   # FRs: FR14, FR15, FR16
-  epic-5: backlog
-  5-1-spirit-bond-shared-types-and-protocol-contracts: backlog
-  5-2-bond-assignment-logic-and-deterministic-pair-selection: backlog
+  epic-5: in-progress
+  5-1-spirit-bond-shared-types-and-protocol-contracts: done
+  5-2-bond-assignment-logic-and-deterministic-pair-selection: done
   5-3-per-tick-bond-effects-proximity-and-fate-bond-types: backlog
   5-4-bond-assignment-integration-at-level-completion: backlog
   5-5-host-bond-visualization-assignment-overlay-and-particle-tethers: backlog

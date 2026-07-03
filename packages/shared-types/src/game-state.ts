@@ -16,7 +16,7 @@ export interface GameState {
   session: SessionState;
   players: PlayerState[];
   enemies: EnemyState[];
-  bonds: BondState[];
+  activeBonds: BondState[];
   essenceDrops: EssenceDrop[];
   tick: number;
   floorLayout: FloorLayout | null;

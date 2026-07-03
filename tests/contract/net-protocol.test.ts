@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { serialize, deserialize, applyDelta, EventNames } from 'net-protocol';
-import type { SnapshotMsg, DeltaEventMsg, InputEventMsg, PlayerPoiEnteredDelta, PlayerPoiExitedDelta, AbilityFiredDelta, EnemyDamagedDelta, PlayerDownedDelta } from 'net-protocol';
+import type { SnapshotMsg, DeltaEventMsg, InputEventMsg, PlayerPoiEnteredDelta, PlayerPoiExitedDelta, AbilityFiredDelta, EnemyDamagedDelta, PlayerDownedDelta, BondNotificationMsg } from 'net-protocol';
 import type { GameState, PlayerState } from 'shared-types';
-import { PlayerClass, SessionColor, EnemyType, DifficultyTier, EnemyFSMState } from 'shared-types';
+import { PlayerClass, SessionColor, EnemyType, DifficultyTier, EnemyFSMState, BondType } from 'shared-types';
 
 function mockGameState(): GameState {
   return {
@@ -21,7 +21,7 @@ function mockGameState(): GameState {
     },
     players: [],
     enemies: [],
-    bonds: [],
+    activeBonds: [],
     essenceDrops: [],
     tick: 0,
     floorLayout: null,
@@ -481,6 +481,60 @@ describe('net-protocol contract tests', () => {
       state.runProposal = { biome: 'grassland', difficulty: DifficultyTier.EASY, proposedBy: 'p1' };
       const msg = { type: 'snapshot' as const, state };
       expect(deserialize<typeof msg>(serialize(msg))).toEqual(msg);
+    });
+  });
+
+  describe('Story 5.1 bond contract round-trips', () => {
+    it('BondAssignedDelta survives serialize → deserialize', () => {
+      const delta = {
+        type: 'bond:assigned' as const,
+        playerA: 'player-1',
+        playerB: 'player-2',
+        bondType: BondType.Proximity,
+        bondColor: '#6ea8d8',
+      } satisfies DeltaEventMsg;
+      expect(deserialize<DeltaEventMsg>(serialize(delta))).toEqual(delta);
+    });
+
+    it('BondNotificationMsg survives serialize → deserialize', () => {
+      const msg: BondNotificationMsg = {
+        type: 'bond:notification',
+        playerA: 'player-1',
+        playerB: 'player-2',
+        bondType: BondType.Fate,
+        bondColor: '#f5a623',
+        bondDescription: 'Your fates are intertwined.',
+        bondMechanic: 'Shared doom: if one falls, so does the other.',
+      };
+      expect(deserialize<BondNotificationMsg>(serialize(msg))).toEqual(msg);
+    });
+
+    it('applyDelta bond:assigned pushes to activeBonds', () => {
+      const state: GameState = mockGameState();
+      const next = applyDelta(state, {
+        type: 'bond:assigned',
+        playerA: 'player-1',
+        playerB: 'player-2',
+        bondType: BondType.Proximity,
+        bondColor: '#6ea8d8',
+      });
+      expect(next.activeBonds).toHaveLength(1);
+      expect(next.activeBonds[0]).toEqual({
+        playerA: 'player-1',
+        playerB: 'player-2',
+        type: BondType.Proximity,
+        color: '#6ea8d8',
+      });
+      expect(state.activeBonds).toHaveLength(0); // original must not be mutated
+    });
+
+    it('applyDelta bond:assigned deduplicates same pair', () => {
+      const state: GameState = mockGameState();
+      const delta = { type: 'bond:assigned' as const, playerA: 'player-1', playerB: 'player-2', bondType: BondType.Proximity, bondColor: '#6ea8d8' };
+      const once = applyDelta(state, delta);
+      const twice = applyDelta(once, delta);
+      expect(twice.activeBonds).toHaveLength(1);
+      expect(twice).toBe(once); // same reference — no new object
     });
   });
 });

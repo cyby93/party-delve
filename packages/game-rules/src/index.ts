@@ -29,3 +29,6 @@ export { ChargeLayer } from './systems/ai/layers/charge.js';
 export { StompLayer } from './systems/ai/layers/stomp.js';
 export { dispatchAbility } from './systems/abilities.js';
 export type { AbilityDispatchContext, AbilityFiredEvent, AbilityGameError } from './systems/abilities.js';
+export { assignBond, selectBondPair, selectBondType } from './systems/bonds.js';
+export type { BondAssignedEvt, BondError } from './systems/bonds.js';
+export { BOND_TYPE_COLORS } from './balance.js';

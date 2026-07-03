@@ -1,4 +1,4 @@
-import type { PlayerClass } from 'shared-types';
+import type { PlayerClass, BondType } from 'shared-types';
 
 // ── Revive system ─────────────────────────────────────────────────────────────
 // Escalating revive windows per down (1-indexed: downCount=1 → index 0 → 60s).
@@ -102,3 +102,9 @@ export function getEnemyCount(
 ): number {
   return Math.ceil(playerCount * ENEMY_RATIO[levelTier]);
 }
+
+// ponytail: type-based colors for alpha; per-bond-instance colors if Story 5.5 needs them
+export const BOND_TYPE_COLORS: Record<BondType, string> = {
+  proximity: '#6ea8d8',  // accent-spirit — matches 5.1 contract test fixture
+  fate:      '#f5a623',  // warm amber
+};

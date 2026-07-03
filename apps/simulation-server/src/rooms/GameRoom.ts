@@ -55,7 +55,7 @@ function createEmptyGameState(roomId: string): GameState {
     },
     players: [],
     enemies: [],
-    bonds: [],
+    activeBonds: [],
     essenceDrops: [],
     tick: 0,
     floorLayout: null,
@@ -562,7 +562,7 @@ export class GameRoom extends Room {
     // Clear game state arrays
     this.gameState.enemies = [];
     this.gameState.essenceDrops = [];
-    this.gameState.bonds = [];
+    this.gameState.activeBonds = [];
 
     // Reset each player to hub spawn
     for (let i = 0; i < this.gameState.players.length; i++) {

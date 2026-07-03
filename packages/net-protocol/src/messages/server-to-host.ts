@@ -1,4 +1,4 @@
-import type { GameState, BondState, EssenceDrop, PlayerClass, DifficultyTier } from 'shared-types';
+import type { GameState, BondType, EssenceDrop, PlayerClass, DifficultyTier } from 'shared-types';
 
 export interface SnapshotMsg {
   type: 'snapshot';
@@ -62,7 +62,10 @@ export type EnemyStompedDelta = {
 
 export type BondAssignedDelta = {
   type: 'bond:assigned';
-  bond: BondState;
+  playerA: string;
+  playerB: string;
+  bondType: BondType;
+  bondColor: string;
 };
 
 export type EssenceDroppedDelta = {

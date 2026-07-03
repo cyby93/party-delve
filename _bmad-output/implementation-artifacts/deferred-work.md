@@ -579,3 +579,38 @@ If the host reconnects mid-post-run, `runOutcome` is `null` (snapshot doesn't ca
 
 **W5 — Stale consented-leave callback race on immediate re-join**
 `App.tsx:198-201` — After tapping Back (consented disconnect), if the user immediately re-joins a new room, `persistSession` for the new room can run before `handleDisconnect(4000)` fires `clearPersistedSession` for the old room. The old callback would then erase the new token. Practical window is <100ms — not reachable by human interaction. Pre-existing pattern.
+
+---
+
+## Deferred from: code review of 5-1-spirit-bond-shared-types-and-protocol-contracts (2026-07-02)
+
+**D-5.1-A — `bondColor` (wire) vs `color` (state) naming split** [`packages/net-protocol/src/apply-delta.ts:135`]
+`BondAssignedDelta.bondColor` maps to `BondState.color`; `apply-delta.ts` manually bridges them. TypeScript catches any accidental mismatch. The asymmetry is consistent with how `bondType→type` works in the same delta-to-state mapping — prefixed wire fields, unprefixed state fields. Intentional convention; revisit if the pattern causes confusion in story 5.4 broadcast construction.
+
+**D-5.1-B — `bondDescription`/`bondMechanic` unconstrained `string` in `BondNotificationMsg`** [`packages/net-protocol/src/messages/server-to-mobile.ts`]
+No union type, schema validation, or lookup table constrains these fields. Valid values per bond type will be defined in story 5.4 (level-completion integration). Add a per-BondType lookup or narrow union when story 5.4 populates these strings, or define them in `game-rules` so they are derivable from `BondType`.
+
+**D-5.1-C — `BondAssignedDelta` not individually exported from net-protocol index** [`packages/net-protocol/src/index.ts`]
+Only `DeltaEventMsg` (the union) is exported. Switch-narrowing in host-client code works without a named import, and `satisfies DeltaEventMsg` in tests enforces the correct shape. Pre-existing pattern — no other delta types are individually exported either. If consumers frequently need to annotate explicit `BondAssignedDelta` variables, add it to the index alongside `DeltaEventMsg` in a net-protocol cleanup pass.
+
+**D-5.1-D — Mobile lacks `bondDescription`/`bondMechanic` after reconnect** [`packages/net-protocol/src/messages/server-to-mobile.ts`, story 5.6]
+Snapshot carries `activeBonds: BondState[]` (playerA, playerB, type, color only). The unicast `BondNotificationMsg` is not re-sent on reconnect. A reconnecting mobile client can display who they're bonded with and the color, but not the human-readable description or mechanic. Story 5.6 (mobile bond card) should re-derive description/mechanic from `bondType` on the client (lookup table in `game-rules` or `shared-types`), or the server should re-unicast `BondNotificationMsg` on reconnect.
+
+**D-5.1-E — `SimEvents['bond:assigned']` missing `bondColor` — story 5.4 handoff hazard** [`packages/shared-types/src/session.ts:25`]
+The internal sim-server event bus type `SimEvents['bond:assigned']` has `{ playerA, playerB, bondType }` — no `bondColor`. When story 5.4 wires up bond-assigned broadcasting in `GameRoom.ts`, it cannot forward the `SimEvents` payload directly to `BondAssignedDelta` — it must independently compute and append `bondColor`. This is by design (color is a rendering concern added at broadcast time), but story 5.4 must be aware of this gap to avoid a silent `undefined` for `bondColor` on the wire.
+
+---
+
+## Deferred from: code review of 5-2-bond-assignment-logic-and-deterministic-pair-selection (2026-07-03)
+
+**D-5.2-A — `selectBondPair` has no internal guard for 1-player input** [`bonds.ts:19-24`]
+Function is exported for tests but has no guard on `players.length >= 2`. The `!` non-null assertion suppresses TypeScript's check; a 1-player call would throw at runtime on `players[adjustedB]!.id`. Pre-existing by design: all call sites route through `assignBond` which guards length. Consider a JSDoc precondition comment if the export surface grows.
+
+**D-5.2-B — Same pair can bond multiple times in `activeBonds`** [`bonds.ts:39`]
+With 2 players and 3 `assignBond` calls, all 3 entries share the same pair. No dedup guard exists. This is intentional per story non-goals ("Bond cooldown / dedup across runs"). Story 5.3 (per-tick bond effects) must account for this when applying buffs/drains to avoid stacking.
+
+**D-5.2-C — `selectBondPair` index math fragile if `rng()` ever returns ≥ 1.0** [`bonds.ts:20-21`]
+`Math.floor(rng() * N)` is safe only while `rng()` is strictly `[0,1)`. The xoshiro128 implementation satisfies this but there's no runtime assertion. If the RNG is ever swapped for one that can return `1.0`, `players[N]!.id` would throw. Pre-existing RNG contract assumption.
+
+**D-5.2-D — N=8 max players and `rng()=0.0` boundary not tested** [`bonds.test.ts`]
+Tests cover N=2 and N=3. N=8 (session maxPlayers) exercises `adjustedB` reaching index 7. `rng()=0.0` pins the exact `idxA=0, idxB=0 → adjustedB=1` path. Both are nice-to-have regression guards against future shift-up refactors.

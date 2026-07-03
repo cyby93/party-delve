@@ -1,16 +1,11 @@
 export enum BondType {
-  SHIELD_LINK = 'shield_link',
-  SPIRIT_BRIDGE = 'spirit_bridge',
-  ESSENCE_FLOW = 'essence_flow',
-  WAR_PACT = 'war_pact',
+  Proximity = 'proximity',
+  Fate = 'fate',
 }
 
 export interface BondState {
-  id: string;
+  playerA: string;
+  playerB: string;
   type: BondType;
-  playerAId: string;
-  playerBId: string;
-  buff: string;
-  price: string;
-  isActive: boolean;
+  color: string;
 }

@@ -14,12 +14,18 @@ function mockGameState(): GameState {
       maxPlayers: 8,
       runSeed: 42,
       levelIndex: 0,
+      difficulty: null,
+      levelObjective: 'clear',
+      waveIndex: 0,
+      totalWaves: 0,
     },
     players: [],
     enemies: [],
-    bonds: [],
+    activeBonds: [],
     essenceDrops: [],
     tick: 0,
+    floorLayout: null,
+    runProposal: null,
   };
 }
 

@@ -22,7 +22,7 @@ export interface RoomOptions {
 
 export interface SimEvents {
   'player:downed': { playerId: string; downCount: number };
-  'bond:assigned': { playerAId: string; playerBId: string; bondType: BondType };
+  'bond:assigned': { playerA: string; playerB: string; bondType: BondType };
   'enemy:killed': { enemyId: string; byPlayerId: string };
   'level:complete': { levelIndex: number };
 }
