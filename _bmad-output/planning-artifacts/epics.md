@@ -1,5 +1,5 @@
 ---
-stepsCompleted: ['step-01-validate-prerequisites', 'step-02-design-epics', 'step-03-create-stories', 'step-04-final-validation']
+stepsCompleted: ['step-01-validate-prerequisites', 'step-02-design-epics', 'step-03-create-stories', 'step-04-final-validation', 'step-03-epic-6-stories']
 inputDocuments:
   - '_bmad-output/planning-artifacts/gdds/gdd-party-delve-2026-06-13/gdd.md'
   - '_bmad-output/game-architecture.md'
@@ -1173,4 +1173,251 @@ So that bonded players can read their bond terms before we advance to the next l
 **Then** all touch targets meet 44×44px minimum (NFR5)
 **And** the bond color frame glow is visible
 **And** skill cells on non-bonded phones are visually inactive but layout is unchanged
+
+---
+
+## Epic 6: Grassland Boss Encounter
+
+The Grassland biome boss is fully playable with behavior-tiered AI (Easy/Normal/Hard difficulty layers), synthesizing mechanics from the preceding three levels. Boss defeat triggers the purification pulse, reward reveal animation, and transitions to the post-run summary.
+
+### Story 6.1: Grassland Boss — Shared Types & Protocol Contracts
+
+As a developer on the project,
+I want the boss entity types, run reward structures, and wire message contracts defined in shared-types and net-protocol,
+So that all agent roles can implement boss logic, host visualization, and reward sequencing against agreed-upon interfaces.
+
+**Acceptance Criteria:**
+
+**Given** `packages/shared-types/src/boss.ts` is created
+**When** it is imported
+**Then** it exports `BossPhase` enum with variants `Phase1 | Phase2 | Phase3`
+**And** `BossState` interface: `{ id: string; entityType: 'grassland-boss'; hp: number; maxHp: number; phase: BossPhase; position: { x: number; y: number }; isDefeated: boolean; }`
+**And** `GameState.boss: BossState | null` is added (initialized to `null` in `createEmptyGameState`)
+
+**Given** `packages/shared-types/src/achievements.ts` is created
+**When** it is imported
+**Then** it exports `GrasslandAchievement` enum with at least: `NoDeath`, `FastBoss`, `AllBondsActive`, `HardCleared`, `VigilHeld`
+**And** `AchievementState` interface: `{ achievement: GrasslandAchievement; completed: boolean; }`
+
+**Given** `packages/shared-types/src/run-reward.ts` is created
+**When** it is imported
+**Then** it exports `PlayerReward`: `{ playerId: string; essence: number; masteryMilestones: string[]; }`
+**And** `RunReward`: `{ essenceTotal: number; perPlayer: PlayerReward[]; achievements: GrasslandAchievement[]; }`
+
+**Given** `packages/shared-types/src/constants.ts` is updated
+**When** reviewed
+**Then** it includes `BOSS_PHASE2_HP_RATIO = 0.6`, `BOSS_PHASE3_HP_RATIO = 0.3`, `PURIFICATION_PULSE_DURATION_MS = 1500`, and `BOSS_REWARD_ESSENCE_BASE = 200`
+**And** all boss behavior cooldowns and thresholds live in `packages/game-rules/balance.ts`, not in constants.ts
+
+**Given** the `SimEvents` interface in `packages/shared-types`
+**When** it is reviewed
+**Then** `'boss:phaseChanged': { bossId: string; newPhase: BossPhase }` is in the typed event map
+**And** `'boss:defeated': { bossId: string; reward: RunReward }` is in the typed event map
+
+**Given** `packages/net-protocol/src/messages/server-to-host.ts`
+**When** delta events are reviewed
+**Then** `BossDamagedDelta`: `{ type: 'boss:damaged'; bossId: string; newHp: number; }` is in the `DeltaEventMsg` union
+**And** `BossPhaseChangedDelta`: `{ type: 'boss:phaseChanged'; bossId: string; newPhase: BossPhase; }` is in the union
+**And** `BossDefeatedDelta`: `{ type: 'boss:defeated'; bossId: string; reward: RunReward; }` is in the union
+**And** `SnapshotMsg` includes `boss: BossState | null`
+
+**Given** `packages/net-protocol/src/messages/server-to-mobile.ts`
+**When** it is reviewed
+**Then** `RunVictoryMsg` is exported: `{ type: 'run:victory'; essenceEarned: number; }`
+
+**Given** `tests/contract/net-protocol.test.ts`
+**When** boss message round-trip tests run
+**Then** `BossDamagedDelta`, `BossPhaseChangedDelta`, and `BossDefeatedDelta` all survive `serialize → deserialize` with identical values
+**And** `RunVictoryMsg` survives the same round-trip
+
+---
+
+### Story 6.2: Grassland Boss FSM — Phase System & Difficulty-Tiered Behaviors
+
+As a player,
+I want the Grassland boss to escalate through multiple distinct phases with harder difficulties adding new attack behaviors,
+So that the boss fight feels like the climax of everything we fought through in the three preceding levels.
+
+**Acceptance Criteria:**
+
+**Given** `packages/game-rules/src/entities/grassland-boss.ts` is implemented
+**When** `createBossState(runSeed: number): BossState` is called
+**Then** it returns a `BossState` with `hp === maxHp` (from `BOSS_GRASSLAND_MAX_HP` in `balance.ts`), `phase: BossPhase.Phase1`, `isDefeated: false`
+**And** the function has no Colyseus or planck.js imports
+
+**Given** `tickBoss(boss: BossState, state: GameState, world: World, difficulty: Difficulty): Result<DeltaEvent[], GameError>` is called each tick
+**When** `difficulty === Easy`
+**Then** Phase 1: boss runs `Idle → Chase → StompAttack → Idle` base FSM only — StompAttack executes a radial AoE around the boss position, telegraphed for one tick before activation (synthesizes the `StompLayer` behavior from Story 3.2 enemy system)
+**And** Phase 2 (triggered at `BOSS_PHASE2_HP_RATIO * maxHp`): boss runs the enhanced base FSM with a shorter `StompAttack` cooldown (values from `balance.ts`); no new behaviors added
+**And** there is no Phase 3 on Easy — the boss is defeated before `BOSS_PHASE3_HP_RATIO`
+
+**Given** `difficulty === Normal`
+**When** Phase 2 is triggered (boss HP ≤ `BOSS_PHASE2_HP_RATIO * maxHp`)
+**Then** `BossPhaseChangedEvt` is emitted with `newPhase: BossPhase.Phase2`
+**And** a `ChargeBehavior` intercepts the FSM: the boss telegraphs a dash in the direction of the nearest alive player and executes it on the following tick (synthesizes the `ChargeLayer` from Story 3.2 enemy Normal tier)
+**And** `StompAttack` continues to run as the fallback when `ChargeBehavior` is on cooldown
+
+**Given** `difficulty === Hard`
+**When** boss HP falls below `BOSS_PHASE3_HP_RATIO * maxHp`
+**Then** `BossPhaseChangedEvt` is emitted with `newPhase: BossPhase.Phase3`
+**And** 2–3 `GrasslandAdd` entities are spawned from the arena edge spawn points (count from `balance.ts`)
+**And** `GrasslandAdd` entities run the base FSM only (equivalent to Easy-tier enemy behavior) and are removed from `GameState` when their HP reaches zero
+**And** the boss continues running `StompAttack` and `ChargeBehavior` simultaneously in Phase 3
+
+**Given** boss HP reaches zero in any phase or at any difficulty
+**When** `isDefeated` is set to `true`
+**Then** `BossDefeatedEvt` is emitted containing the computed `RunReward`
+**And** `RunReward.essenceTotal` is computed as `BOSS_REWARD_ESSENCE_BASE + (alive player count × BOSS_REWARD_PER_ALIVE_PLAYER)` (values from `balance.ts`)
+**And** `RunReward.perPlayer` distributes essence equally across all connected players (guests and registered alike)
+**And** the function returns `Result<DeltaEvent[], GameError>` — it never throws
+
+**Given** `tickBoss` is called with zero alive players remaining
+**When** it runs
+**Then** it returns `{ ok: true, value: [] }` — no crash, no boss movement events
+
+**Given** `tests/unit/grassland-boss.test.ts` runs
+**When** all cases execute
+**Then** Phase 1 → Phase 2 HP threshold transition is verified for each difficulty tier
+**And** Phase 2 → Phase 3 (Hard only) transition is verified
+**And** `GrasslandAdd` spawn count and behavior tier are verified
+**And** reward calculation for a 4-player run (2 alive, 2 in spirit form) produces the expected per-player essence split
+**And** the test file has zero Colyseus or planck.js imports
+
+---
+
+### Story 6.3: Boss Arena — Handcrafted Level, Physics Geometry & Host Rendering
+
+As a group watching the host screen,
+I want the boss arena to look and feel distinctly different from the procedural dungeon levels — fully corrupted, vast, and the stage for the run's climax,
+So that the boss fight has the visual weight of a final encounter.
+
+**Acceptance Criteria:**
+
+**Given** `apps/simulation-server/src/levels/boss-arena.ts` is implemented
+**When** the boss level (index 3) is loaded by the level transition system (Story 4.3)
+**Then** it replaces the placeholder Victory trigger zone from Story 4.3 with the full boss arena
+**And** arena bounds are registered as planck.js static polygon bodies (rectangular arena with four angled corner walls to prevent player corner-sticking)
+**And** four edge spawn points (`{ x, y }` positions at N/S/E/W arena edges) are exported for Phase 3 `GrasslandAdd` spawning
+**And** the boss entity is created via `createBossState()` and added to `GameState.boss`
+**And** the boss body is registered as a planck.js dynamic body: large circle collider with a planck.js `isSensor` aggro radius around it
+
+**Given** the host client receives a `SnapshotMsg` with `boss` field populated (boss level loaded)
+**When** the host renders the arena
+**Then** the arena tilemap uses the Grassland biome bundle (already background-loaded during hub free-roam per AR10 and Story 4.3)
+**And** all environmental sprites render in their corrupted state: maximum soul-crack glow (`corruption-acid` or `corruption-blood` glow overlays on all surface tiles)
+**And** the boss sprite renders at the boss's planck.js body position, centered on the arena
+
+**Given** the host receives a `BossDamagedDelta`
+**When** `applyDelta` processes it
+**Then** a thin boss HP bar — 6px height, spanning full canvas width, positioned just below the 48px top strip — updates its fill percentage to `newHp / boss.maxHp`
+**And** the HP bar uses `accent-corruption` (#7d2dff) as its fill color
+**And** damage numbers appear in-canvas above the boss sprite for each `BossDamagedDelta`
+
+**Given** the host receives a `BossPhaseChangedDelta` with `newPhase: BossPhase.Phase2`
+**When** the renderer processes it
+**Then** the boss sprite transitions to its Phase 2 animation variant (soul-crack glow overlay intensifies)
+**And** Howler.js escalates the boss music (the single pre-authored boss track increases in intensity — e.g., an additional percussion layer crossfades in; implementation detail left to audio system)
+
+**Given** the host receives `BossPhaseChangedDelta` with `newPhase: BossPhase.Phase3` (Hard difficulty)
+**When** the renderer processes it
+**Then** `GrasslandAdd` entities appear at the arena edges via their own `enemy:spawned` delta events (existing enemy rendering handles them)
+**And** the boss sprite transitions to its Phase 3 variant (blood-red eye glow added to soul-crack overlay)
+
+**Given** the simulation-safety hook
+**When** any change to `apps/simulation-server/src/levels/boss-arena.ts` is made
+**Then** a typecheck (`npm run typecheck --workspace=apps/simulation-server`) passes
+**And** `tickBoss` unit tests still pass
+
+---
+
+### Story 6.4: Boss Defeat Sequence — Purification Pulse & Reward Reveal
+
+As a group watching the host screen,
+I want the boss defeat to be a cinematic moment — the world visually cleansing itself, a reward reveal, and a brief pause before the run summary,
+So that the emotional payoff of completing a run lands before the numbers screen appears.
+
+**Acceptance Criteria:**
+
+**Given** `BossDefeatedEvt` is emitted in the sim
+**When** `apps/simulation-server` processes it
+**Then** `GameState.runPhase` is set to `'post-run'` — the tick loop skips gameplay processing for subsequent ticks
+**And** `BossDefeatedDelta` (containing `RunReward`) is broadcast to all host clients
+**And** `RunVictoryMsg` (containing `essenceEarned` per player) is unicast to each mobile client
+**And** `assignBond()` is NOT called (boss level completion does not trigger bond assignment, per Story 5.4)
+**And** after a delay of `PURIFICATION_PULSE_DURATION_MS + REWARD_REVEAL_DURATION_MS` (both from `constants.ts`/`balance.ts`), `run:complete` is broadcast to trigger the post-run summary flow (Story 4.5)
+
+**Given** the host client receives `BossDefeatedDelta`
+**When** the purification pulse sequence begins
+**Then** gameplay input lock is applied — no further `DeltaEventMsg` processing changes visible game state
+**And** the boss HP bar hides immediately (no lingering UI artifact)
+**And** a PixiJS Graphics circle with `accent-purify` (#90d8f0) fill radiates outward from the boss's last known position, expanding to cover the full canvas
+**And** the pulse alpha fades from 0.6 to 0 as the radius grows, completing in `PURIFICATION_PULSE_DURATION_MS` milliseconds
+**And** simultaneously with the pulse start: all corrupted environmental sprites swap to their clean texture variants — cracked golden grass becomes whole, soul-crack overlays disappear, void-eye glows close (no modal or banner overlay — the canvas transformation is the signal, per UX-DR16)
+**And** no HUD element (banner, panel, or modal) is added during the purification pulse — the canvas transformation stands alone
+
+**Given** the purification pulse completes
+**When** the reward reveal animation begins
+**Then** a spirit manifestation visual rises from the center of the purified arena (a brief PixiJS particle burst in `accent-spirit` and `accent-warm`)
+**And** the total team Spirit Essence earned renders in Lora 700 at xl (40px) in `accent-warm`, centered on canvas
+**And** the Territory Spirit Voice line "The plains are quieter tonight. You did this." renders in Lora 400 italic sm, `text-secondary`, floating over canvas with no background panel (consistent with bond assignment overlay pattern from UX-DR12)
+**And** the voice line fades after ~2 seconds
+**And** after the reward reveal completes, the host transitions to the Post-Run Summary screen (Story 4.5 victory flow) without requiring any player action
+
+**Given** the mobile client receives `RunVictoryMsg`
+**When** the phone transitions
+**Then** the combat controller layout is replaced by a "Victory" post-run view showing `essenceEarned` in `accent-warm`
+**And** a "Return to Camp" button is the only interactive element (44×44px minimum touch target, NFR5)
+**And** the phone remains in landscape orientation throughout
+
+**Given** a player is in spirit form when `BossDefeatedDelta` arrives
+**When** the purification sequence plays
+**Then** the spirit form visual dissipates — spirit-form players are restored to their normal character sprite on the purified canvas
+**And** their `player-chip` returns to alive state in the top strip
+
+**Given** `tests/e2e/full-run.test.ts` is extended
+**When** it runs the boss defeat path
+**Then** it verifies: Level 3 completes → Bond 3 assigned → player sends CONTINUE → boss level loads → `GameState.boss` is not null → simulated damage reduces boss HP below zero → `BossDefeatedDelta` received by host → `run:complete` received after delay → post-run summary renders
+
+---
+
+### Story 6.5: Grassland Biome Achievements
+
+As a player,
+I want to see Grassland-specific achievements recognized and displayed at the end of a run,
+So that the game rewards coordination, skill, and exploration of difficulty — not just completion.
+
+**Acceptance Criteria:**
+
+**Given** `packages/game-rules/src/systems/achievements.ts` is implemented
+**When** `evaluateGrasslandAchievements(state: GameState, bossDefeatedAt: number): AchievementState[]` is called at boss defeat
+**Then** it evaluates all five `GrasslandAchievement` variants:
+- `NoDeath`: `true` if no player's `downCount` incremented during this run
+- `FastBoss`: `true` if `bossDefeatedAt - state.run.bossLevelStartedAt ≤ BOSS_FAST_CLEAR_MS` (from `balance.ts`)
+- `AllBondsActive`: `true` if `state.activeBonds.length === 3` when the boss level started
+- `HardCleared`: `true` if `state.run.difficulty === Difficulty.Hard`
+- `VigilHeld`: `true` if any player's `isDown` was `true` at any tick during the boss fight AND `run:complete` is reached (victory despite spirit-form players)
+**And** completed achievements are included in `RunReward.achievements` (types from Story 6.1)
+**And** the function returns `Result<AchievementState[], GameError>` — it never throws
+
+**Given** `GameState.run` tracking fields
+**When** the boss level loads (index 3)
+**Then** `state.run.bossLevelStartedAt` is set to the current server timestamp (milliseconds)
+**And** `state.run.anyPlayerEnteredSpiritFormDuringBoss` is initialized to `false` and set to `true` on the first `player:downed` event during the boss level
+
+**Given** the post-run summary screen on the host (Story 4.5)
+**When** `RunReward.achievements` contains at least one completed achievement
+**Then** a compact achievement row renders below the per-player cards: each achievement shows its name (Lora 400 sm, text-primary) and a filled checkmark in `accent-spirit`
+**And** if `achievements` is empty, the achievement section is hidden with no empty-state message
+
+**Given** the run ends for registered players
+**When** `onDispose` fires in the Colyseus room
+**Then** completed achievements are persisted via `PATCH /player/:id` to `apps/backend-platform` (same endpoint used for mastery and Spirit Essence — add `achievements` to the patch body)
+**And** guest players' achievements display in the post-run summary but are not persisted (no backend call for guests)
+
+**Given** `tests/unit/achievements.test.ts` runs
+**When** all cases execute
+**Then** each of the five achievement conditions evaluates correctly from a mock `GameState`
+**And** `VigilHeld` correctly returns `true` only when a spirit-form player existed AND `run:complete` was reached
+**And** `FastBoss` returns `false` when boss defeat time exceeds `BOSS_FAST_CLEAR_MS`
+**And** no achievement appears twice in the returned array
 
