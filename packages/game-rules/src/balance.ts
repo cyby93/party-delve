@@ -125,3 +125,20 @@ export const BOND_DRAIN_THRESHOLD_S  = 5;    // seconds in-range before drain st
 export const BOND_DRAIN_HP_PER_TICK  = 1;    // HP drained per 30hz tick (~30/s at threshold)
 export const BOND_DAMAGE_MULT        = 1.2;  // Proximity buff: +20% damage
 export const BOND_SPEED_MULT         = 1.2;  // Fate buff: +20% movement speed
+
+// ── Grassland Boss ────────────────────────────────────────────────────────────
+export const BOSS_GRASSLAND_MAX_HP              = 2000 as const;
+export const BOSS_CHASE_RANGE                   = 600 as const;
+export const BOSS_ATTACK_RANGE                  = 100 as const;
+export const BOSS_ATTACK_COOLDOWN_TICKS         = 60 as const;
+export const BOSS_CHASE_SPEED                   = 60 as const;
+export const BOSS_STOMP_ACTIVATION_RANGE        = 250 as const;
+export const BOSS_STOMP_RADIUS                  = 280 as const;
+export const BOSS_PHASE2_STOMP_COOLDOWN_TICKS   = 120 as const;
+export const BOSS_CHARGE_ACTIVATION_MIN         = 200 as const;
+export const BOSS_CHARGE_ACTIVATION_MAX         = 600 as const;
+export const BOSS_CHARGE_SPEED                  = 350 as const;
+export const BOSS_CHARGE_COOLDOWN_TICKS         = 150 as const;
+export const BOSS_REWARD_PER_ALIVE_PLAYER       = 50 as const;
+export const BOSS_ADD_COUNT_HARD                = 3 as const;
+export const BOSS_ADD_HP                        = 200 as const;

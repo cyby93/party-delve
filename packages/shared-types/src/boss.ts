@@ -4,6 +4,12 @@ export enum BossPhase {
   Phase3 = 3,
 }
 
+export enum BossFSMState {
+  IDLE   = 'idle',
+  CHASE  = 'chase',
+  ATTACK = 'attack',
+}
+
 export interface BossState {
   id: string;
   entityType: 'grassland-boss';
@@ -12,4 +18,8 @@ export interface BossState {
   phase: BossPhase;
   position: { x: number; y: number };
   isDefeated: boolean;
+  fsmState: BossFSMState;
+  attackCooldownTicks: number;
+  stompCooldownTicks: number;
+  chargeCooldownTicks: number;
 }

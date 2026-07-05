@@ -129,7 +129,7 @@ development_status:
   # FRs: FR21 (boss tiers), FR24 (reward reveal), FR35 (Grassland boss + achievements), FR36
   epic-6: in-progress
   6-1-grassland-boss-shared-types-and-protocol-contracts: done
-  6-2-grassland-boss-fsm-phase-system-and-difficulty-tiered-behaviors: ready-for-dev
+  6-2-grassland-boss-fsm-phase-system-and-difficulty-tiered-behaviors: done
   6-3-boss-arena-handcrafted-level-physics-geometry-and-host-rendering: ready-for-dev
   6-4-boss-defeat-sequence-purification-pulse-and-reward-reveal: ready-for-dev
   6-5-grassland-biome-achievements: ready-for-dev

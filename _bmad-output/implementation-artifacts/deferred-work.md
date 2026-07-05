@@ -57,6 +57,22 @@ Micro-shards are created dynamically and are not in the original pipeline order 
 **D5 — ExitWorktree failure after agent completion causes re-dispatch**
 If `ExitWorktree` fails, the worktree stays open. The shard's status hasn't been written yet (step 7 runs after step 5). Next loop iteration selects the same shard and attempts `EnterWorktree` on an already-open branch. Pre-existing.
 
+---
+
+## Deferred from: code review of 6-2-grassland-boss-fsm-phase-system-and-difficulty-tiered-behaviors (2026-07-05)
+
+**D1 — `BOSS_ADD_HP` not in `add:spawned` event payload**
+`balance.ts` defines `BOSS_ADD_HP = 200` but `grassland-boss.ts` never references it, and the `add:spawned` event carries no `hp` field. Story 6.3 creates the add enemy entity in GameRoom — at that point the HP value must be available. Deferred to Story 6.3 which owns GameRoom integration.
+
+**D2 — `dt` hardcoded to `1/30` in `buildBossContext`**
+`buildBossContext` always returns `dt: 1/30` regardless of the actual elapsed time. Acceptable for the fixed 30 Hz tick loop; becomes wrong if tick rate ever changes. Deferred until a variable tick rate is introduced.
+
+**D3 — Boss stuck when `attackCooldownTicks = 0` while `fsmState = ATTACK`**
+`tickBossAttack` guards `if (attackCooldownTicks > 0)` so if ticks reach 0 externally (serialization round-trip, debug mutation) the FSM never exits ATTACK. Identical pattern exists in the base enemy FSM. Pre-existing design; only triggered by external state mutation.
+
+**D4 — Reward floor division silently discards remainder essence**
+`Math.floor(essenceTotal / players.length)` is spec-mandated. The sum of per-player shares can be 1–(N-1) less than `essenceTotal` when the total isn't evenly divisible. The `essenceTotal` field on the reward is therefore misleading. Acceptable for alpha; fix when essence accounting becomes financially meaningful (persistence, shop).
+
 **D6 — No timeout or max-retry count on HALT responses**
 If a session is closed mid-HALT and resumed, the workflow manager has no persisted "paused at HALT" state in the story file. It re-enters the loop and potentially re-dispatches completed shards. Needs a `dispatch_state: paused` field in story frontmatter or similar.
 

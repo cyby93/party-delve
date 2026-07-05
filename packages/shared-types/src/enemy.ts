@@ -9,6 +9,7 @@ export enum EnemyType {
   RANGED = 'ranged',
   BRUTE = 'brute',
   ELITE = 'elite',
+  GRASSLAND_ADD = 'grassland-add',
 }
 
 export enum DifficultyTier {
