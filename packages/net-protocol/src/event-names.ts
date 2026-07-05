@@ -14,4 +14,5 @@ export enum EventNames {
   RETURN_TO_CAMP = 'return:to-camp',
   CONTINUE = 'bond:continue',
   BOND_NOTIFICATION = 'bond:notification',
+  RUN_VICTORY = 'run:victory',
 }

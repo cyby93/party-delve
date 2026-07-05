@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { serialize, deserialize, applyDelta, EventNames } from 'net-protocol';
-import type { SnapshotMsg, DeltaEventMsg, InputEventMsg, PlayerPoiEnteredDelta, PlayerPoiExitedDelta, AbilityFiredDelta, EnemyDamagedDelta, PlayerDownedDelta, BondNotificationMsg, ContinueMsg } from 'net-protocol';
-import type { GameState, PlayerState } from 'shared-types';
-import { PlayerClass, SessionColor, EnemyType, DifficultyTier, EnemyFSMState, BondType } from 'shared-types';
+import type { SnapshotMsg, DeltaEventMsg, InputEventMsg, PlayerPoiEnteredDelta, PlayerPoiExitedDelta, AbilityFiredDelta, EnemyDamagedDelta, PlayerDownedDelta, BondNotificationMsg, ContinueMsg, BossDamagedDelta, BossPhaseChangedDelta, BossDefeatedDelta, RunVictoryMsg } from 'net-protocol';
+import type { GameState, PlayerState, RunReward } from 'shared-types';
+import { PlayerClass, SessionColor, EnemyType, DifficultyTier, EnemyFSMState, BondType, BossPhase, GrasslandAchievement } from 'shared-types';
 
 function mockGameState(): GameState {
   return {
@@ -26,6 +26,7 @@ function mockGameState(): GameState {
     tick: 0,
     floorLayout: null,
     runProposal: null,
+    boss: null,
   };
 }
 
@@ -563,6 +564,41 @@ describe('net-protocol contract tests', () => {
       const twice = applyDelta(once, delta);
       expect(twice.activeBonds).toHaveLength(1);
       expect(twice).toBe(once); // same reference — no new object
+    });
+  });
+
+  describe('Story 6.1 boss delta round-trips', () => {
+    it('BossDamagedDelta round-trip', () => {
+      const delta: BossDamagedDelta = { type: 'boss:damaged', bossId: 'boss-1', newHp: 450 };
+      const encoded = serialize(delta);
+      const decoded = deserialize(encoded) as BossDamagedDelta;
+      expect(decoded).toEqual(delta);
+    });
+
+    it('BossPhaseChangedDelta round-trip', () => {
+      const delta: BossPhaseChangedDelta = { type: 'boss:phaseChanged', bossId: 'boss-1', newPhase: BossPhase.Phase2 };
+      const encoded = serialize(delta);
+      const decoded = deserialize(encoded) as BossPhaseChangedDelta;
+      expect(decoded).toEqual(delta);
+    });
+
+    it('BossDefeatedDelta round-trip with nested RunReward', () => {
+      const reward: RunReward = {
+        essenceTotal: 420,
+        perPlayer: [{ playerId: 'p1', essence: 210, masteryMilestones: [] }],
+        achievements: [GrasslandAchievement.HardCleared],
+      };
+      const delta: BossDefeatedDelta = { type: 'boss:defeated', bossId: 'boss-1', reward };
+      const encoded = serialize(delta);
+      const decoded = deserialize(encoded) as BossDefeatedDelta;
+      expect(decoded).toEqual(delta);
+    });
+
+    it('RunVictoryMsg round-trip', () => {
+      const msg: RunVictoryMsg = { type: 'run:victory', essenceEarned: 210 };
+      const encoded = serialize(msg);
+      const decoded = deserialize(encoded) as RunVictoryMsg;
+      expect(decoded).toEqual(msg);
     });
   });
 });

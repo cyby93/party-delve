@@ -682,3 +682,19 @@ Colyseus JS SDK `Room` class has no `reconnection` property. The assignment sile
 
 **D-5.6-E — `sessionRef` is null during window between `wireRoomHandlers` and `setSession`** [`apps/mobile-controller/src/session/mobile-session.ts:119`]
 Message handlers are registered before the session is passed to `setSession`. A `player:disconnected` delta arriving in that window compares against `sessionRef.current?.playerId === null` and misses the early-return guard. Pre-existing.
+
+---
+
+## Deferred from: code review of 6-1-grassland-boss-shared-types-and-protocol-contracts (2026-07-05)
+
+**D-6.1-A — `boss:defeated` carries `RunReward` not persisted to `GameState`** [`packages/net-protocol/src/apply-delta.ts`]
+`BossDefeatedDelta.reward` is a fully populated `RunReward` but `applyDelta` only sets `boss.isDefeated = true` (per spec AC10). No `runReward` field exists on `GameState`. Host must read the reward from the raw delta event, meaning it is ephemeral and lost after the event fires. Story 6.4 must decide: raw-event caching pattern vs. adding `runReward: RunReward | null` to `GameState` (would make the reward available in snapshots and survive reconnect during post-boss sequence).
+
+**D-6.1-B — Out-of-range `BossPhase` value passes deserialization silently** [`packages/net-protocol/src/serialize.ts`]
+`BossPhase` is a numeric enum (1/2/3). `deserialize<T>` is a bare `JSON.parse(...) as T` cast with no schema check. A value of `0`, `4`, or `null` arriving on the wire is silently accepted and stored as an invalid phase. No runtime validation anywhere in the protocol stack. Pre-existing cross-cutting concern (see D8 from story 1-1 review). Address in Phase 5 schema hardening (Zod or equivalent at protocol boundary).
+
+**D-6.1-C — `reviveTimerExpiresAt: Date.now() + reviveWindowMs` evaluated on client** [`packages/net-protocol/src/apply-delta.ts:65`]
+Pre-existing bug. `applyDelta` runs on the host client; `Date.now()` differs from server clock by one-way latency (typically 20–200ms on LAN). The revive countdown display will be systematically wrong by at least that offset. Fix: server should send the absolute expiry timestamp (`reviveTimerExpiresAt: number`) in `PlayerDownedDelta` instead of a window duration, or `applyDelta` should accept a reference clock argument.
+
+**D-6.1-D — `masteryMilestones: string[]` unbounded, no max-length cap** [`packages/shared-types/src/run-reward.ts:4`]
+`RunReward.perPlayer[n].masteryMilestones` is an uncapped string array. A large milestones list inside a `boss:defeated` delta could exceed WebSocket frame limits or Colyseus message buffers with no size guard. No `MAX_MASTERY_MILESTONES` constant defined. Out of scope for types-only story 6.1. Define cap and add a constant in story 6.5 (grassland achievements) when milestone generation is implemented.

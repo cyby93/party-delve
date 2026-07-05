@@ -62,6 +62,7 @@ function createEmptyGameState(roomId: string): GameState {
     tick: 0,
     floorLayout: null,
     runProposal: null,
+    boss: null,
   };
 }
 

@@ -9,3 +9,8 @@ export const OFFSET_FLOOR_LAYOUT = 0x01 as const;
 export const OFFSET_ROOM_POOL    = 0x02 as const;
 export const OFFSET_ENEMY_SPAWN  = 0x03 as const;
 export const OFFSET_SPIRIT_BOND  = 0x04 as const;
+
+export const BOSS_PHASE2_HP_RATIO = 0.6 as const;
+export const BOSS_PHASE3_HP_RATIO = 0.3 as const;
+export const PURIFICATION_PULSE_DURATION_MS = 1500 as const;
+export const BOSS_REWARD_ESSENCE_BASE = 200 as const;

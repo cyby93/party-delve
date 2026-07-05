@@ -4,6 +4,7 @@ import type { BondState } from './bond.js';
 import type { SessionState } from './session.js';
 import type { FloorLayout } from './floor-layout.js';
 import type { RunProposal } from './run-proposal.js';
+import type { BossState } from './boss.js';
 
 export interface EssenceDrop {
   id: string;
@@ -21,4 +22,5 @@ export interface GameState {
   tick: number;
   floorLayout: FloorLayout | null;
   runProposal: RunProposal | null;
+  boss: BossState | null;
 }
