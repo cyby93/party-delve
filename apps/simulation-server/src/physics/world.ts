@@ -18,7 +18,8 @@ export type PhysicsBodyData =
   | { type: 'player';  playerId: string }
   | { type: 'poi';     poiId: string; poiType: PoiType }
   | { type: 'enemy';   enemyId: string }
-  | { type: 'essence'; dropId: string };
+  | { type: 'essence'; dropId: string }
+  | { type: 'boss';    bossId: string };
 
 export function createPhysicsWorld(): World {
   return new World({ gravity: Vec2(0, 0) });

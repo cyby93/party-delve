@@ -175,6 +175,28 @@ export type WaveCompleteDelta = {
   waveIndex: number;
 };
 
+export type BossMovedDelta = {
+  type: 'boss:moved';
+  bossId: string;
+  x: number;
+  y: number;
+};
+
+export type BossStompedDelta = {
+  type: 'boss:stomped';
+  bossId: string;
+  x: number;
+  y: number;
+  radius: number;
+};
+
+export type BossAddSpawnedDelta = {
+  type: 'add:spawned';
+  enemyId: string;
+  x: number;
+  y: number;
+};
+
 export type BossDamagedDelta = {
   type: 'boss:damaged';
   bossId: string;
@@ -224,4 +246,7 @@ export type DeltaEventMsg =
   | WaveCompleteDelta
   | BossDamagedDelta
   | BossPhaseChangedDelta
-  | BossDefeatedDelta;
+  | BossDefeatedDelta
+  | BossMovedDelta
+  | BossStompedDelta
+  | BossAddSpawnedDelta;

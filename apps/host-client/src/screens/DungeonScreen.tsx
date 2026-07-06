@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Application, Graphics, Assets } from 'pixi.js';
 import type { GameState, PlayerState } from 'shared-types';
-import { SessionColor, CLASS_DEFINITIONS, PlayerClass } from 'shared-types';
+import { SessionColor, CLASS_DEFINITIONS, PlayerClass, BossPhase } from 'shared-types';
 import type { HostSession } from '../session/host-session';
 import type { DeltaEventMsg } from 'net-protocol';
 
@@ -210,10 +210,14 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
   const latestGameStateRef = useRef<GameState | null>(null);
   latestGameStateRef.current = gameState;
   const reviveDeadlinesRef = useRef<Map<string, ReviveDeadline>>(new Map());
+  const bossGraphicsRef = useRef<Graphics | null>(null);
+  const bossPhaseRef = useRef<BossPhase | null>(null);
+  const lastBossHpRef = useRef<number | null>(null);
   const [, setTimerTick] = useState(0);
   const [levelClearFlash, setLevelClearFlash] = useState(false);
   const [bondOverlay, setBondOverlay] = useState<{ text: string; fading: boolean } | null>(null);
   const [bondOverlayTrigger, setBondOverlayTrigger] = useState(0);
+  const [bossDamageFlash, setBossDamageFlash] = useState<{ amount: number; until: number } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -232,15 +236,42 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
       canvasContainerRef.current.appendChild(app.canvas);
       pixiAppRef.current = app;
       app.ticker.add(() => {
-        if (latestGameStateRef.current) {
-          renderFrame(
-            latestGameStateRef.current,
-            app,
-            playerGraphicsRef.current,
-            enemyGraphicsRef.current,
-            essenceFlashesRef.current,
-            tetherGraphicsRef.current,
-          );
+        const state = latestGameStateRef.current;
+        if (!state) return;
+        renderFrame(
+          state,
+          app,
+          playerGraphicsRef.current,
+          enemyGraphicsRef.current,
+          essenceFlashesRef.current,
+          tetherGraphicsRef.current,
+        );
+
+        // Boss sprite — managed in ticker to keep renderFrame signature stable
+        if (state.boss) {
+          if (!bossGraphicsRef.current) {
+            const g = new Graphics();
+            app.stage.addChild(g);
+            bossGraphicsRef.current = g;
+          }
+          const g = bossGraphicsRef.current;
+          g.clear();
+          g.position.set(state.boss.position.x, state.boss.position.y);
+          const phase = bossPhaseRef.current;
+          // Phase 2 glow ring (drawn first, below main circle)
+          if (phase === BossPhase.Phase2 || phase === BossPhase.Phase3) {
+            g.circle(0, 0, 56).fill({ color: 0x7d2dff, alpha: 0.3 });
+          }
+          // Main boss circle
+          g.circle(0, 0, 48).fill({ color: 0x7d2dff });
+          // Phase 3 eye glow (Hard only)
+          if (phase === BossPhase.Phase3) {
+            g.circle(0, 0, 12).fill({ color: 0xff2222 });
+          }
+        } else if (bossGraphicsRef.current) {
+          app.stage.removeChild(bossGraphicsRef.current);
+          bossGraphicsRef.current.destroy();
+          bossGraphicsRef.current = null;
         }
       });
     }
@@ -252,6 +283,10 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
         app.canvas.remove();
         app.destroy(true, { children: true });
         pixiAppRef.current = null;
+      }
+      if (bossGraphicsRef.current) {
+        bossGraphicsRef.current.destroy();
+        bossGraphicsRef.current = null;
       }
       playerGraphicsRef.current.clear();
       enemyGraphicsRef.current.clear();
@@ -299,6 +334,23 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
       g.circle(0, 0, 20).fill({ color: 0xf1c40f });
       app.stage.addChild(g);
       essenceFlashesRef.current.set(drop.id, { g, deadline: Date.now() + ESSENCE_FLASH_MS });
+    } else if (latestTransientDelta.type === 'boss:phaseChanged') {
+      bossPhaseRef.current = latestTransientDelta.newPhase;
+    } else if (latestTransientDelta.type === 'boss:damaged') {
+      const prevHp = lastBossHpRef.current;
+      const damage = prevHp != null ? Math.max(0, prevHp - latestTransientDelta.newHp) : 0;
+      lastBossHpRef.current = latestTransientDelta.newHp;
+      setBossDamageFlash({ amount: damage, until: Date.now() + 800 });
+      setTimeout(() => setBossDamageFlash(null), 800);
+    } else if (latestTransientDelta.type === 'boss:stomped' && app) {
+      const ring = new Graphics();
+      ring.circle(0, 0, latestTransientDelta.radius).stroke({ color: 0xff4444, width: 3, alpha: 0.7 });
+      ring.position.set(latestTransientDelta.x, latestTransientDelta.y);
+      app.stage.addChild(ring);
+      setTimeout(() => {
+        app.stage.removeChild(ring);
+        ring.destroy();
+      }, 66);
     }
   }, [latestTransientDelta]);
 
@@ -319,6 +371,24 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
       reviveDeadlinesRef.current.delete(latestTransientDelta.playerId);
     }
   }, [latestTransientDelta, gameState]);
+
+  // Track boss HP reference for damage number computation
+  useEffect(() => {
+    if (gameState?.boss != null) {
+      lastBossHpRef.current = gameState.boss.hp;
+    } else {
+      lastBossHpRef.current = null;
+    }
+  }, [gameState?.boss?.hp]);
+
+  // Seed bossPhaseRef from snapshot — handles reconnect/late-join when phase is already >1
+  useEffect(() => {
+    if (gameState?.boss != null) {
+      bossPhaseRef.current = gameState.boss.phase;
+    } else {
+      bossPhaseRef.current = null;
+    }
+  }, [gameState?.boss?.phase]);
 
   // Reconcile revive overlays from gameState snapshot (handles reconnect)
   useEffect(() => {
@@ -437,6 +507,49 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
           </div>
         )}
       </div>
+      {/* Boss HP bar */}
+      {gameState?.boss != null && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 54,
+            left: 0,
+            right: 0,
+            height: 6,
+            background: 'rgba(30,15,30,0.6)',
+            zIndex: 11,
+            pointerEvents: 'none',
+          }}
+        >
+          <div
+            style={{
+              height: '100%',
+              width: `${Math.max(0, (gameState.boss.hp / gameState.boss.maxHp) * 100)}%`,
+              background: '#7d2dff',
+              transition: 'width 80ms linear',
+            }}
+          />
+        </div>
+      )}
+      {/* Boss damage number */}
+      {bossDamageFlash && bossDamageFlash.amount > 0 && Date.now() < bossDamageFlash.until && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 62,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            color: '#ff99ff',
+            fontSize: 20,
+            fontWeight: 'bold',
+            fontFamily: 'var(--font-body)',
+            pointerEvents: 'none',
+            zIndex: 12,
+          }}
+        >
+          -{bossDamageFlash.amount}
+        </div>
+      )}
       {/* Level-complete canvas flash */}
       {levelClearFlash && (
         <div style={{

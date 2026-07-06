@@ -714,3 +714,16 @@ Pre-existing bug. `applyDelta` runs on the host client; `Date.now()` differs fro
 
 **D-6.1-D — `masteryMilestones: string[]` unbounded, no max-length cap** [`packages/shared-types/src/run-reward.ts:4`]
 `RunReward.perPlayer[n].masteryMilestones` is an uncapped string array. A large milestones list inside a `boss:defeated` delta could exceed WebSocket frame limits or Colyseus message buffers with no size guard. No `MAX_MASTERY_MILESTONES` constant defined. Out of scope for types-only story 6.1. Define cap and add a constant in story 6.5 (grassland achievements) when milestone generation is implemented.
+
+---
+
+## Deferred from: code review of 6-3-boss-arena-handcrafted-level-physics-geometry-and-host-rendering (2026-07-05)
+
+**D-6.3-0 — Player abilities never target the boss; `boss:damaged` never broadcast** [`apps/simulation-server/src/rooms/GameRoom.ts:1171`]
+The ability hit-scan loop only iterates `gameState.enemies`. No boss hit-scan path exists. Boss HP can never decrease from player input; the HP bar is static. Deferred to Story 6.4, which already owns BossDefeatedDelta + RunVictoryMsg — wiring the damage path there keeps all boss-defeat logic in one story.
+
+**D-6.3-A — GrasslandAdd enemies get empty behavior layers** [`apps/simulation-server/src/rooms/GameRoom.ts:~1088`]
+`add:spawned` handler pushes the new `EnemyState` and body but never calls `this.enemyLayers.set(...)`. The enemy AI tick uses `this.enemyLayers.get(id) ?? []`, so adds run with base FSM only and no special behaviors (no charge, no stomp). Likely intentional — GRASSLAND_ADD is a basic melee add. Revisit when GRASSLAND_ADD AI spec is written (story 6.5 or combat tuning pass).
+
+**D-6.3-B — Boss dynamic body is pushable by players** [`apps/simulation-server/src/rooms/GameRoom.ts:799`]
+Boss body created as `dynamic` with `density: 1`; player bodies collide with it and apply impulses. Boss is displaced by players pressing against it. Out of scope per story spec ("Collision between boss body and walls for PLAYERS is out of scope"). Fix by making boss body kinematic or using a mass-override when player→boss collision handling is scoped.
