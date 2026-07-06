@@ -6,7 +6,7 @@ import { ControllerScreen, ClassSelectionScreen } from './screens/ControllerScre
 import { ReconnectScreen } from './screens/ReconnectScreen';
 import { joinSession, reconnectToSession, getPersistedSession, clearPersistedSession, type MobileSession } from './session/mobile-session';
 import type { GameState } from 'shared-types';
-import type { DeltaEventMsg, CooldownUpdateMsg, BondNotificationMsg } from 'net-protocol';
+import type { DeltaEventMsg, CooldownUpdateMsg, BondNotificationMsg, RunVictoryMsg } from 'net-protocol';
 import { applyDelta } from 'net-protocol';
 
 export interface CooldownState {
@@ -79,6 +79,7 @@ export function App() {
   const [cooldowns, setCooldowns] = useState<(CooldownState | null)[]>([null, null, null, null]);
   const [runOutcome, setRunOutcome] = useState<'complete' | 'failed' | null>(null);
   const [bondNotification, setBondNotification] = useState<BondNotificationMsg | null>(null);
+  const [runVictoryEssence, setRunVictoryEssence] = useState<number | null>(null);
   const [inBondMoment, setInBondMoment] = useState(false);
   const [reconnectRoomId, setReconnectRoomId] = useState<string>('');
   const [sessionEntryInitialCode, setSessionEntryInitialCode] = useState<string | undefined>(undefined);
@@ -112,8 +113,8 @@ export function App() {
       bondMomentLevelRef.current = gameStateRef.current?.session.levelIndex ?? null;
       setInBondMoment(true);
     }
-    if (delta.type === 'run:complete') { setRunOutcome('complete'); setInBondMoment(false); setBondNotification(null); }
-    else if (delta.type === 'run:failed') { setRunOutcome('failed'); setInBondMoment(false); setBondNotification(null); }
+    if (delta.type === 'run:complete') { setRunOutcome('complete'); setRunVictoryEssence(null); setInBondMoment(false); setBondNotification(null); }
+    else if (delta.type === 'run:failed') { setRunOutcome('failed'); setRunVictoryEssence(null); setInBondMoment(false); setBondNotification(null); }
     setGameState(prev => prev !== null ? applyDelta(prev, delta) : prev);
   }, []);
 
@@ -149,6 +150,10 @@ export function App() {
     setBondNotification(msg);
   }, []);
 
+  const handleRunVictory = useCallback((msg: RunVictoryMsg) => {
+    setRunVictoryEssence(msg.essenceEarned);
+  }, []);
+
   const handleJoin = useCallback(async (roomId: string, playerName: string) => {
     try {
       const s = await joinSession(
@@ -158,6 +163,7 @@ export function App() {
         handleDelta,
         handleCooldownUpdate,
         handleBondNotification,
+        handleRunVictory,
         (code, msg) => { console.warn('[session] room error after join', code, msg); },
         handleDisconnect,
       );
@@ -167,7 +173,7 @@ export function App() {
     } catch (err) {
       throw err; // re-throw so SessionCodeEntryScreen can reset its loading state and show the error
     }
-  }, [handleDelta, handleCooldownUpdate, handleBondNotification, handleDisconnect]);
+  }, [handleDelta, handleCooldownUpdate, handleBondNotification, handleRunVictory, handleDisconnect]);
 
   const handleOrientationDismiss = useCallback(() => {
     setScreen('controller');
@@ -182,6 +188,7 @@ export function App() {
       handleDelta,
       handleCooldownUpdate,
       handleBondNotification,
+      handleRunVictory,
       (code, msg) => { console.warn('[session] reconnect error', code, msg); },
       handleDisconnect,
     );
@@ -191,7 +198,7 @@ export function App() {
     setBondNotification(null);
     bondMomentLevelRef.current = null;
     setScreen('controller');
-  }, [handleDelta, handleCooldownUpdate, handleBondNotification, handleDisconnect]);
+  }, [handleDelta, handleCooldownUpdate, handleBondNotification, handleRunVictory, handleDisconnect]);
 
   useEffect(() => {
     if (!inBondMoment || bondMomentLevelRef.current === null) return;
@@ -208,6 +215,7 @@ export function App() {
   const handleGiveUp = useCallback(() => {
     clearPersistedSession();
     setSession(null);
+    setRunVictoryEssence(null);
     setSessionEntryInitialCode(reconnectRoomId || undefined);
     setScreen('session-entry');
   }, [reconnectRoomId]);
@@ -256,6 +264,58 @@ export function App() {
         isVictory={runOutcome === 'complete'}
         onReturnToCamp={() => session.sendReturnToCamp()}
       />
+    );
+  }
+  if (runVictoryEssence !== null && gameState?.session.phase !== 'post-run') {
+    return (
+      <div style={{
+        width: '100%',
+        height: '100%',
+        background: 'var(--bg-base)',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 24,
+        padding: '0 32px',
+        boxSizing: 'border-box',
+      }}>
+        <div style={{
+          fontFamily: 'var(--font-display)',
+          fontSize: 28,
+          color: 'var(--accent-spirit)',
+          textAlign: 'center',
+        }}>
+          Victory!
+        </div>
+        <div style={{
+          fontFamily: 'var(--font-body)',
+          fontWeight: 700,
+          fontSize: 24,
+          color: '#f0c070',
+          textAlign: 'center',
+        }}>
+          {runVictoryEssence} Spirit Essence
+        </div>
+        <button
+          disabled
+          style={{
+            minHeight: 44,
+            minWidth: 160,
+            background: 'var(--bg-surface)',
+            border: '1px solid var(--border)',
+            borderRadius: 8,
+            opacity: 0.6,
+            fontFamily: 'var(--font-body)',
+            fontWeight: 700,
+            fontSize: 'var(--text-md)',
+            color: 'var(--text-secondary)',
+            touchAction: 'manipulation',
+          }}
+        >
+          Return to Camp
+        </button>
+      </div>
     );
   }
   return <ControllerScreen session={session} gameState={gameState} cooldowns={cooldowns} bondNotification={bondNotification} inBondMoment={inBondMoment} onContinue={handleContinue} />;

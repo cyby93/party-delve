@@ -727,3 +727,11 @@ The ability hit-scan loop only iterates `gameState.enemies`. No boss hit-scan pa
 
 **D-6.3-B — Boss dynamic body is pushable by players** [`apps/simulation-server/src/rooms/GameRoom.ts:799`]
 Boss body created as `dynamic` with `density: 1`; player bodies collide with it and apply impulses. Boss is displaced by players pressing against it. Out of scope per story spec ("Collision between boss body and walls for PLAYERS is out of scope"). Fix by making boss body kinematic or using a mass-override when player→boss collision handling is scoped.
+
+## Deferred from: code review of 6-4-boss-defeat-sequence-purification-pulse-and-reward-reveal (2026-07-06)
+
+**D-6.4-A — `debug:kill-boss` accessible to any connected client** [`apps/simulation-server/src/rooms/GameRoom.ts:291`]
+No `NODE_ENV` or role guard on the `debug:kill-boss` message handler — any mobile client can send it to instantly kill the boss. Pre-existing pattern (identical to `debug:kill-all`). Add a `process.env.NODE_ENV !== 'production'` guard to both debug handlers before deploying to cloud/production.
+
+**D-6.4-B — Reconnecting player sees "Run Ended" instead of "Victory!" after boss defeat** [`apps/simulation-server/src/rooms/GameRoom.ts:1134`]
+`RUN_VICTORY` is unicast at the moment of `boss:defeated` processing. A player who disconnects during the fight and reconnects during `post-run` never receives the `RUN_VICTORY` message; `runVictoryEssence` stays null; `PostRunMobileScreen` shows `isVictory=false`. Fix requires re-sending `RUN_VICTORY` (or including essence in the `post-run` snapshot) during reconnect state restoration. Address in post-run reconnect polish pass.

@@ -12,5 +12,6 @@ export const OFFSET_SPIRIT_BOND  = 0x04 as const;
 
 export const BOSS_PHASE2_HP_RATIO = 0.6 as const;
 export const BOSS_PHASE3_HP_RATIO = 0.3 as const;
-export const PURIFICATION_PULSE_DURATION_MS = 1500 as const;
+export const PURIFICATION_PULSE_DURATION_MS = 2500 as const;
+export const REWARD_REVEAL_DURATION_MS = 3000 as const;
 export const BOSS_REWARD_ESSENCE_BASE = 200 as const;

@@ -1,8 +1,8 @@
 import { Room, Client, CloseCode } from 'colyseus';
-import type { GameState, PlayerState } from 'shared-types';
-import { TICK_RATE_HZ, RECONNECT_GRACE_S, SNAPSHOT_INTERVAL_S, MAX_PLAYERS, PlayerClass, SessionColor, INTERACTIVE_HUB_POIS } from 'shared-types';
+import type { GameState, PlayerState, RunReward } from 'shared-types';
+import { TICK_RATE_HZ, RECONNECT_GRACE_S, SNAPSHOT_INTERVAL_S, MAX_PLAYERS, PlayerClass, SessionColor, INTERACTIVE_HUB_POIS, PURIFICATION_PULSE_DURATION_MS, REWARD_REVEAL_DURATION_MS } from 'shared-types';
 import { EventNames } from 'net-protocol';
-import type { InputEventMsg, SnapshotMsg, DeltaEventMsg, CooldownUpdateMsg, SpiritFormMsg, RunProposeMsg, VoteMsg, BondNotificationMsg } from 'net-protocol';
+import type { InputEventMsg, SnapshotMsg, DeltaEventMsg, CooldownUpdateMsg, SpiritFormMsg, RunProposeMsg, VoteMsg, BondNotificationMsg, RunVictoryMsg } from 'net-protocol';
 import { randomInt } from 'node:crypto';
 import { Vec2, Body, Contact, Fixture, Circle } from 'planck';
 import type { World } from 'planck';
@@ -102,6 +102,7 @@ export class GameRoom extends Room {
   private gameState!: GameState;
   private tickCount = 0;
   private tickTimer: ReturnType<typeof setInterval> | null = null;
+  private purificationTimeoutHandle: ReturnType<typeof setTimeout> | null = null;
   private inputQueue: Array<{ clientId: string; msg: InputEventMsg }> = [];
   // Tracks cooldown expiry timestamps per player per ability slot (ms since epoch).
   // Array index = abilityIndex (0–3). Value 0 = no cooldown active.
@@ -288,6 +289,12 @@ export class GameRoom extends Room {
       logger.info({ roomId: this.roomId }, 'debug:kill-all — all enemies killed');
     });
 
+    this.onMessage('debug:kill-boss', (_client: Client) => {
+      if (this.gameState.session.levelIndex !== BOSS_LEVEL_INDEX) return;
+      if (!this.gameState.boss || this.gameState.boss.isDefeated) return;
+      this.gameState.boss.hp = 0;
+    });
+
     // Initialize physics world
     this.physicsWorld = createPhysicsWorld();
 
@@ -453,6 +460,10 @@ export class GameRoom extends Room {
     if (this.tickTimer !== null) {
       clearInterval(this.tickTimer);
       this.tickTimer = null;
+    }
+    if (this.purificationTimeoutHandle !== null) {
+      clearTimeout(this.purificationTimeoutHandle);
+      this.purificationTimeoutHandle = null;
     }
     for (const body of this.playerBodies.values()) {
       this.physicsWorld.destroyBody(body);
@@ -1113,17 +1124,34 @@ export class GameRoom extends Room {
               break;
             }
 
-            case 'boss:defeated':
-              // ponytail: Story 6.4 replaces with BossDefeatedDelta + RunVictoryMsg unicast
+            case 'boss:defeated': {
               if (this.bossBody) {
                 this.physicsWorld.destroyBody(this.bossBody);
                 this.bossBody = null;
               }
               this.gameState.session.phase = 'post-run';
+              const reward: RunReward = evt.reward;
               this.broadcast(EventNames.DELTA, {
-                type: 'run:complete', totalEssence: evt.reward.essenceTotal,
+                type: 'boss:defeated',
+                bossId: evt.bossId,
+                reward,
               } satisfies DeltaEventMsg);
+              for (const client of this.clients) {
+                if (client.sessionId === this.gameState.session.hostId) continue;
+                const share = reward.perPlayer.find(p => p.playerId === client.sessionId);
+                client.send(EventNames.RUN_VICTORY, {
+                  type: 'run:victory',
+                  essenceEarned: share?.essence ?? 0,
+                } satisfies RunVictoryMsg);
+              }
+              const totalEssence = reward.essenceTotal;
+              this.purificationTimeoutHandle = setTimeout(() => {
+                this.purificationTimeoutHandle = null;
+                if (this.gameState.session.phase !== 'post-run') return;
+                this.broadcast(EventNames.DELTA, { type: 'run:complete', totalEssence } satisfies DeltaEventMsg);
+              }, PURIFICATION_PULSE_DURATION_MS + REWARD_REVEAL_DURATION_MS);
               break;
+            }
           }
         }
       } else {

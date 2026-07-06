@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Application, Graphics, Assets } from 'pixi.js';
 import type { GameState, PlayerState } from 'shared-types';
-import { SessionColor, CLASS_DEFINITIONS, PlayerClass, BossPhase } from 'shared-types';
+import { SessionColor, CLASS_DEFINITIONS, PlayerClass, BossPhase, PURIFICATION_PULSE_DURATION_MS, REWARD_REVEAL_DURATION_MS } from 'shared-types';
 import type { HostSession } from '../session/host-session';
 import type { DeltaEventMsg } from 'net-protocol';
 
@@ -47,6 +47,21 @@ interface EssenceFlash {
   deadline: number;
 }
 
+interface PurificationPulse {
+  graphic: Graphics;
+  startTime: number;
+  originX: number;
+  originY: number;
+  duration: number;
+}
+
+interface PurificationParticle {
+  graphic: Graphics;
+  startTime: number;
+  vx: number;
+  vy: number;
+}
+
 function renderFrame(
   state: GameState,
   app: Application,
@@ -54,6 +69,7 @@ function renderFrame(
   enemyGraphics: Map<string, EnemyEntry>,
   essenceFlashes: Map<string, EssenceFlash>,
   tetherGraphics: Map<string, Graphics>,
+  isPurified: boolean,
 ): void {
   app.stage.scale.set(app.screen.width / VIRTUAL_W, app.screen.height / VIRTUAL_H);
 
@@ -80,9 +96,10 @@ function renderFrame(
     const { circle } = entry;
     const color = SESSION_COLOR_HEX[player.sessionColor] ?? 0xffffff;
     const isFlashing = !player.isFrozen && entry.flashUntil > 0 && now < entry.flashUntil;
+    const showSpirit = player.isSpirit && !isPurified;
     circle.position.set(player.x, player.y);
     circle.clear();
-    if (player.isSpirit) {
+    if (showSpirit) {
       // Luminous spirit form: outer glow ring + inner circle
       circle.alpha = isFlashing
         ? 0.2 + 0.8 * Math.abs(Math.cos(Math.PI * (entry.flashUntil - now) / ABILITY_FLASH_MS))
@@ -213,11 +230,21 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
   const bossGraphicsRef = useRef<Graphics | null>(null);
   const bossPhaseRef = useRef<BossPhase | null>(null);
   const lastBossHpRef = useRef<number | null>(null);
+  const bossDefeatedRef = useRef(false);
+  const isPurifiedRef = useRef(false);
+  const purificationPulseRef = useRef<PurificationPulse | null>(null);
+  const rewardRevealActiveRef = useRef(false);
+  const bossLastPositionRef = useRef({ x: 960, y: 540 });
+  const essenceDisplayRef = useRef<number | null>(null);
+  const purificationParticlesRef = useRef<PurificationParticle[]>([]);
   const [, setTimerTick] = useState(0);
   const [levelClearFlash, setLevelClearFlash] = useState(false);
   const [bondOverlay, setBondOverlay] = useState<{ text: string; fading: boolean } | null>(null);
   const [bondOverlayTrigger, setBondOverlayTrigger] = useState(0);
   const [bossDamageFlash, setBossDamageFlash] = useState<{ amount: number; until: number } | null>(null);
+  const [isPurified, setIsPurified] = useState(false);
+  const [rewardRevealVisible, setRewardRevealVisible] = useState(false);
+  const [voiceVisible, setVoiceVisible] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -245,10 +272,11 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
           enemyGraphicsRef.current,
           essenceFlashesRef.current,
           tetherGraphicsRef.current,
+          isPurifiedRef.current,
         );
 
         // Boss sprite — managed in ticker to keep renderFrame signature stable
-        if (state.boss) {
+        if (state.boss && !bossDefeatedRef.current) {
           if (!bossGraphicsRef.current) {
             const g = new Graphics();
             app.stage.addChild(g);
@@ -273,6 +301,44 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
           bossGraphicsRef.current.destroy();
           bossGraphicsRef.current = null;
         }
+
+        // Purification pulse animation
+        const pulse = purificationPulseRef.current;
+        if (pulse) {
+          const elapsed = performance.now() - pulse.startTime;
+          const t = Math.min(elapsed / pulse.duration, 1);
+          const radius = t * 1400;
+          const alpha = 0.6 * (1 - t);
+          pulse.graphic.clear();
+          pulse.graphic.circle(0, 0, radius).fill({ color: 0x90d8f0, alpha });
+          if (t >= 1) {
+            app.stage.removeChild(pulse.graphic);
+            pulse.graphic.destroy();
+            purificationPulseRef.current = null;
+            rewardRevealActiveRef.current = true;
+            setRewardRevealVisible(true);
+            setVoiceVisible(true);
+          }
+        }
+
+        // Reward reveal particles (8-12 bursting circles)
+        const PARTICLE_DURATION_MS = 1000;
+        const particles = purificationParticlesRef.current;
+        for (let i = particles.length - 1; i >= 0; i--) {
+          const p = particles[i]!;
+          const elapsed = performance.now() - p.startTime;
+          const t = Math.min(elapsed / PARTICLE_DURATION_MS, 1);
+          p.graphic.position.set(
+            VIRTUAL_W / 2 + p.vx * elapsed,
+            VIRTUAL_H / 2 + p.vy * elapsed,
+          );
+          p.graphic.alpha = 1 - t;
+          if (t >= 1) {
+            app.stage.removeChild(p.graphic);
+            p.graphic.destroy();
+            particles.splice(i, 1);
+          }
+        }
       });
     }
     void initPixi();
@@ -288,6 +354,11 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
         bossGraphicsRef.current.destroy();
         bossGraphicsRef.current = null;
       }
+      purificationPulseRef.current = null;
+      purificationParticlesRef.current = [];
+      bossDefeatedRef.current = false;
+      isPurifiedRef.current = false;
+      rewardRevealActiveRef.current = false;
       playerGraphicsRef.current.clear();
       enemyGraphicsRef.current.clear();
       essenceFlashesRef.current.clear();
@@ -351,6 +422,26 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
         app.stage.removeChild(ring);
         ring.destroy();
       }, 66);
+    } else if (latestTransientDelta.type === 'boss:defeated' && app) {
+      bossDefeatedRef.current = true;
+      isPurifiedRef.current = true;
+      setIsPurified(true);
+      essenceDisplayRef.current = latestTransientDelta.reward.essenceTotal;
+      // Record boss last position for pulse origin (fall back to arena center)
+      const bossPos = bossLastPositionRef.current;
+      // Background color swap: light purification tint
+      app.renderer.background.color = 0x90d8f0;
+      // Create purification pulse circle
+      const pulseGraphic = new Graphics();
+      pulseGraphic.position.set(bossPos.x, bossPos.y);
+      app.stage.addChild(pulseGraphic);
+      purificationPulseRef.current = {
+        graphic: pulseGraphic,
+        startTime: performance.now(),
+        originX: bossPos.x,
+        originY: bossPos.y,
+        duration: PURIFICATION_PULSE_DURATION_MS,
+      };
     }
   }, [latestTransientDelta]);
 
@@ -380,6 +471,13 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
       lastBossHpRef.current = null;
     }
   }, [gameState?.boss?.hp]);
+
+  // Track boss position for purification pulse origin
+  useEffect(() => {
+    if (gameState?.boss != null) {
+      bossLastPositionRef.current = { x: gameState.boss.position.x, y: gameState.boss.position.y };
+    }
+  }, [gameState?.boss?.position.x, gameState?.boss?.position.y]);
 
   // Seed bossPhaseRef from snapshot — handles reconnect/late-join when phase is already >1
   useEffect(() => {
@@ -425,6 +523,33 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
     return () => clearTimeout(timer);
   }, [levelClearFlash]);
 
+  // Reward reveal: spawn particles and set voice line hide timer
+  useEffect(() => {
+    if (!rewardRevealVisible) return;
+    const app = pixiAppRef.current;
+    if (app) {
+      const PARTICLE_COLORS = [0x6ea8d8, 0xf0c070];
+      const count = 8 + Math.floor(Math.random() * 5); // 8-12
+      for (let i = 0; i < count; i++) {
+        const g = new Graphics();
+        const color = PARTICLE_COLORS[i % 2]!;
+        g.circle(0, 0, 8 + Math.random() * 8).fill({ color });
+        g.position.set(VIRTUAL_W / 2, VIRTUAL_H / 2);
+        app.stage.addChild(g);
+        const angle = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.5;
+        const speed = 0.1 + Math.random() * 0.15; // pixels per ms
+        purificationParticlesRef.current.push({
+          graphic: g,
+          startTime: performance.now(),
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed,
+        });
+      }
+    }
+    const voiceTimer = setTimeout(() => setVoiceVisible(false), 2000);
+    return () => clearTimeout(voiceTimer);
+  }, [rewardRevealVisible]);
+
   // Force re-render at 100ms intervals while any revive timers are active
   const anyTimerActive = reviveDeadlinesRef.current.size > 0;
   useEffect(() => {
@@ -437,6 +562,7 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden' }}>
+      <style>{`@keyframes fadeInReward { from { opacity: 0; } to { opacity: 1; } }`}</style>
       <div ref={canvasContainerRef} style={{ position: 'absolute', inset: 0 }} />
       {/* Player chip strip with HP pips */}
       <div
@@ -461,7 +587,7 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
           const playerBondColors = gameState?.activeBonds
             .filter(b => b.playerA === player.id || b.playerB === player.id)
             .map(b => b.color) ?? [];
-          return <PlayerChipHUD key={player.id} player={player} bondColors={playerBondColors} />;
+          return <PlayerChipHUD key={player.id} player={player} bondColors={playerBondColors} isPurified={isPurified} />;
         })}
         {gameState?.session.phase === 'dungeon' && (
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12, pointerEvents: 'auto' }}>
@@ -507,8 +633,8 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
           </div>
         )}
       </div>
-      {/* Boss HP bar */}
-      {gameState?.boss != null && (
+      {/* Boss HP bar — hidden after boss defeated */}
+      {gameState?.boss != null && !bossDefeatedRef.current && (
         <div
           style={{
             position: 'absolute',
@@ -585,6 +711,42 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
           </div>
         </div>
       )}
+      {/* Purification reward overlay — floating, no panel, same pattern as bond overlay */}
+      {rewardRevealVisible && (
+        <div style={{
+          position: 'absolute',
+          inset: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 35,
+          pointerEvents: 'none',
+          animation: 'fadeInReward 0.3s ease-in both',
+        }}>
+          <div style={{
+            fontFamily: 'var(--font-body)',
+            fontWeight: 700,
+            fontSize: 40,
+            color: '#f0c070',
+            textShadow: '0 0 40px rgba(240,192,112,0.7)',
+          }}>
+            {essenceDisplayRef.current ?? 0} Spirit Essence
+          </div>
+          {voiceVisible && (
+            <div style={{
+              fontFamily: 'var(--font-body)',
+              fontWeight: 400,
+              fontStyle: 'italic',
+              fontSize: 14,
+              color: 'var(--text-secondary)',
+              marginTop: 8,
+            }}>
+              The plains are quieter tonight. You did this.
+            </div>
+          )}
+        </div>
+      )}
       {/* Revive timer overlay — bottom-center */}
       <div style={{
         position: 'absolute',
@@ -631,9 +793,10 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
   );
 }
 
-function PlayerChipHUD({ player, bondColors = [] }: { player: PlayerState; bondColors: string[] }) {
-  const pips = [0, 1, 2, 3, 4].map(i => player.hp > i * 20);
-  const spiritGlow = player.isSpirit ? { boxShadow: '0 0 6px var(--accent-spirit)' } : {};
+function PlayerChipHUD({ player, bondColors = [], isPurified = false }: { player: PlayerState; bondColors: string[]; isPurified?: boolean }) {
+  const showSpirit = player.isSpirit && !isPurified;
+  const pips = [0, 1, 2, 3, 4].map(i => (isPurified ? true : player.hp > i * 20));
+  const spiritGlow = showSpirit ? { boxShadow: '0 0 6px var(--accent-spirit)' } : {};
 
   return (
     <div
@@ -657,7 +820,7 @@ function PlayerChipHUD({ player, bondColors = [] }: { player: PlayerState; bondC
           fontFamily: 'var(--font-body)',
           fontWeight: 700,
           fontSize: 'var(--text-sm)',
-          color: (player.isFrozen || player.isSpirit) ? 'var(--text-secondary)' : 'var(--text-primary)',
+          color: (player.isFrozen || showSpirit) ? 'var(--text-secondary)' : 'var(--text-primary)',
           whiteSpace: 'nowrap',
           overflow: 'hidden',
           textOverflow: 'ellipsis',
@@ -666,7 +829,7 @@ function PlayerChipHUD({ player, bondColors = [] }: { player: PlayerState; bondC
       >
         {player.displayName}
       </span>
-      {player.isSpirit ? (
+      {showSpirit ? (
         <span style={{ fontSize: 10, color: 'var(--text-secondary)', letterSpacing: '0.05em' }}>◌◌◌◌◌</span>
       ) : (
         <div style={{ display: 'flex', gap: 4 }}>
