@@ -592,22 +592,42 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
         {gameState?.session.phase === 'dungeon' && (
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12, pointerEvents: 'auto' }}>
             {session && (
-              <button
-                onPointerDown={() => session.sendDebugKillAll()}
-                style={{
-                  padding: '4px 10px',
-                  background: 'rgba(231,76,60,0.8)',
-                  border: 'none',
-                  borderRadius: 4,
-                  color: '#fff',
-                  fontFamily: 'var(--font-body)',
-                  fontWeight: 700,
-                  fontSize: 'var(--text-xs)',
-                  cursor: 'pointer',
-                }}
-              >
-                Kill All
-              </button>
+              <>
+                <button
+                  onPointerDown={() => session.sendDebugKillAll()}
+                  style={{
+                    padding: '4px 10px',
+                    background: 'rgba(231,76,60,0.8)',
+                    border: 'none',
+                    borderRadius: 4,
+                    color: '#fff',
+                    fontFamily: 'var(--font-body)',
+                    fontWeight: 700,
+                    fontSize: 'var(--text-xs)',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Kill All
+                </button>
+                {gameState?.session.levelIndex === 4 && !bossDefeatedRef.current && (
+                  <button
+                    onPointerDown={() => session.sendDebugKillBoss()}
+                    style={{
+                      padding: '4px 10px',
+                      background: 'rgba(155,89,182,0.8)',
+                      border: 'none',
+                      borderRadius: 4,
+                      color: '#fff',
+                      fontFamily: 'var(--font-body)',
+                      fontWeight: 700,
+                      fontSize: 'var(--text-xs)',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Kill Boss
+                  </button>
+                )}
+              </>
             )}
             <div style={{
               fontFamily: 'var(--font-body)',

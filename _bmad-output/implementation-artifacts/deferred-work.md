@@ -749,3 +749,19 @@ No `NODE_ENV` or role guard on the `debug:kill-boss` message handler — any mob
 
 **D-6.5-D — `ACHIEVEMENT_NAMES[achievement]` renders `undefined` on version skew** [`apps/host-client/src/screens/PostRunSummaryScreen.tsx`]
 If the server adds a new `GrasslandAchievement` value before the host client is redeployed, `ACHIEVEMENT_NAMES[achievement]` returns `undefined` and renders as an empty string with no fallback. Add a nullish coalesce: `ACHIEVEMENT_NAMES[achievement] ?? achievement` (falls back to the raw enum key).
+
+## Deferred from: quick-dev session (2026-07-06)
+
+## Deferred from: code review of 6-6-epic-6-deferred-hardening (2026-07-06)
+
+**D-6.6-A — `NODE_ENV=undefined` exposes debug handlers in staging** [`apps/simulation-server/src/rooms/GameRoom.ts:279`]
+`process.env['NODE_ENV'] !== 'production'` is `true` when `NODE_ENV` is unset (default in many CI/staging environments). The debug kill handlers will be registered in any deployment that omits `NODE_ENV=production`. The guard is strictly better than no guard (pre-existing state), but explicit staging environments should set `NODE_ENV=production` or use a separate `ENABLE_DEBUG_COMMANDS` env var for finer control.
+
+**D-6.6-B — `handleReconnect` doesn't reset `runOutcome`/`runVictoryEssence`** [`apps/mobile-controller/src/App.tsx`]
+`handleReconnect` resets cooldowns, bond state, and connection state but not `runOutcome` or `runVictoryEssence`. The new hub-phase `useEffect` covers the normal path (server sends hub snapshot → effect fires → state cleared). Edge case: player reconnects into a still-`post-run` room where `lastRunReward` has been cleared on the server (e.g., host crashed and room restarted), leaving `runVictoryEssence` stale from the previous run. Low probability; fix when stale post-run state is reported.
+
+**D-6.6-C — Reconnecting player during the 5.5s purification window lands on ControllerScreen then abruptly jumps to PostRunMobileScreen** [`apps/simulation-server/src/rooms/GameRoom.ts:1184`]
+While online players see the purification animation on the host screen, the mobile client's phase is still `'dungeon'` (only changed via `run:complete` delta or snapshot). A player who reconnects during this 5.5-second window gets a snapshot with `phase='post-run'` immediately from the server but their mobile then shows the controller screen briefly before `run:complete` arrives. No data loss; UX is jarring. Pre-existing design; fix when post-run mobile UX is polished.
+
+**QD-6-A — Player abilities never damage the boss**
+The ability hit-scan loop in `GameRoom.ts` (~line 1251) only iterates `gameState.enemies`. The boss is never checked. Fix: after the enemy loop, add a boss hit-scan — check `isInHitZone` against `gameState.boss.position`, reduce `boss.hp` by damage, broadcast `BossDamagedDelta` (`{ type: 'boss:damaged'; bossId; newHp }`), clamp hp ≥ 0. The boss defeat event is already emitted by `tickBoss` when hp ≤ 0 on the next tick. This is a gameplay-critical fix needed for any real boss playtest.

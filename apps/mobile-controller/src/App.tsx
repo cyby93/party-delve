@@ -100,6 +100,13 @@ export function App() {
 
   useEffect(() => { gameStateRef.current = gameState; }, [gameState]);
 
+  useEffect(() => {
+    if (gameState?.session.phase === 'hub') {
+      setRunOutcome(null);
+      setRunVictoryEssence(null);
+    }
+  }, [gameState?.session.phase]);
+
   const handleDelta = useCallback((delta: DeltaEventMsg) => {
     // Skip self-targeted freeze/thaw deltas — the mobile controller should not
     // freeze its own state based on the server's broadcast to all clients.
@@ -152,6 +159,7 @@ export function App() {
 
   const handleRunVictory = useCallback((msg: RunVictoryMsg) => {
     setRunVictoryEssence(msg.essenceEarned);
+    setRunOutcome('complete');
   }, []);
 
   const handleJoin = useCallback(async (roomId: string, playerName: string) => {

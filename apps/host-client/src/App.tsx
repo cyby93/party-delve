@@ -48,7 +48,10 @@ export function App() {
   }, [latestTransientDelta]);
 
   useEffect(() => {
-    if (gameState?.session.phase === 'hub') setRunReward(null);
+    if (gameState?.session.phase === 'hub') {
+      setRunReward(null);
+      setRunOutcome(null);
+    }
   }, [gameState?.session.phase]);
 
   const handleStartGame = useCallback(() => {

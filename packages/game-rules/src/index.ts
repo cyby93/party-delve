@@ -19,6 +19,7 @@ export {
   WAVE_PAUSE_MS,
   WAVE_ENEMY_SCALE,
   BOSS_ADD_HP,
+  BOSS_STOMP_DAMAGE,
 } from './balance.js';
 export { applyPlayerDamage, getReviveWindowMs } from './systems/player-health.js';
 export type { PlayerDamageResult, HealthError } from './systems/player-health.js';

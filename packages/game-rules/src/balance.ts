@@ -143,3 +143,4 @@ export const BOSS_REWARD_PER_ALIVE_PLAYER       = 50 as const;
 export const BOSS_ADD_COUNT_HARD                = 3 as const;
 export const BOSS_ADD_HP                        = 200 as const;
 export const BOSS_FAST_CLEAR_MS                 = 120_000 as const; // 2 minutes
+export const BOSS_STOMP_DAMAGE                  = 40 as const;
