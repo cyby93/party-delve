@@ -11,7 +11,7 @@ import {
   extractPoiBeginContact, extractPoiEndContact, extractEssenceBeginContact, toMeters, toPixels,
 } from '../physics/world.js';
 import type { PoiBeginContactEvent, PoiEndContactEvent, EssenceBeginContactEvent, PhysicsBodyData } from '../physics/world.js';
-import { createRng, tickEnemy, dispatchAbility, getEnemyCount, applyDamage, isInHitZone, ABILITY_HIT_RANGE_PX, ABILITY_HIT_RADIUS_PX, applyPlayerDamage, getReviveWindowMs, ENEMY_MELEE_DAMAGE, ENEMY_MELEE_RANGE_PX, ENEMY_ATTACK_COOLDOWN_MS, REVIVE_RADIUS_PX, REVIVE_HP, SPIRIT_ABILITY_COOLDOWN_MS, generateFloorLayout, GRASSLAND_ROOM_POOL, WAVE_COUNTS, WAVE_PAUSE_MS, WAVE_ENEMY_SCALE, bondKey, getProximityBuffedPlayers, getFateBuffedPlayers, getFateBondWipeTargets, getProximityDrainTargets, BOND_PROXIMITY_RANGE_PX, BOND_DRAIN_THRESHOLD_S, BOND_DRAIN_HP_PER_TICK, BOND_DAMAGE_MULT, BOND_SPEED_MULT, assignBond, BOND_DESCRIPTIONS, BOND_MECHANICS, createBossState, tickBoss, BOSS_ADD_HP } from 'game-rules';
+import { createRng, tickEnemy, dispatchAbility, getEnemyCount, applyDamage, isInHitZone, ABILITY_HIT_RANGE_PX, ABILITY_HIT_RADIUS_PX, applyPlayerDamage, getReviveWindowMs, ENEMY_MELEE_DAMAGE, ENEMY_MELEE_RANGE_PX, ENEMY_ATTACK_COOLDOWN_MS, REVIVE_RADIUS_PX, REVIVE_HP, SPIRIT_ABILITY_COOLDOWN_MS, generateFloorLayout, GRASSLAND_ROOM_POOL, WAVE_COUNTS, WAVE_PAUSE_MS, WAVE_ENEMY_SCALE, bondKey, getProximityBuffedPlayers, getFateBuffedPlayers, getFateBondWipeTargets, getProximityDrainTargets, BOND_PROXIMITY_RANGE_PX, BOND_DRAIN_THRESHOLD_S, BOND_DRAIN_HP_PER_TICK, BOND_DAMAGE_MULT, BOND_SPEED_MULT, assignBond, BOND_DESCRIPTIONS, BOND_MECHANICS, createBossState, tickBoss, BOSS_ADD_HP, evaluateGrasslandAchievements } from 'game-rules';
 import type { BehaviorLayer, EnemyContext, EnemyAIEvent, BossEvent, BossStompedEvent } from 'game-rules';
 import { BOSS_ARENA_SPAWN_POINTS, loadBossArena } from '../levels/boss-arena.js';
 import { CLASS_DEFINITIONS } from 'shared-types';
@@ -24,6 +24,7 @@ import { logger } from '../logger.js';
 
 // ponytail: boss is level index 4; dungeon runs levels 1-3
 const BOSS_LEVEL_INDEX = 4;
+const BACKEND_URL = process.env['BACKEND_URL'] ?? 'http://localhost:3001';
 const BOSS_STOMP_DAMAGE = 40; // ponytail: move to balance.ts in 6.5
 
 // Distinct session colors assigned per player slot index
@@ -58,6 +59,9 @@ function createEmptyGameState(roomId: string): GameState {
       levelObjective: 'clear',
       waveIndex: 0,
       totalWaves: 0,
+      bossLevelStartedAt: 0,
+      anyPlayerDownedDuringBoss: false,
+      allBondsAtBossStart: false,
     },
     players: [],
     enemies: [],
@@ -140,6 +144,7 @@ export class GameRoom extends Room {
   private bossBody: Body | null = null;
   private arenaWallBodies: Body[] = [];
   private pendingBossStompEvents: BossStompedEvent[] = [];
+  private lastRunReward: RunReward | null = null;
 
   async onCreate(_options: unknown): Promise<void> {
     this.roomId = generateRoomCode();
@@ -457,6 +462,19 @@ export class GameRoom extends Room {
   }
 
   onDispose(): void {
+    const earnedValues = this.lastRunReward?.achievements ?? [];
+    if (earnedValues.length > 0) {
+      for (const player of this.gameState.players) {
+        if (player.id.startsWith('guest-')) continue;
+        // ponytail: fire-and-forget; Epic 7 adds retry/queue
+        fetch(`${BACKEND_URL}/player/${player.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ achievements: earnedValues }),
+        }).catch(() => void 0);
+      }
+    }
+
     if (this.tickTimer !== null) {
       clearInterval(this.tickTimer);
       this.tickTimer = null;
@@ -687,6 +705,7 @@ export class GameRoom extends Room {
     this.totalWaves = 0;
     this.wavePauseUntil = 0;
     this.levelObjective = 'clear';
+    this.lastRunReward = null;
 
     const snapshot: SnapshotMsg = { type: 'snapshot', state: this.gameState };
     this.broadcast(EventNames.SNAPSHOT, snapshot);
@@ -801,6 +820,10 @@ export class GameRoom extends Room {
     this.gameState.session.levelIndex = index;
 
     if (index === BOSS_LEVEL_INDEX) {
+      this.gameState.session.bossLevelStartedAt = Date.now();
+      this.gameState.session.anyPlayerDownedDuringBoss = false;
+      // ponytail: one bond assigned per dungeon level; BOSS_LEVEL_INDEX-1 = 3 expected bonds
+      this.gameState.session.allBondsAtBossStart = this.gameState.activeBonds.length === BOSS_LEVEL_INDEX - 1;
       // ponytail: boss is level index 4; dungeon runs levels 1-3
       this.arenaWallBodies = loadBossArena(this.physicsWorld);
       const bossId = `boss-grassland-${this.gameState.session.runSeed}`;
@@ -1020,6 +1043,9 @@ export class GameRoom extends Room {
             const nowStomp = Date.now();
             player.downCount++;
             player.isDown = true;
+            if (this.gameState.session.levelIndex === BOSS_LEVEL_INDEX) {
+              this.gameState.session.anyPlayerDownedDuringBoss = true;
+            }
             const windowMs = getReviveWindowMs(player.downCount);
             player.reviveTimerExpiresAt = nowStomp + windowMs;
             this.broadcast(EventNames.DELTA, {
@@ -1130,7 +1156,9 @@ export class GameRoom extends Room {
                 this.bossBody = null;
               }
               this.gameState.session.phase = 'post-run';
-              const reward: RunReward = evt.reward;
+              const achievements = evaluateGrasslandAchievements(this.gameState, Date.now());
+              const reward: RunReward = { ...evt.reward, achievements };
+              this.lastRunReward = reward;
               this.broadcast(EventNames.DELTA, {
                 type: 'boss:defeated',
                 bossId: evt.bossId,
@@ -1347,6 +1375,9 @@ export class GameRoom extends Room {
         if (dmgResult.value.downed) {
           const windowMs = dmgResult.value.reviveWindowMs!;
           this.gameState.players[pi]!.reviveTimerExpiresAt = nowMelee + windowMs;
+          if (this.gameState.session.levelIndex === BOSS_LEVEL_INDEX) {
+            this.gameState.session.anyPlayerDownedDuringBoss = true;
+          }
 
           this.broadcast(EventNames.DELTA, {
             type: 'player:downed' as const,
@@ -1387,6 +1418,9 @@ export class GameRoom extends Room {
                   playerId: partnerId,
                   hp: 0,
                 } satisfies DeltaEventMsg);
+                if (this.gameState.session.levelIndex === BOSS_LEVEL_INDEX) {
+                  this.gameState.session.anyPlayerDownedDuringBoss = true;
+                }
                 this.broadcast(EventNames.DELTA, {
                   type: 'player:downed' as const,
                   playerId: partnerId,

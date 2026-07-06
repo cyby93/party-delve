@@ -6,7 +6,7 @@ import { DungeonScreen } from './screens/DungeonScreen';
 import { PostRunSummaryScreen } from './screens/PostRunSummaryScreen';
 import { createHostSession } from './session/host-session';
 import type { HostSession } from './session/host-session';
-import type { GameState } from 'shared-types';
+import type { GameState, RunReward } from 'shared-types';
 import type { DeltaEventMsg } from 'net-protocol';
 
 type AppScreen = 'main-menu' | 'lobby' | 'hub-world';
@@ -19,6 +19,7 @@ export function App() {
   const [isCreating, setIsCreating] = useState(false);
   const [latestTransientDelta, setLatestTransientDelta] = useState<DeltaEventMsg | null>(null);
   const [runOutcome, setRunOutcome] = useState<'complete' | 'failed' | null>(null);
+  const [runReward, setRunReward] = useState<RunReward | null>(null);
 
   const handleCreateSession = useCallback(async () => {
     if (isCreating) return;
@@ -40,10 +41,15 @@ export function App() {
   useEffect(() => {
     if (!latestTransientDelta) return;
     if (latestTransientDelta.type === 'run:complete') setRunOutcome('complete');
-    else if (latestTransientDelta.type === 'run:failed') setRunOutcome('failed');
+    else if (latestTransientDelta.type === 'run:failed') { setRunOutcome('failed'); setRunReward(null); }
+    else if (latestTransientDelta.type === 'boss:defeated') setRunReward(latestTransientDelta.reward);
     const timer = setTimeout(() => setLatestTransientDelta(null), 400);
     return () => clearTimeout(timer);
   }, [latestTransientDelta]);
+
+  useEffect(() => {
+    if (gameState?.session.phase === 'hub') setRunReward(null);
+  }, [gameState?.session.phase]);
 
   const handleStartGame = useCallback(() => {
     setScreen('hub-world');
@@ -71,7 +77,7 @@ export function App() {
     return <DungeonScreen gameState={gameState} session={session} latestTransientDelta={latestTransientDelta} />;
   }
   if (gameState?.session.phase === 'post-run') {
-    return <PostRunSummaryScreen gameState={gameState} runOutcome={runOutcome ?? 'complete'} />;
+    return <PostRunSummaryScreen gameState={gameState} runOutcome={runOutcome ?? 'complete'} reward={runReward ?? undefined} />;
   }
   return <HubWorldScreen gameState={gameState} session={session} />;
 }

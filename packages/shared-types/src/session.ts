@@ -15,6 +15,9 @@ export interface SessionState {
   levelObjective: 'clear' | 'survive-waves';
   waveIndex: number;
   totalWaves: number;
+  bossLevelStartedAt: number;
+  anyPlayerDownedDuringBoss: boolean;
+  allBondsAtBossStart: boolean;
 }
 
 export interface RoomOptions {

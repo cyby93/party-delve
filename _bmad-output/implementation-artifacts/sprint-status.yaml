@@ -42,7 +42,7 @@
 # Phase2 legacy stories (old Phase-based keys) are tracked below under PHASE 2 STORIES.
 
 generated: 2026-06-22
-last_updated: 2026-07-05 (6-1 done after code review)
+last_updated: 2026-07-06 (6-5 done after code review)
 project: party-delve
 project_key: NOKEY
 tracking_system: file-system
@@ -132,7 +132,7 @@ development_status:
   6-2-grassland-boss-fsm-phase-system-and-difficulty-tiered-behaviors: done
   6-3-boss-arena-handcrafted-level-physics-geometry-and-host-rendering: done
   6-4-boss-defeat-sequence-purification-pulse-and-reward-reveal: done
-  6-5-grassland-biome-achievements: ready-for-dev
+  6-5-grassland-biome-achievements: done
   epic-6-retrospective: optional
 
   # ─── E7: Progression & Persistent Meta ──────────────────────────────────────

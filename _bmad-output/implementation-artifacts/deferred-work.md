@@ -735,3 +735,17 @@ No `NODE_ENV` or role guard on the `debug:kill-boss` message handler — any mob
 
 **D-6.4-B — Reconnecting player sees "Run Ended" instead of "Victory!" after boss defeat** [`apps/simulation-server/src/rooms/GameRoom.ts:1134`]
 `RUN_VICTORY` is unicast at the moment of `boss:defeated` processing. A player who disconnects during the fight and reconnects during `post-run` never receives the `RUN_VICTORY` message; `runVictoryEssence` stays null; `PostRunMobileScreen` shows `isVictory=false`. Fix requires re-sending `RUN_VICTORY` (or including essence in the `post-run` snapshot) during reconnect state restoration. Address in post-run reconnect polish pass.
+
+## Deferred from: code review of 6-5-grassland-biome-achievements (2026-07-06)
+
+**D-6.5-A — `bossLevelStartedAt=0` sentinel: FastBoss trivially true if epoch-zero clock** [`packages/game-rules/src/systems/achievements.ts:20`]
+`bossDefeatedAt - 0 <= 120_000` is trivially true if either timestamp is near epoch (test environments with mocked time, or before boss level is ever loaded). Safe in production and in the current test suite (NOW=1_000_000), but the `0` sentinel is semantically ambiguous. Add an explicit guard (`bossLevelStartedAt === 0 → FastBoss: false`) or initialize to a sentinel that cannot be confused with a valid timestamp.
+
+**D-6.5-B — `runOutcome` not cleared on hub phase — asymmetric with `runReward`** [`apps/host-client/src/App.tsx`]
+`runReward` is cleared when `gameState.session.phase === 'hub'` but `runOutcome` is not. If a run transitions to `post-run` then back to `hub` without a `run:failed` delta (e.g., rapid state transition edge case), the stale `runOutcome` value is still set for the next post-run screen. Clear both in the same hub-phase useEffect.
+
+**D-6.5-C — React one-frame flicker: `boss:defeated` and phase change arrive in same tick** [`apps/host-client/src/App.tsx`]
+`setRunReward` (set from `boss:defeated` delta) and `setGameState` (phase → `post-run`) are separate React state updates. A render cycle exists where `gameState.session.phase === 'post-run'` is true but `runReward` is still null, causing PostRunSummaryScreen to render once without achievements before re-rendering with them. Batch both state updates in the same event handler, or guard `PostRunSummaryScreen` render until `runReward` is non-null.
+
+**D-6.5-D — `ACHIEVEMENT_NAMES[achievement]` renders `undefined` on version skew** [`apps/host-client/src/screens/PostRunSummaryScreen.tsx`]
+If the server adds a new `GrasslandAchievement` value before the host client is redeployed, `ACHIEVEMENT_NAMES[achievement]` returns `undefined` and renders as an empty string with no fallback. Add a nullish coalesce: `ACHIEVEMENT_NAMES[achievement] ?? achievement` (falls back to the raw enum key).

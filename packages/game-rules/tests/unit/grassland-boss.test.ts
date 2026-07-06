@@ -34,6 +34,7 @@ function makeGameState(playerCount: number, downCount = 0, spiritCount = 0): Gam
       roomId: 'test', hostId: 'h', phase: 'dungeon', playerCount,
       maxPlayers: 8, runSeed: 0, levelIndex: 3, difficulty: null,
       levelObjective: 'clear', waveIndex: 0, totalWaves: 0,
+      bossLevelStartedAt: 0, anyPlayerDownedDuringBoss: false, allBondsAtBossStart: false,
     },
     players, enemies: [], activeBonds: [], essenceDrops: [],
     tick: 0, floorLayout: null, runProposal: null,

@@ -35,3 +35,4 @@ export type { BondAssignedEvt, BondError, ProximityDrainTarget } from './systems
 export { BOND_TYPE_COLORS, BOND_PROXIMITY_RANGE_PX, BOND_DRAIN_THRESHOLD_S, BOND_DRAIN_HP_PER_TICK, BOND_DAMAGE_MULT, BOND_SPEED_MULT, BOND_DESCRIPTIONS, BOND_MECHANICS } from './balance.js';
 export { createBossState, tickBoss } from './entities/grassland-boss.js';
 export type { BossEvent, BossAddSpawnedEvent, BossStompedEvent } from './entities/grassland-boss.js';
+export { evaluateGrasslandAchievements } from './systems/achievements.js';
