@@ -1,5 +1,5 @@
 # generated: 2026-06-22
-# last_updated: 2026-06-22
+# last_updated: 2026-07-06
 # project: party-delve
 # project_key: NOKEY
 # tracking_system: file-system
@@ -42,7 +42,7 @@
 # Phase2 legacy stories (old Phase-based keys) are tracked below under PHASE 2 STORIES.
 
 generated: 2026-06-22
-last_updated: 2026-07-04 (6-3 6-4 6-5 ready-for-dev)
+last_updated: 2026-07-06 (6-6 done — E6 deferred hardening reviewed and patched)
 project: party-delve
 project_key: NOKEY
 tracking_system: file-system
@@ -127,12 +127,13 @@ development_status:
   # Behavior-tiered boss (Easy/Normal/Hard), synthesizes E3 mechanics, purification
   # pulse, reward reveal, biome achievements.
   # FRs: FR21 (boss tiers), FR24 (reward reveal), FR35 (Grassland boss + achievements), FR36
-  epic-6: in-progress
-  6-1-grassland-boss-shared-types-and-protocol-contracts: ready-for-dev
-  6-2-grassland-boss-fsm-phase-system-and-difficulty-tiered-behaviors: ready-for-dev
-  6-3-boss-arena-handcrafted-level-physics-geometry-and-host-rendering: ready-for-dev
-  6-4-boss-defeat-sequence-purification-pulse-and-reward-reveal: ready-for-dev
-  6-5-grassland-biome-achievements: ready-for-dev
+  epic-6: done
+  6-1-grassland-boss-shared-types-and-protocol-contracts: done
+  6-2-grassland-boss-fsm-phase-system-and-difficulty-tiered-behaviors: done
+  6-3-boss-arena-handcrafted-level-physics-geometry-and-host-rendering: done
+  6-4-boss-defeat-sequence-purification-pulse-and-reward-reveal: done
+  6-5-grassland-biome-achievements: done
+  6-6-epic-6-deferred-hardening: done
   epic-6-retrospective: optional
 
   # ─── E7: Progression & Persistent Meta ──────────────────────────────────────

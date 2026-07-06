@@ -1,12 +1,21 @@
-import type { GameState } from 'shared-types';
-import { CLASS_DEFINITIONS } from 'shared-types';
+import type { GameState, RunReward } from 'shared-types';
+import { GrasslandAchievement, CLASS_DEFINITIONS } from 'shared-types';
+
+const ACHIEVEMENT_NAMES: Record<GrasslandAchievement, string> = {
+  [GrasslandAchievement.NoDeath]: 'Deathless',
+  [GrasslandAchievement.FastBoss]: 'Swift Purification',
+  [GrasslandAchievement.AllBondsActive]: 'Three Bonds Strong',
+  [GrasslandAchievement.HardCleared]: 'Hard Difficulty Cleared',
+  [GrasslandAchievement.VigilHeld]: 'Battle-Scarred',
+};
 
 interface PostRunSummaryScreenProps {
   gameState: GameState;
   runOutcome: 'complete' | 'failed';
+  reward?: RunReward;
 }
 
-export function PostRunSummaryScreen({ gameState, runOutcome }: PostRunSummaryScreenProps) {
+export function PostRunSummaryScreen({ gameState, runOutcome, reward }: PostRunSummaryScreenProps) {
   const isVictory = runOutcome === 'complete';
   const totalEssence = gameState.players.reduce((s, p) => s + p.essenceTotal, 0);
   const headline = isVictory
@@ -110,6 +119,32 @@ export function PostRunSummaryScreen({ gameState, runOutcome }: PostRunSummarySc
           );
         })}
       </div>
+
+      {reward?.achievements?.length ? (
+        <div style={{
+          display: 'flex',
+          flexDirection: 'row',
+          flexWrap: 'wrap',
+          gap: 16,
+          width: '100%',
+          maxWidth: 640,
+          justifyContent: 'center',
+        }}>
+          {reward.achievements.map(achievement => (
+            <div key={achievement} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{
+                fontFamily: 'var(--font-body)',
+                fontWeight: 400,
+                fontSize: 'var(--text-sm)',
+                color: 'var(--text-primary)',
+              }}>
+                {ACHIEVEMENT_NAMES[achievement]}
+              </span>
+              <span style={{ color: 'var(--accent-spirit)' }}>✓</span>
+            </div>
+          ))}
+        </div>
+      ) : null}
 
       <div style={{
         fontFamily: 'var(--font-body)',

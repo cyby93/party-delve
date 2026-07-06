@@ -1,19 +1,19 @@
 import { Room, Client, CloseCode } from 'colyseus';
-import type { GameState, PlayerState } from 'shared-types';
-import { TICK_RATE_HZ, RECONNECT_GRACE_S, SNAPSHOT_INTERVAL_S, MAX_PLAYERS, PlayerClass, SessionColor, INTERACTIVE_HUB_POIS } from 'shared-types';
+import type { GameState, PlayerState, RunReward } from 'shared-types';
+import { TICK_RATE_HZ, RECONNECT_GRACE_S, SNAPSHOT_INTERVAL_S, MAX_PLAYERS, PlayerClass, SessionColor, INTERACTIVE_HUB_POIS, PURIFICATION_PULSE_DURATION_MS, REWARD_REVEAL_DURATION_MS } from 'shared-types';
 import { EventNames } from 'net-protocol';
-import type { InputEventMsg, SnapshotMsg, DeltaEventMsg, CooldownUpdateMsg, SpiritFormMsg, RunProposeMsg, VoteMsg, BondNotificationMsg } from 'net-protocol';
+import type { InputEventMsg, SnapshotMsg, DeltaEventMsg, CooldownUpdateMsg, SpiritFormMsg, RunProposeMsg, VoteMsg, BondNotificationMsg, RunVictoryMsg } from 'net-protocol';
 import { randomInt } from 'node:crypto';
-import { Vec2, Body, Contact, Fixture } from 'planck';
+import { Vec2, Body, Contact, Fixture, Circle } from 'planck';
 import type { World } from 'planck';
 import {
   createPhysicsWorld, createPlayerBody, createPoiSensorBody, createEssenceSensorBody,
   extractPoiBeginContact, extractPoiEndContact, extractEssenceBeginContact, toMeters, toPixels,
-  createVictoryTriggerBody,
 } from '../physics/world.js';
 import type { PoiBeginContactEvent, PoiEndContactEvent, EssenceBeginContactEvent, PhysicsBodyData } from '../physics/world.js';
-import { createRng, tickEnemy, dispatchAbility, getEnemyCount, applyDamage, isInHitZone, ABILITY_HIT_RANGE_PX, ABILITY_HIT_RADIUS_PX, applyPlayerDamage, ENEMY_MELEE_DAMAGE, ENEMY_MELEE_RANGE_PX, ENEMY_ATTACK_COOLDOWN_MS, REVIVE_RADIUS_PX, REVIVE_HP, SPIRIT_ABILITY_COOLDOWN_MS, generateFloorLayout, GRASSLAND_ROOM_POOL, WAVE_COUNTS, WAVE_PAUSE_MS, WAVE_ENEMY_SCALE, bondKey, getProximityBuffedPlayers, getFateBuffedPlayers, getFateBondWipeTargets, getProximityDrainTargets, BOND_PROXIMITY_RANGE_PX, BOND_DRAIN_THRESHOLD_S, BOND_DRAIN_HP_PER_TICK, BOND_DAMAGE_MULT, BOND_SPEED_MULT, assignBond, BOND_DESCRIPTIONS, BOND_MECHANICS } from 'game-rules';
-import type { BehaviorLayer, EnemyContext, EnemyAIEvent } from 'game-rules';
+import { createRng, tickEnemy, dispatchAbility, getEnemyCount, applyDamage, isInHitZone, ABILITY_HIT_RANGE_PX, ABILITY_HIT_RADIUS_PX, applyPlayerDamage, getReviveWindowMs, ENEMY_MELEE_DAMAGE, ENEMY_MELEE_RANGE_PX, ENEMY_ATTACK_COOLDOWN_MS, REVIVE_RADIUS_PX, REVIVE_HP, SPIRIT_ABILITY_COOLDOWN_MS, generateFloorLayout, GRASSLAND_ROOM_POOL, WAVE_COUNTS, WAVE_PAUSE_MS, WAVE_ENEMY_SCALE, bondKey, getProximityBuffedPlayers, getFateBuffedPlayers, getFateBondWipeTargets, getProximityDrainTargets, BOND_PROXIMITY_RANGE_PX, BOND_DRAIN_THRESHOLD_S, BOND_DRAIN_HP_PER_TICK, BOND_DAMAGE_MULT, BOND_SPEED_MULT, assignBond, BOND_DESCRIPTIONS, BOND_MECHANICS, createBossState, tickBoss, BOSS_ADD_HP, BOSS_STOMP_DAMAGE, evaluateGrasslandAchievements } from 'game-rules';
+import type { BehaviorLayer, EnemyContext, EnemyAIEvent, BossEvent, BossStompedEvent } from 'game-rules';
+import { BOSS_ARENA_SPAWN_POINTS, loadBossArena } from '../levels/boss-arena.js';
 import { CLASS_DEFINITIONS } from 'shared-types';
 import type { EnemyState } from 'shared-types';
 import { EnemyType, DifficultyTier, EnemyFSMState, OFFSET_ENEMY_SPAWN, OFFSET_FLOOR_LAYOUT, OFFSET_ROOM_POOL, OFFSET_SPIRIT_BOND } from 'shared-types';
@@ -21,6 +21,10 @@ import { createEnemyBody } from '../physics/world.js';
 import { createBondSensor, extractBondSensorContact } from '../physics/sensors.js';
 import type { BondProximityEvent } from '../physics/sensors.js';
 import { logger } from '../logger.js';
+
+// ponytail: boss is level index 4; dungeon runs levels 1-3
+const BOSS_LEVEL_INDEX = 4;
+const BACKEND_URL = process.env['BACKEND_URL'] ?? 'http://localhost:3001';
 
 // Distinct session colors assigned per player slot index
 const SESSION_COLORS: ReadonlyArray<SessionColor> = [
@@ -54,6 +58,9 @@ function createEmptyGameState(roomId: string): GameState {
       levelObjective: 'clear',
       waveIndex: 0,
       totalWaves: 0,
+      bossLevelStartedAt: 0,
+      anyPlayerDownedDuringBoss: false,
+      allBondsAtBossStart: false,
     },
     players: [],
     enemies: [],
@@ -62,6 +69,7 @@ function createEmptyGameState(roomId: string): GameState {
     tick: 0,
     floorLayout: null,
     runProposal: null,
+    boss: null,
   };
 }
 
@@ -97,6 +105,7 @@ export class GameRoom extends Room {
   private gameState!: GameState;
   private tickCount = 0;
   private tickTimer: ReturnType<typeof setInterval> | null = null;
+  private purificationTimeoutHandle: ReturnType<typeof setTimeout> | null = null;
   private inputQueue: Array<{ clientId: string; msg: InputEventMsg }> = [];
   // Tracks cooldown expiry timestamps per player per ability slot (ms since epoch).
   // Array index = abilityIndex (0–3). Value 0 = no cooldown active.
@@ -131,6 +140,10 @@ export class GameRoom extends Room {
   private returnReadySet = new Set<string>();
   private bondRng!: () => number;
   private bondMomentNextLevel = -1; // -1 = not in bond-moment; ≥0 = next level to load on CONTINUE
+  private bossBody: Body | null = null;
+  private arenaWallBodies: Body[] = [];
+  private pendingBossStompEvents: BossStompedEvent[] = [];
+  private lastRunReward: RunReward | null = null;
 
   async onCreate(_options: unknown): Promise<void> {
     this.roomId = generateRoomCode();
@@ -263,22 +276,30 @@ export class GameRoom extends Room {
       logger.info({ roomId: this.roomId, nextLevel }, 'bond-moment CONTINUE — loading next level');
     });
 
-    this.onMessage('debug:kill-all', (_client: Client) => {
-      if (this.gameState.session.phase !== 'dungeon') return;
-      for (const enemy of this.gameState.enemies) {
-        if (!enemy.isAlive) continue;
-        enemy.isAlive = false;
-        this.broadcast(EventNames.DELTA, {
-          type: 'enemy:killed' as const,
-          enemyId: enemy.id,
-          byPlayerId: '',
-        } satisfies DeltaEventMsg);
-        const body = this.enemyBodies.get(enemy.id);
-        if (body) { this.physicsWorld.destroyBody(body); this.enemyBodies.delete(enemy.id); }
-        this.enemyAttackCooldowns.delete(enemy.id);
-      }
-      logger.info({ roomId: this.roomId }, 'debug:kill-all — all enemies killed');
-    });
+    if (process.env['NODE_ENV'] !== 'production') {
+      this.onMessage('debug:kill-all', (_client: Client) => {
+        if (this.gameState.session.phase !== 'dungeon') return;
+        for (const enemy of this.gameState.enemies) {
+          if (!enemy.isAlive) continue;
+          enemy.isAlive = false;
+          this.broadcast(EventNames.DELTA, {
+            type: 'enemy:killed' as const,
+            enemyId: enemy.id,
+            byPlayerId: '',
+          } satisfies DeltaEventMsg);
+          const body = this.enemyBodies.get(enemy.id);
+          if (body) { this.physicsWorld.destroyBody(body); this.enemyBodies.delete(enemy.id); }
+          this.enemyAttackCooldowns.delete(enemy.id);
+        }
+        logger.info({ roomId: this.roomId }, 'debug:kill-all — all enemies killed');
+      });
+
+      this.onMessage('debug:kill-boss', (_client: Client) => {
+        if (this.gameState.session.levelIndex !== BOSS_LEVEL_INDEX) return;
+        if (!this.gameState.boss || this.gameState.boss.isDefeated) return;
+        this.gameState.boss.hp = 0;
+      });
+    }
 
     // Initialize physics world
     this.physicsWorld = createPhysicsWorld();
@@ -410,6 +431,13 @@ export class GameRoom extends Room {
       this.broadcast(EventNames.DELTA, reconnectDelta);
       const snapshot: SnapshotMsg = { type: 'snapshot', state: this.gameState };
       reconnectedClient.send(EventNames.SNAPSHOT, snapshot);
+      if (this.gameState.session.phase === 'post-run' && this.lastRunReward !== null) {
+        const share = this.lastRunReward.perPlayer.find(p => p.playerId === reconnectedClient.sessionId);
+        reconnectedClient.send(EventNames.RUN_VICTORY, {
+          type: 'run:victory',
+          essenceEarned: share?.essence ?? 0,
+        } satisfies RunVictoryMsg);
+      }
       logger.info({ roomId: this.roomId, clientId: reconnectedClient.sessionId }, 'player reconnected');
     } catch {
       // Grace period expired — remove slot permanently
@@ -442,9 +470,26 @@ export class GameRoom extends Room {
   }
 
   onDispose(): void {
+    const earnedValues = this.lastRunReward?.achievements ?? [];
+    if (earnedValues.length > 0) {
+      for (const player of this.gameState.players) {
+        if (player.id.startsWith('guest-')) continue;
+        // ponytail: fire-and-forget; Epic 7 adds retry/queue
+        fetch(`${BACKEND_URL}/player/${player.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ achievements: earnedValues }),
+        }).catch(() => void 0);
+      }
+    }
+
     if (this.tickTimer !== null) {
       clearInterval(this.tickTimer);
       this.tickTimer = null;
+    }
+    if (this.purificationTimeoutHandle !== null) {
+      clearTimeout(this.purificationTimeoutHandle);
+      this.purificationTimeoutHandle = null;
     }
     for (const body of this.playerBodies.values()) {
       this.physicsWorld.destroyBody(body);
@@ -668,6 +713,7 @@ export class GameRoom extends Room {
     this.totalWaves = 0;
     this.wavePauseUntil = 0;
     this.levelObjective = 'clear';
+    this.lastRunReward = null;
 
     const snapshot: SnapshotMsg = { type: 'snapshot', state: this.gameState };
     this.broadcast(EventNames.SNAPSHOT, snapshot);
@@ -747,6 +793,16 @@ export class GameRoom extends Room {
     }
     this.pendingVictoryContact = false;
 
+    // Clear boss state, body, and arena walls
+    if (this.bossBody) {
+      this.physicsWorld.destroyBody(this.bossBody);
+      this.bossBody = null;
+    }
+    for (const wall of this.arenaWallBodies) this.physicsWorld.destroyBody(wall);
+    this.arenaWallBodies.length = 0;
+    this.gameState.boss = null;
+    this.pendingBossStompEvents.length = 0;
+
     // Clear bond proximity tracking so drain doesn't fire immediately on level entry
     this.bondsInRange.clear();
     this.bondEnterTime.clear();
@@ -771,10 +827,25 @@ export class GameRoom extends Room {
 
     this.gameState.session.levelIndex = index;
 
-    if (index >= 4) {
-      // Boss placeholder: empty room with a victory trigger zone at the far end
-      this.victoryTriggerBody = createVictoryTriggerBody(this.physicsWorld, 1700, 540, 120);
-      logger.info({ roomId: this.roomId }, 'boss placeholder level loaded — victory trigger at (1700, 540)');
+    if (index === BOSS_LEVEL_INDEX) {
+      this.gameState.session.bossLevelStartedAt = Date.now();
+      this.gameState.session.anyPlayerDownedDuringBoss = false;
+      // ponytail: one bond assigned per dungeon level; BOSS_LEVEL_INDEX-1 = 3 expected bonds
+      this.gameState.session.allBondsAtBossStart = this.gameState.activeBonds.length === BOSS_LEVEL_INDEX - 1;
+      // ponytail: boss is level index 4; dungeon runs levels 1-3
+      this.arenaWallBodies = loadBossArena(this.physicsWorld);
+      const bossId = `boss-grassland-${this.gameState.session.runSeed}`;
+      const bossBodyInstance = this.physicsWorld.createBody({
+        type: 'dynamic',
+        position: Vec2(toMeters(960), toMeters(540)),
+        fixedRotation: true,
+        linearDamping: 0,
+      });
+      bossBodyInstance.createFixture({ shape: new Circle(toMeters(48)), density: 1, friction: 0 });
+      bossBodyInstance.setUserData({ type: 'boss', bossId } satisfies PhysicsBodyData);
+      this.bossBody = bossBodyInstance;
+      this.gameState.boss = createBossState(this.gameState.session.runSeed);
+      logger.info({ roomId: this.roomId }, 'boss arena loaded');
     } else if (index === 2) {
       this.levelObjective = 'survive-waves';
       this.totalWaves = WAVE_COUNTS['mid'];
@@ -962,6 +1033,45 @@ export class GameRoom extends Room {
     this.pendingBondProximityBegin.length = 0;
     this.pendingBondProximityEnd.length = 0;
 
+    // ── Boss stomp damage from previous tick ────────────────────────────────────
+    if (this.pendingBossStompEvents.length > 0) {
+      for (const stompEvt of this.pendingBossStompEvents) {
+        for (const player of this.gameState.players) {
+          if (player.isDown || player.isSpirit || player.isFrozen) continue;
+          const dx = player.x - stompEvt.x;
+          const dy = player.y - stompEvt.y;
+          if (Math.sqrt(dx * dx + dy * dy) > stompEvt.radius) continue;
+          player.hp = Math.max(0, player.hp - BOSS_STOMP_DAMAGE);
+          this.broadcast(EventNames.DELTA, {
+            type: 'player:hp-updated' as const,
+            playerId: player.id,
+            hp: player.hp,
+          } satisfies DeltaEventMsg);
+          if (player.hp <= 0) {
+            const nowStomp = Date.now();
+            player.downCount++;
+            player.isDown = true;
+            if (this.gameState.session.levelIndex === BOSS_LEVEL_INDEX) {
+              this.gameState.session.anyPlayerDownedDuringBoss = true;
+            }
+            const windowMs = getReviveWindowMs(player.downCount);
+            player.reviveTimerExpiresAt = nowStomp + windowMs;
+            this.broadcast(EventNames.DELTA, {
+              type: 'player:downed' as const,
+              playerId: player.id,
+              downCount: player.downCount,
+              reviveWindowMs: windowMs,
+            } satisfies DeltaEventMsg);
+            const downedClient = this.clients.find(c => c.sessionId === player.id);
+            if (downedClient) {
+              downedClient.send(EventNames.SPIRIT_FORM, { type: 'spirit:form', isActive: false } satisfies SpiritFormMsg);
+            }
+          }
+        }
+      }
+      this.pendingBossStompEvents.length = 0;
+    }
+
     // ── Enemy AI phase ──────────────────────────────────────────────────────────
     // Loop is no-op until enemies are spawned (Story 3.3+)
     for (const enemy of this.gameState.enemies) {
@@ -987,6 +1097,101 @@ export class GameRoom extends Room {
         }
 
         this.broadcast(EventNames.DELTA, delta);
+      }
+    }
+
+    // ── Boss tick ───────────────────────────────────────────────────────────────
+    if (this.gameState.session.levelIndex === BOSS_LEVEL_INDEX &&
+        this.gameState.boss !== null &&
+        !this.gameState.boss.isDefeated) {
+
+      const bossResult = tickBoss(
+        this.gameState.boss,
+        this.gameState,
+        this.gameState.session.difficulty!,
+        BOSS_ARENA_SPAWN_POINTS,
+      );
+
+      if (bossResult.ok) {
+        for (const evt of bossResult.value) {
+          switch (evt.type) {
+            case 'boss:moved':
+              this.gameState.boss.position.x = evt.x;
+              this.gameState.boss.position.y = evt.y;
+              if (this.bossBody) this.bossBody.setPosition(Vec2(toMeters(evt.x), toMeters(evt.y)));
+              this.broadcast(EventNames.DELTA, {
+                type: 'boss:moved', bossId: evt.bossId, x: evt.x, y: evt.y,
+              } satisfies DeltaEventMsg);
+              break;
+
+            case 'boss:stomped':
+              this.pendingBossStompEvents.push(evt);
+              this.broadcast(EventNames.DELTA, {
+                type: 'boss:stomped', bossId: evt.bossId, x: evt.x, y: evt.y, radius: evt.radius,
+              } satisfies DeltaEventMsg);
+              break;
+
+            case 'boss:phaseChanged':
+              this.broadcast(EventNames.DELTA, {
+                type: 'boss:phaseChanged', bossId: evt.bossId, newPhase: evt.newPhase,
+              } satisfies DeltaEventMsg);
+              break;
+
+            case 'boss:charged':
+              // ponytail: charge is a movement event handled by tickBoss — no client delta needed
+              break;
+
+            case 'add:spawned': {
+              const addEnemy: EnemyState = {
+                id: evt.enemyId, type: EnemyType.GRASSLAND_ADD,
+                x: evt.x, y: evt.y,
+                hp: BOSS_ADD_HP, maxHp: BOSS_ADD_HP,
+                difficultyTier: this.gameState.session.difficulty ?? DifficultyTier.EASY,
+                isAlive: true, fsmState: EnemyFSMState.IDLE,
+                attackCooldownTicks: 0,
+              };
+              this.gameState.enemies.push(addEnemy);
+              const addBody = createEnemyBody(this.physicsWorld, evt.enemyId, evt.x, evt.y);
+              this.enemyBodies.set(evt.enemyId, addBody);
+              this.enemyAttackCooldowns.set(evt.enemyId, 0);
+              this.broadcast(EventNames.SNAPSHOT, { type: 'snapshot', state: this.gameState } satisfies SnapshotMsg);
+              break;
+            }
+
+            case 'boss:defeated': {
+              if (this.bossBody) {
+                this.physicsWorld.destroyBody(this.bossBody);
+                this.bossBody = null;
+              }
+              this.gameState.session.phase = 'post-run';
+              const achievements = evaluateGrasslandAchievements(this.gameState, Date.now());
+              const reward: RunReward = { ...evt.reward, achievements };
+              this.lastRunReward = reward;
+              this.broadcast(EventNames.DELTA, {
+                type: 'boss:defeated',
+                bossId: evt.bossId,
+                reward,
+              } satisfies DeltaEventMsg);
+              for (const client of this.clients) {
+                if (client.sessionId === this.gameState.session.hostId) continue;
+                const share = reward.perPlayer.find(p => p.playerId === client.sessionId);
+                client.send(EventNames.RUN_VICTORY, {
+                  type: 'run:victory',
+                  essenceEarned: share?.essence ?? 0,
+                } satisfies RunVictoryMsg);
+              }
+              const totalEssence = reward.essenceTotal;
+              this.purificationTimeoutHandle = setTimeout(() => {
+                this.purificationTimeoutHandle = null;
+                if (this.gameState.session.phase !== 'post-run') return;
+                this.broadcast(EventNames.DELTA, { type: 'run:complete', totalEssence } satisfies DeltaEventMsg);
+              }, PURIFICATION_PULSE_DURATION_MS + REWARD_REVEAL_DURATION_MS);
+              break;
+            }
+          }
+        }
+      } else {
+        logger.error({ roomId: this.roomId, error: bossResult.error }, 'tickBoss returned error');
       }
     }
 
@@ -1178,6 +1383,9 @@ export class GameRoom extends Room {
         if (dmgResult.value.downed) {
           const windowMs = dmgResult.value.reviveWindowMs!;
           this.gameState.players[pi]!.reviveTimerExpiresAt = nowMelee + windowMs;
+          if (this.gameState.session.levelIndex === BOSS_LEVEL_INDEX) {
+            this.gameState.session.anyPlayerDownedDuringBoss = true;
+          }
 
           this.broadcast(EventNames.DELTA, {
             type: 'player:downed' as const,
@@ -1218,6 +1426,9 @@ export class GameRoom extends Room {
                   playerId: partnerId,
                   hp: 0,
                 } satisfies DeltaEventMsg);
+                if (this.gameState.session.levelIndex === BOSS_LEVEL_INDEX) {
+                  this.gameState.session.anyPlayerDownedDuringBoss = true;
+                }
                 this.broadcast(EventNames.DELTA, {
                   type: 'player:downed' as const,
                   playerId: partnerId,
@@ -1391,21 +1602,6 @@ export class GameRoom extends Room {
           this.enterBondMoment(levelIndex);
           logger.info({ roomId: this.roomId, levelIndex }, 'level complete — entering bond moment');
         }
-      }
-    }
-
-    // ── Boss placeholder: victory trigger contact → run:complete ─────────────
-    if (this.gameState.session.phase === 'dungeon'
-        && this.gameState.session.levelIndex === 4
-        && this.pendingVictoryContact) {
-      this.pendingVictoryContact = false;
-      const totalEssence = this.gameState.players.reduce((sum, p) => sum + (p.essenceTotal ?? 0), 0);
-      this.gameState.session.phase = 'post-run';
-      this.broadcast(EventNames.DELTA, { type: 'run:complete' as const, totalEssence } satisfies DeltaEventMsg);
-      logger.info({ roomId: this.roomId, totalEssence }, 'boss placeholder — victory zone reached, run complete');
-      if (this.victoryTriggerBody) {
-        this.physicsWorld.destroyBody(this.victoryTriggerBody);
-        this.victoryTriggerBody = null;
       }
     }
 

@@ -155,6 +155,26 @@ export function applyDelta(state: GameState, evt: DeltaEventMsg): GameState {
       return { ...state, session: { ...state.session, waveIndex: evt.waveIndex, totalWaves: evt.totalWaves } };
     case 'wave:complete':
       return state;  // ponytail: transient; next wave:started updates waveIndex; snapshot reconciles
+    case 'boss:damaged': {
+      if (!state.boss) return state;
+      return { ...state, boss: { ...state.boss, hp: evt.newHp } };
+    }
+    case 'boss:phaseChanged': {
+      if (!state.boss) return state;
+      return { ...state, boss: { ...state.boss, phase: evt.newPhase } };
+    }
+    case 'boss:defeated': {
+      if (!state.boss) return state;
+      return { ...state, boss: { ...state.boss, isDefeated: true } };
+    }
+    case 'boss:moved': {
+      if (!state.boss) return state;
+      return { ...state, boss: { ...state.boss, position: { x: evt.x, y: evt.y } } };
+    }
+    case 'boss:stomped':
+      return state;  // ponytail: visual only; DungeonScreen reads raw delta
+    case 'add:spawned':
+      return state;  // ponytail: GrasslandAdds arrive via snapshot broadcast
     default: {
       // Exhaustiveness guard: adding a new DeltaEventMsg variant without a case here causes a TS error.
       const _exhaustive: never = evt;

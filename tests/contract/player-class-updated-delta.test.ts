@@ -26,6 +26,7 @@ function mockGameState(): GameState {
     tick: 0,
     floorLayout: null,
     runProposal: null,
+    boss: null,
   };
 }
 

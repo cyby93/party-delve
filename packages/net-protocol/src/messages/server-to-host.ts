@@ -1,4 +1,4 @@
-import type { GameState, BondType, EssenceDrop, PlayerClass, DifficultyTier } from 'shared-types';
+import type { GameState, BondType, EssenceDrop, PlayerClass, DifficultyTier, BossPhase, RunReward } from 'shared-types';
 
 export interface SnapshotMsg {
   type: 'snapshot';
@@ -175,6 +175,46 @@ export type WaveCompleteDelta = {
   waveIndex: number;
 };
 
+export type BossMovedDelta = {
+  type: 'boss:moved';
+  bossId: string;
+  x: number;
+  y: number;
+};
+
+export type BossStompedDelta = {
+  type: 'boss:stomped';
+  bossId: string;
+  x: number;
+  y: number;
+  radius: number;
+};
+
+export type BossAddSpawnedDelta = {
+  type: 'add:spawned';
+  enemyId: string;
+  x: number;
+  y: number;
+};
+
+export type BossDamagedDelta = {
+  type: 'boss:damaged';
+  bossId: string;
+  newHp: number;
+};
+
+export type BossPhaseChangedDelta = {
+  type: 'boss:phaseChanged';
+  bossId: string;
+  newPhase: BossPhase;
+};
+
+export type BossDefeatedDelta = {
+  type: 'boss:defeated';
+  bossId: string;
+  reward: RunReward;
+};
+
 export type DeltaEventMsg =
   | PlayerMovedDelta
   | PlayerDownedDelta
@@ -203,4 +243,10 @@ export type DeltaEventMsg =
   | RunProposedDelta
   | RunStartingDelta
   | WaveStartedDelta
-  | WaveCompleteDelta;
+  | WaveCompleteDelta
+  | BossDamagedDelta
+  | BossPhaseChangedDelta
+  | BossDefeatedDelta
+  | BossMovedDelta
+  | BossStompedDelta
+  | BossAddSpawnedDelta;

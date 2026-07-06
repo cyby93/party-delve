@@ -1,6 +1,6 @@
 import * as Colyseus from '@colyseus/sdk';
 import { EventNames, deserialize } from 'net-protocol';
-import type { SnapshotMsg, DeltaEventMsg, InputEventMsg, ClassSelectMsg, CooldownUpdateMsg, BondNotificationMsg, RunProposeMsg, VoteMsg, ReturnToCampMsg, ContinueMsg } from 'net-protocol';
+import type { SnapshotMsg, DeltaEventMsg, InputEventMsg, ClassSelectMsg, CooldownUpdateMsg, BondNotificationMsg, RunProposeMsg, VoteMsg, ReturnToCampMsg, ContinueMsg, RunVictoryMsg } from 'net-protocol';
 import type { GameState } from 'shared-types';
 
 const SIM_URL = import.meta.env['VITE_SIM_URL'] ?? `ws://${window.location.hostname || 'localhost'}:2567`;
@@ -55,6 +55,7 @@ function wireRoomHandlers(
   onDelta: (delta: DeltaEventMsg) => void,
   onCooldownUpdate: (msg: CooldownUpdateMsg) => void,
   onBondNotification: (msg: BondNotificationMsg) => void,
+  onRunVictory: (msg: RunVictoryMsg) => void,
   onError: (code: number, message: string) => void,
   onDisconnect: (code: number) => void,
 ): void {
@@ -86,6 +87,13 @@ function wireRoomHandlers(
     } catch { /* ignore malformed */ }
   });
 
+  room.onMessage(EventNames.RUN_VICTORY, (data: unknown) => {
+    try {
+      const msg = decode<RunVictoryMsg>(data);
+      onRunVictory(msg);
+    } catch { /* ignore malformed */ }
+  });
+
   room.onError((code: number, message?: string) => {
     onError(code, message ?? 'connection error');
   });
@@ -106,6 +114,7 @@ export async function joinSession(
   onDelta: (delta: DeltaEventMsg) => void,
   onCooldownUpdate: (msg: CooldownUpdateMsg) => void,
   onBondNotification: (msg: BondNotificationMsg) => void,
+  onRunVictory: (msg: RunVictoryMsg) => void,
   onError: (code: number, message: string) => void,
   onDisconnect: (code: number) => void,
 ): Promise<MobileSession> {
@@ -116,7 +125,7 @@ export async function joinSession(
   // Persist before wiring handlers — ensures token is available if onLeave fires during setup.
   persistSession(room.reconnectionToken, room.roomId, playerName);
 
-  wireRoomHandlers(room, onStateUpdate, onDelta, onCooldownUpdate, onBondNotification, onError, onDisconnect);
+  wireRoomHandlers(room, onStateUpdate, onDelta, onCooldownUpdate, onBondNotification, onRunVictory, onError, onDisconnect);
 
   return {
     playerId: room.sessionId,
@@ -141,6 +150,7 @@ export async function reconnectToSession(
   onDelta: (delta: DeltaEventMsg) => void,
   onCooldownUpdate: (msg: CooldownUpdateMsg) => void,
   onBondNotification: (msg: BondNotificationMsg) => void,
+  onRunVictory: (msg: RunVictoryMsg) => void,
   onError: (code: number, message: string) => void,
   onDisconnect: (code: number) => void,
 ): Promise<MobileSession> {
@@ -155,7 +165,7 @@ export async function reconnectToSession(
     persistSession(room.reconnectionToken, existing.roomId, existing.playerName);
   }
 
-  wireRoomHandlers(room, onStateUpdate, onDelta, onCooldownUpdate, onBondNotification, onError, onDisconnect);
+  wireRoomHandlers(room, onStateUpdate, onDelta, onCooldownUpdate, onBondNotification, onRunVictory, onError, onDisconnect);
 
   return {
     playerId: room.sessionId,

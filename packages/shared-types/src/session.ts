@@ -1,5 +1,7 @@
 import type { BondType } from './bond.js';
 import type { DifficultyTier } from './enemy.js';
+import type { BossPhase } from './boss.js';
+import type { RunReward } from './run-reward.js';
 
 export interface SessionState {
   roomId: string;
@@ -13,6 +15,9 @@ export interface SessionState {
   levelObjective: 'clear' | 'survive-waves';
   waveIndex: number;
   totalWaves: number;
+  bossLevelStartedAt: number;
+  anyPlayerDownedDuringBoss: boolean;
+  allBondsAtBossStart: boolean;
 }
 
 export interface RoomOptions {
@@ -25,4 +30,6 @@ export interface SimEvents {
   'bond:assigned': { playerA: string; playerB: string; bondType: BondType };
   'enemy:killed': { enemyId: string; byPlayerId: string };
   'level:complete': { levelIndex: number };
+  'boss:phaseChanged': { bossId: string; newPhase: BossPhase };
+  'boss:defeated': { bossId: string; reward: RunReward };
 }

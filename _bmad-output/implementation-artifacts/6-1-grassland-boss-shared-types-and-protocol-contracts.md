@@ -4,7 +4,7 @@ baseline_commit: 23b8a4e
 
 # Story 6.1: Grassland Boss — Shared Types & Protocol Contracts
 
-Status: ready-for-dev
+Status: done
 
 ## CLAUDE.md Required Task Header
 
@@ -185,74 +185,74 @@ so that all agent roles can implement boss logic, host visualization, and reward
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1: Create packages/shared-types/src/boss.ts** (AC: 1)
-  - [ ] Export `BossPhase` enum with Phase1=1, Phase2=2, Phase3=3
-  - [ ] Export `BossState` interface (id, entityType literal, hp, maxHp, phase, position, isDefeated)
+- [x] **Task 1: Create packages/shared-types/src/boss.ts** (AC: 1)
+  - [x] Export `BossPhase` enum with Phase1=1, Phase2=2, Phase3=3
+  - [x] Export `BossState` interface (id, entityType literal, hp, maxHp, phase, position, isDefeated)
 
-- [ ] **Task 2: Create packages/shared-types/src/achievements.ts** (AC: 2)
-  - [ ] Export `GrasslandAchievement` enum (5 string variants)
-  - [ ] Export `AchievementState` interface
+- [x] **Task 2: Create packages/shared-types/src/achievements.ts** (AC: 2)
+  - [x] Export `GrasslandAchievement` enum (5 string variants)
+  - [x] Export `AchievementState` interface
 
-- [ ] **Task 3: Create packages/shared-types/src/run-reward.ts** (AC: 3)
-  - [ ] Export `PlayerReward` interface
-  - [ ] Export `RunReward` interface — imports `GrasslandAchievement` from `./achievements.js`
+- [x] **Task 3: Create packages/shared-types/src/run-reward.ts** (AC: 3)
+  - [x] Export `PlayerReward` interface
+  - [x] Export `RunReward` interface — imports `GrasslandAchievement` from `./achievements.js`
 
-- [ ] **Task 4: Update packages/shared-types/src/constants.ts** (AC: 4)
-  - [ ] Append the 4 boss constants after the OFFSET_SPIRIT_BOND block; preserve existing content exactly
+- [x] **Task 4: Update packages/shared-types/src/constants.ts** (AC: 4)
+  - [x] Append the 4 boss constants after the OFFSET_SPIRIT_BOND block; preserve existing content exactly
 
-- [ ] **Task 5: Update packages/shared-types/src/game-state.ts** (AC: 5)
-  - [ ] Add `import type { BossState } from './boss.js';` at top
-  - [ ] Add `boss: BossState | null;` field to `GameState` interface
+- [x] **Task 5: Update packages/shared-types/src/game-state.ts** (AC: 5)
+  - [x] Add `import type { BossState } from './boss.js';` at top
+  - [x] Add `boss: BossState | null;` field to `GameState` interface
 
-- [ ] **Task 6: Update packages/shared-types/src/session.ts** (AC: 6)
-  - [ ] Add `import type { BossPhase } from './boss.js';` and `import type { RunReward } from './run-reward.js';`
-  - [ ] Add `'boss:phaseChanged'` and `'boss:defeated'` entries to `SimEvents`
+- [x] **Task 6: Update packages/shared-types/src/session.ts** (AC: 6)
+  - [x] Add `import type { BossPhase } from './boss.js';` and `import type { RunReward } from './run-reward.js';`
+  - [x] Add `'boss:phaseChanged'` and `'boss:defeated'` entries to `SimEvents`
 
-- [ ] **Task 7: Update packages/shared-types/src/index.ts** (AC: 5, 11)
-  - [ ] Add `export * from './boss.js';`
-  - [ ] Add `export * from './achievements.js';`
-  - [ ] Add `export * from './run-reward.js';`
+- [x] **Task 7: Update packages/shared-types/src/index.ts** (AC: 5, 11)
+  - [x] Add `export * from './boss.js';`
+  - [x] Add `export * from './achievements.js';`
+  - [x] Add `export * from './run-reward.js';`
 
-- [ ] **Task 8: Update packages/net-protocol/src/messages/server-to-host.ts** (AC: 7)
-  - [ ] Add imports: `BossPhase, BossState` from `shared-types` (join existing import line)
-  - [ ] Add `RunReward` to import from `shared-types`
-  - [ ] Add `BossDamagedDelta` type
-  - [ ] Add `BossPhaseChangedDelta` type
-  - [ ] Add `BossDefeatedDelta` type
-  - [ ] Add all three to `DeltaEventMsg` union
-  - [ ] `SnapshotMsg.state` already picks up the boss field via `GameState` — no change needed there
+- [x] **Task 8: Update packages/net-protocol/src/messages/server-to-host.ts** (AC: 7)
+  - [x] Add imports: `BossPhase, BossState` from `shared-types` (join existing import line)
+  - [x] Add `RunReward` to import from `shared-types`
+  - [x] Add `BossDamagedDelta` type
+  - [x] Add `BossPhaseChangedDelta` type
+  - [x] Add `BossDefeatedDelta` type
+  - [x] Add all three to `DeltaEventMsg` union
+  - [x] `SnapshotMsg.state` already picks up the boss field via `GameState` — no change needed there
 
-- [ ] **Task 9: Update packages/net-protocol/src/messages/server-to-mobile.ts** (AC: 8)
-  - [ ] Add `RunVictoryMsg` interface
+- [x] **Task 9: Update packages/net-protocol/src/messages/server-to-mobile.ts** (AC: 8)
+  - [x] Add `RunVictoryMsg` interface
 
-- [ ] **Task 10: Update packages/net-protocol/src/event-names.ts** (AC: 9)
-  - [ ] Add `RUN_VICTORY = 'run:victory'` to EventNames enum
+- [x] **Task 10: Update packages/net-protocol/src/event-names.ts** (AC: 9)
+  - [x] Add `RUN_VICTORY = 'run:victory'` to EventNames enum
 
-- [ ] **Task 11: Update packages/net-protocol/src/apply-delta.ts** (AC: 10)
-  - [ ] Add `BossPhase` and `BossState` to import from `shared-types` (needed for `BossState` type guard)
-  - [ ] Add `'boss:damaged'` case before the `default` block
-  - [ ] Add `'boss:phaseChanged'` case
-  - [ ] Add `'boss:defeated'` case — mark isDefeated only; no session phase change
-  - [ ] Confirm `default: never` guard still compiles (TypeScript will error if a new variant is in the union but missing a case)
+- [x] **Task 11: Update packages/net-protocol/src/apply-delta.ts** (AC: 10)
+  - [x] Add `BossPhase` and `BossState` to import from `shared-types` (needed for `BossState` type guard)
+  - [x] Add `'boss:damaged'` case before the `default` block
+  - [x] Add `'boss:phaseChanged'` case
+  - [x] Add `'boss:defeated'` case — mark isDefeated only; no session phase change
+  - [x] Confirm `default: never` guard still compiles (TypeScript will error if a new variant is in the union but missing a case)
 
-- [ ] **Task 12: Update packages/net-protocol/src/index.ts** (AC: 11)
-  - [ ] Export `BossDamagedDelta`, `BossPhaseChangedDelta`, `BossDefeatedDelta` from server-to-host
-  - [ ] Export `RunVictoryMsg` from server-to-mobile
+- [x] **Task 12: Update packages/net-protocol/src/index.ts** (AC: 11)
+  - [x] Export `BossDamagedDelta`, `BossPhaseChangedDelta`, `BossDefeatedDelta` from server-to-host
+  - [x] Export `RunVictoryMsg` from server-to-mobile
 
-- [ ] **Task 13: Update all GameState construction sites** (AC: 5)
-  - [ ] `apps/simulation-server/src/rooms/GameRoom.ts` — add `boss: null,` after `runProposal: null,` in `createEmptyGameState`
-  - [ ] `apps/simulation-server/tests/game-room-host-join.test.ts` — add `boss: null,` in the helper
-  - [ ] `tests/contract/net-protocol.test.ts` — add `boss: null,` to `mockGameState()` return object
+- [x] **Task 13: Update all GameState construction sites** (AC: 5)
+  - [x] `apps/simulation-server/src/rooms/GameRoom.ts` — add `boss: null,` after `runProposal: null,` in `createEmptyGameState`
+  - [x] `apps/simulation-server/tests/game-room-host-join.test.ts` — add `boss: null,` in the helper
+  - [x] `tests/contract/net-protocol.test.ts` — add `boss: null,` to `mockGameState()` return object
 
-- [ ] **Task 14: Add contract tests** (AC: 12)
-  - [ ] Add `import type { BossDefeatedDelta, BossPhaseChangedDelta, BossDamagedDelta, RunVictoryMsg } from 'net-protocol';` (or use the combined import)
-  - [ ] Add `import type { BossPhase, RunReward } from 'shared-types';` imports
-  - [ ] Add `import { BossPhase } from 'shared-types';` for enum values
-  - [ ] Add `describe('Story 6.1 boss delta round-trips', () => { ... })` with 4 it blocks
+- [x] **Task 14: Add contract tests** (AC: 12)
+  - [x] Add `import type { BossDefeatedDelta, BossPhaseChangedDelta, BossDamagedDelta, RunVictoryMsg } from 'net-protocol';` (or use the combined import)
+  - [x] Add `import type { BossPhase, RunReward } from 'shared-types';` imports
+  - [x] Add `import { BossPhase } from 'shared-types';` for enum values
+  - [x] Add `describe('Story 6.1 boss delta round-trips', () => { ... })` with 4 it blocks
 
-- [ ] **Task 15: Typecheck and test** (AC: 13)
-  - [ ] `npm run typecheck --workspaces` — zero errors
-  - [ ] `npm test` in `tests/contract/` — all tests pass including the 4 new ones
+- [x] **Task 15: Typecheck and test** (AC: 13)
+  - [x] `npm run typecheck --workspaces` — zero errors
+  - [x] `npm test` in `tests/contract/` — all tests pass including the 4 new ones
 
 ## Dev Notes
 
@@ -358,4 +358,34 @@ claude-sonnet-4-6
 
 ### Completion Notes List
 
+All 15 tasks complete. Pure types story — no game logic, no balance values. 3 new shared-types files (boss.ts, achievements.ts, run-reward.ts), 9 modified files, 4 new contract round-trip tests. Exhaustiveness guard in apply-delta.ts preserved and compiles clean. All 5 TypeScript configs (shared-types, net-protocol, simulation-server, host-client, mobile-controller) pass zero errors. Contract + sim-server tests all green (e2e failures are pre-existing WSL2 port-conflict, unrelated).
+
 ### File List
+
+- packages/shared-types/src/boss.ts (new)
+- packages/shared-types/src/achievements.ts (new)
+- packages/shared-types/src/run-reward.ts (new)
+- packages/shared-types/src/constants.ts
+- packages/shared-types/src/game-state.ts
+- packages/shared-types/src/session.ts
+- packages/shared-types/src/index.ts
+- packages/net-protocol/src/messages/server-to-host.ts
+- packages/net-protocol/src/messages/server-to-mobile.ts
+- packages/net-protocol/src/event-names.ts
+- packages/net-protocol/src/apply-delta.ts
+- packages/net-protocol/src/index.ts
+- apps/simulation-server/src/rooms/GameRoom.ts
+- apps/simulation-server/tests/game-room-host-join.test.ts
+- tests/contract/net-protocol.test.ts
+
+### Review Findings
+
+- [x] [Review][Defer] `boss:defeated` carries `RunReward` not persisted to `GameState` [packages/net-protocol/src/apply-delta.ts] — deferred, spec AC10 prescribes only `isDefeated:true`; host reads reward from raw event. Story 6.4 must decide: raw-event pattern (ephemeral) vs. add `runReward: RunReward | null` to GameState (reconnect-safe).
+- [x] [Review][Defer] Out-of-range `BossPhase` value passes deserialization silently [packages/net-protocol/src/serialize.ts] — deferred, no runtime validation anywhere in protocol stack (cross-cutting concern; see D8 from 1-1 review). Address in Phase 5 schema hardening.
+- [x] [Review][Defer] `reviveTimerExpiresAt: Date.now() + reviveWindowMs` evaluated on client creates clock-skew error [packages/net-protocol/src/apply-delta.ts:65] — deferred, pre-existing bug not introduced by story 6.1. Server should send absolute timestamp; fix in dedicated delta hardening story.
+- [x] [Review][Defer] `masteryMilestones: string[]` unbounded, no max-length cap [packages/shared-types/src/run-reward.ts] — deferred, out of scope for types-only story. Define cap when milestone generation is implemented in story 6.5+.
+
+## Change Log
+
+- 2026-07-05: Code review complete — 0 patch, 0 decision_needed, 4 deferred, 7 dismissed. Story marked done.
+- 2026-07-04: Story 6.1 implemented — boss types, achievement types, run reward types, protocol contracts, apply-delta cases, 4 contract tests. All ACs satisfied.

@@ -2,6 +2,7 @@ import { describe, it, beforeAll, afterAll, expect } from 'vitest';
 import * as Colyseus from '@colyseus/sdk';
 import { EventNames } from 'net-protocol';
 import type { SnapshotMsg, DeltaEventMsg } from 'net-protocol';
+import { PURIFICATION_PULSE_DURATION_MS, REWARD_REVEAL_DURATION_MS } from 'shared-types';
 import { startTestServer, stopTestServer, TEST_URL } from '../helpers/server.js';
 import { waitForDelta } from '../helpers/messages.js';
 
@@ -159,14 +160,12 @@ describe('full run happy path', { timeout: 120_000 }, () => {
     expect(l4StartSnap.state.session.levelIndex).toBe(4);
     expect(l4StartSnap.state.activeBonds.length).toBe(3);
 
-    // ── 9. Level 4 — Boss placeholder: move east to victory trigger ───────────
-    // Players respawn at DUNGEON_SPAWN_POSITIONS[0] = (300, 540).
-    // Victory trigger at (1700, 540, r=120). Distance ~1400px at 200px/s = ~7s.
-    const runComplete = waitForDelta<any>(host, (d) => d.type === 'run:complete', 15_000);
-    p1.send(EventNames.INPUT, { type: 'input', event: { type: 'joystick', joystick: { x: 1.0, y: 0 } } });
+    // ── 9. Level 4 — Boss defeat via debug endpoint ───────────────────────────
+    // run:complete arrives after PURIFICATION_PULSE_DURATION_MS + REWARD_REVEAL_DURATION_MS (5500ms)
+    const runComplete = waitForDelta<any>(host, (d) => d.type === 'run:complete', 12_000);
+    host.send('debug:kill-boss', {});
     const runCompleteData = await runComplete;
     expect(typeof runCompleteData.totalEssence).toBe('number');
-    p1.send(EventNames.INPUT, { type: 'input', event: { type: 'joystick', joystick: { x: 0, y: 0 } } });
 
     // ── 10. Post-run: wait for periodic snapshot (within 5s) ─────────────────
     const postRunSnap = new Promise<SnapshotMsg>((resolve) => {
@@ -192,5 +191,115 @@ describe('full run happy path', { timeout: 120_000 }, () => {
     expect(hubSnap.state.players.every((p: any) => !p.isDown && !p.isSpirit)).toBe(true);
 
     await Promise.all([host.leave(), p1.leave(), p2.leave(), p3.leave()]);
+  });
+
+  // ponytail: boss defeat e2e is partial — verifies delta timing, not full AI simulation
+  it('boss defeat path: BossDefeatedDelta then run:complete after delay', async () => {
+    // ── Bring game to boss level (same setup as main test through L3 bond-moment) ─
+    const host = await client.create('game_room', { isHost: true });
+    const roomId = host.roomId;
+
+    const allJoinedSnap = new Promise<SnapshotMsg>((resolve) => {
+      const unsub = host.onMessage<SnapshotMsg>(EventNames.SNAPSHOT, (snap) => {
+        if (snap.state.players.length >= 2) { unsub(); resolve(snap); }
+      });
+    });
+    const p1 = await client.joinById(roomId, { playerName: 'Alice' });
+    const p2 = await client.joinById(roomId, { playerName: 'Bob' });
+    await raceTimeout(allJoinedSnap, 10_000, 'players joined');
+
+    p1.send(EventNames.CLASS_SELECT, { classId: 'stormcaller' });
+    p2.send(EventNames.CLASS_SELECT, { classId: 'stormcaller' });
+
+    const poiEntered = waitForDelta<any>(p1, (d) => d.type === 'player:poi-entered' && d.poiId === 'dungeon-entrance', 8_000);
+    p1.send(EventNames.INPUT, { type: 'input', event: { type: 'joystick', joystick: { x: 0, y: -1.0 } } });
+    await poiEntered;
+    p1.send(EventNames.INPUT, { type: 'input', event: { type: 'joystick', joystick: { x: 0, y: 0 } } });
+
+    p1.send(EventNames.RUN_PROPOSE, { biome: 'grassland', difficulty: 'easy' });
+    await waitForDelta<any>(host, (d) => d.type === 'run:proposed', 5_000);
+
+    const dungeonSnapP = new Promise<SnapshotMsg>((resolve) => {
+      const unsub = host.onMessage<SnapshotMsg>(EventNames.SNAPSHOT, (snap) => {
+        if (snap.state.session.phase === 'dungeon') { unsub(); resolve(snap); }
+      });
+    });
+    p1.send(EventNames.VOTE, { accept: true });
+    p2.send(EventNames.VOTE, { accept: true });
+    await waitForDelta<any>(host, (d) => d.type === 'run:starting', 5_000);
+    await raceTimeout(dungeonSnapP, 10_000, 'dungeon phase');
+
+    // L1 clear → bond → L2 waves → bond → L3 clear → bond → boss level
+    const bondAfterL1 = waitForDelta<any>(host, (d) => d.type === 'bond:assigned', 8_000);
+    const l1Complete = waitForDelta<any>(host, (d) => d.type === 'level:complete' && d.levelIndex === 1, 8_000);
+    host.send('debug:kill-all', {});
+    await l1Complete;
+    await bondAfterL1;
+
+    const bondAfterL2 = waitForDelta<any>(host, (d) => d.type === 'bond:assigned', 10_000);
+    const wave2 = waitForDelta<any>(host, (d) => d.type === 'wave:started' && d.waveIndex === 2, 12_000);
+    const wave3 = waitForDelta<any>(host, (d) => d.type === 'wave:started' && d.waveIndex === 3, 12_000);
+    const l2Complete = waitForDelta<any>(host, (d) => d.type === 'level:complete' && d.levelIndex === 2, 20_000);
+    p1.send(EventNames.CONTINUE, {});
+    host.send('debug:kill-all', {});
+    await wave2;
+    host.send('debug:kill-all', {});
+    await wave3;
+    host.send('debug:kill-all', {});
+    await l2Complete;
+    await bondAfterL2;
+
+    const bondAfterL3 = waitForDelta<any>(host, (d) => d.type === 'bond:assigned', 8_000);
+    const l3Complete = waitForDelta<any>(host, (d) => d.type === 'level:complete' && d.levelIndex === 3, 10_000);
+    const l4SnapP = new Promise<SnapshotMsg>((resolve) => {
+      const unsub = host.onMessage<SnapshotMsg>(EventNames.SNAPSHOT, (snap) => {
+        if (snap.state.session.levelIndex === 4) { unsub(); resolve(snap); }
+      });
+    });
+    p1.send(EventNames.CONTINUE, {});
+    host.send('debug:kill-all', {});
+    await l3Complete;
+    await bondAfterL3;
+    p1.send(EventNames.CONTINUE, {});
+    const l4Snap = await raceTimeout(l4SnapP, 8_000, 'boss level loaded');
+
+    // ── Boss level assertions ─────────────────────────────────────────────────
+    expect(l4Snap.state.boss).not.toBeNull();
+    expect(l4Snap.state.session.levelIndex).toBe(4);
+
+    // ── Defeat boss via debug endpoint ────────────────────────────────────────
+    const defeatDeltaP = waitForDelta<any>(host, (d) => d.type === 'boss:defeated', 4_000);
+    host.send('debug:kill-boss', {});
+    const defeatDelta = await defeatDeltaP;
+    expect(defeatDelta.type).toBe('boss:defeated');
+    expect(typeof defeatDelta.reward?.essenceTotal).toBe('number');
+    const t0 = Date.now();
+
+    // ── run:complete arrives after full purification delay ────────────────────
+    const expectedDelay = PURIFICATION_PULSE_DURATION_MS + REWARD_REVEAL_DURATION_MS;
+    const completeDelta = await raceTimeout(
+      waitForDelta<any>(host, (d) => d.type === 'run:complete', expectedDelay + 1000),
+      expectedDelay + 1500,
+      'run:complete after boss defeat delay',
+    );
+    const elapsed = Date.now() - t0;
+    expect(completeDelta.type).toBe('run:complete');
+    // ponytail: WSL2 event-loop jitter can absorb ~600ms before client records t0
+    expect(elapsed).toBeGreaterThanOrEqual(expectedDelay - 800);
+    expect(elapsed).toBeLessThanOrEqual(expectedDelay + 1000);
+
+    // ── Phase transitions to post-run ─────────────────────────────────────────
+    const postRunSnap = await raceTimeout(
+      new Promise<SnapshotMsg>((resolve) => {
+        const unsub = host.onMessage<SnapshotMsg>(EventNames.SNAPSHOT, (snap) => {
+          if (snap.state.session.phase === 'post-run') { unsub(); resolve(snap); }
+        });
+      }),
+      8_000,
+      'post-run phase after boss defeat',
+    );
+    expect(postRunSnap.state.session.phase).toBe('post-run');
+
+    await Promise.all([host.leave(), p1.leave(), p2.leave()]);
   });
 });

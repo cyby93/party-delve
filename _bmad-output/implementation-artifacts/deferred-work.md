@@ -57,6 +57,22 @@ Micro-shards are created dynamically and are not in the original pipeline order 
 **D5 — ExitWorktree failure after agent completion causes re-dispatch**
 If `ExitWorktree` fails, the worktree stays open. The shard's status hasn't been written yet (step 7 runs after step 5). Next loop iteration selects the same shard and attempts `EnterWorktree` on an already-open branch. Pre-existing.
 
+---
+
+## Deferred from: code review of 6-2-grassland-boss-fsm-phase-system-and-difficulty-tiered-behaviors (2026-07-05)
+
+**D1 — `BOSS_ADD_HP` not in `add:spawned` event payload**
+`balance.ts` defines `BOSS_ADD_HP = 200` but `grassland-boss.ts` never references it, and the `add:spawned` event carries no `hp` field. Story 6.3 creates the add enemy entity in GameRoom — at that point the HP value must be available. Deferred to Story 6.3 which owns GameRoom integration.
+
+**D2 — `dt` hardcoded to `1/30` in `buildBossContext`**
+`buildBossContext` always returns `dt: 1/30` regardless of the actual elapsed time. Acceptable for the fixed 30 Hz tick loop; becomes wrong if tick rate ever changes. Deferred until a variable tick rate is introduced.
+
+**D3 — Boss stuck when `attackCooldownTicks = 0` while `fsmState = ATTACK`**
+`tickBossAttack` guards `if (attackCooldownTicks > 0)` so if ticks reach 0 externally (serialization round-trip, debug mutation) the FSM never exits ATTACK. Identical pattern exists in the base enemy FSM. Pre-existing design; only triggered by external state mutation.
+
+**D4 — Reward floor division silently discards remainder essence**
+`Math.floor(essenceTotal / players.length)` is spec-mandated. The sum of per-player shares can be 1–(N-1) less than `essenceTotal` when the total isn't evenly divisible. The `essenceTotal` field on the reward is therefore misleading. Acceptable for alpha; fix when essence accounting becomes financially meaningful (persistence, shop).
+
 **D6 — No timeout or max-retry count on HALT responses**
 If a session is closed mid-HALT and resumed, the workflow manager has no persisted "paused at HALT" state in the story file. It re-enters the loop and potentially re-dispatches completed shards. Needs a `dispatch_state: paused` field in story frontmatter or similar.
 
@@ -682,3 +698,70 @@ Colyseus JS SDK `Room` class has no `reconnection` property. The assignment sile
 
 **D-5.6-E — `sessionRef` is null during window between `wireRoomHandlers` and `setSession`** [`apps/mobile-controller/src/session/mobile-session.ts:119`]
 Message handlers are registered before the session is passed to `setSession`. A `player:disconnected` delta arriving in that window compares against `sessionRef.current?.playerId === null` and misses the early-return guard. Pre-existing.
+
+---
+
+## Deferred from: code review of 6-1-grassland-boss-shared-types-and-protocol-contracts (2026-07-05)
+
+**D-6.1-A — `boss:defeated` carries `RunReward` not persisted to `GameState`** [`packages/net-protocol/src/apply-delta.ts`]
+`BossDefeatedDelta.reward` is a fully populated `RunReward` but `applyDelta` only sets `boss.isDefeated = true` (per spec AC10). No `runReward` field exists on `GameState`. Host must read the reward from the raw delta event, meaning it is ephemeral and lost after the event fires. Story 6.4 must decide: raw-event caching pattern vs. adding `runReward: RunReward | null` to `GameState` (would make the reward available in snapshots and survive reconnect during post-boss sequence).
+
+**D-6.1-B — Out-of-range `BossPhase` value passes deserialization silently** [`packages/net-protocol/src/serialize.ts`]
+`BossPhase` is a numeric enum (1/2/3). `deserialize<T>` is a bare `JSON.parse(...) as T` cast with no schema check. A value of `0`, `4`, or `null` arriving on the wire is silently accepted and stored as an invalid phase. No runtime validation anywhere in the protocol stack. Pre-existing cross-cutting concern (see D8 from story 1-1 review). Address in Phase 5 schema hardening (Zod or equivalent at protocol boundary).
+
+**D-6.1-C — `reviveTimerExpiresAt: Date.now() + reviveWindowMs` evaluated on client** [`packages/net-protocol/src/apply-delta.ts:65`]
+Pre-existing bug. `applyDelta` runs on the host client; `Date.now()` differs from server clock by one-way latency (typically 20–200ms on LAN). The revive countdown display will be systematically wrong by at least that offset. Fix: server should send the absolute expiry timestamp (`reviveTimerExpiresAt: number`) in `PlayerDownedDelta` instead of a window duration, or `applyDelta` should accept a reference clock argument.
+
+**D-6.1-D — `masteryMilestones: string[]` unbounded, no max-length cap** [`packages/shared-types/src/run-reward.ts:4`]
+`RunReward.perPlayer[n].masteryMilestones` is an uncapped string array. A large milestones list inside a `boss:defeated` delta could exceed WebSocket frame limits or Colyseus message buffers with no size guard. No `MAX_MASTERY_MILESTONES` constant defined. Out of scope for types-only story 6.1. Define cap and add a constant in story 6.5 (grassland achievements) when milestone generation is implemented.
+
+---
+
+## Deferred from: code review of 6-3-boss-arena-handcrafted-level-physics-geometry-and-host-rendering (2026-07-05)
+
+**D-6.3-0 — Player abilities never target the boss; `boss:damaged` never broadcast** [`apps/simulation-server/src/rooms/GameRoom.ts:1171`]
+The ability hit-scan loop only iterates `gameState.enemies`. No boss hit-scan path exists. Boss HP can never decrease from player input; the HP bar is static. Deferred to Story 6.4, which already owns BossDefeatedDelta + RunVictoryMsg — wiring the damage path there keeps all boss-defeat logic in one story.
+
+**D-6.3-A — GrasslandAdd enemies get empty behavior layers** [`apps/simulation-server/src/rooms/GameRoom.ts:~1088`]
+`add:spawned` handler pushes the new `EnemyState` and body but never calls `this.enemyLayers.set(...)`. The enemy AI tick uses `this.enemyLayers.get(id) ?? []`, so adds run with base FSM only and no special behaviors (no charge, no stomp). Likely intentional — GRASSLAND_ADD is a basic melee add. Revisit when GRASSLAND_ADD AI spec is written (story 6.5 or combat tuning pass).
+
+**D-6.3-B — Boss dynamic body is pushable by players** [`apps/simulation-server/src/rooms/GameRoom.ts:799`]
+Boss body created as `dynamic` with `density: 1`; player bodies collide with it and apply impulses. Boss is displaced by players pressing against it. Out of scope per story spec ("Collision between boss body and walls for PLAYERS is out of scope"). Fix by making boss body kinematic or using a mass-override when player→boss collision handling is scoped.
+
+## Deferred from: code review of 6-4-boss-defeat-sequence-purification-pulse-and-reward-reveal (2026-07-06)
+
+**D-6.4-A — `debug:kill-boss` accessible to any connected client** [`apps/simulation-server/src/rooms/GameRoom.ts:291`]
+No `NODE_ENV` or role guard on the `debug:kill-boss` message handler — any mobile client can send it to instantly kill the boss. Pre-existing pattern (identical to `debug:kill-all`). Add a `process.env.NODE_ENV !== 'production'` guard to both debug handlers before deploying to cloud/production.
+
+**D-6.4-B — Reconnecting player sees "Run Ended" instead of "Victory!" after boss defeat** [`apps/simulation-server/src/rooms/GameRoom.ts:1134`]
+`RUN_VICTORY` is unicast at the moment of `boss:defeated` processing. A player who disconnects during the fight and reconnects during `post-run` never receives the `RUN_VICTORY` message; `runVictoryEssence` stays null; `PostRunMobileScreen` shows `isVictory=false`. Fix requires re-sending `RUN_VICTORY` (or including essence in the `post-run` snapshot) during reconnect state restoration. Address in post-run reconnect polish pass.
+
+## Deferred from: code review of 6-5-grassland-biome-achievements (2026-07-06)
+
+**D-6.5-A — `bossLevelStartedAt=0` sentinel: FastBoss trivially true if epoch-zero clock** [`packages/game-rules/src/systems/achievements.ts:20`]
+`bossDefeatedAt - 0 <= 120_000` is trivially true if either timestamp is near epoch (test environments with mocked time, or before boss level is ever loaded). Safe in production and in the current test suite (NOW=1_000_000), but the `0` sentinel is semantically ambiguous. Add an explicit guard (`bossLevelStartedAt === 0 → FastBoss: false`) or initialize to a sentinel that cannot be confused with a valid timestamp.
+
+**D-6.5-B — `runOutcome` not cleared on hub phase — asymmetric with `runReward`** [`apps/host-client/src/App.tsx`]
+`runReward` is cleared when `gameState.session.phase === 'hub'` but `runOutcome` is not. If a run transitions to `post-run` then back to `hub` without a `run:failed` delta (e.g., rapid state transition edge case), the stale `runOutcome` value is still set for the next post-run screen. Clear both in the same hub-phase useEffect.
+
+**D-6.5-C — React one-frame flicker: `boss:defeated` and phase change arrive in same tick** [`apps/host-client/src/App.tsx`]
+`setRunReward` (set from `boss:defeated` delta) and `setGameState` (phase → `post-run`) are separate React state updates. A render cycle exists where `gameState.session.phase === 'post-run'` is true but `runReward` is still null, causing PostRunSummaryScreen to render once without achievements before re-rendering with them. Batch both state updates in the same event handler, or guard `PostRunSummaryScreen` render until `runReward` is non-null.
+
+**D-6.5-D — `ACHIEVEMENT_NAMES[achievement]` renders `undefined` on version skew** [`apps/host-client/src/screens/PostRunSummaryScreen.tsx`]
+If the server adds a new `GrasslandAchievement` value before the host client is redeployed, `ACHIEVEMENT_NAMES[achievement]` returns `undefined` and renders as an empty string with no fallback. Add a nullish coalesce: `ACHIEVEMENT_NAMES[achievement] ?? achievement` (falls back to the raw enum key).
+
+## Deferred from: quick-dev session (2026-07-06)
+
+## Deferred from: code review of 6-6-epic-6-deferred-hardening (2026-07-06)
+
+**D-6.6-A — `NODE_ENV=undefined` exposes debug handlers in staging** [`apps/simulation-server/src/rooms/GameRoom.ts:279`]
+`process.env['NODE_ENV'] !== 'production'` is `true` when `NODE_ENV` is unset (default in many CI/staging environments). The debug kill handlers will be registered in any deployment that omits `NODE_ENV=production`. The guard is strictly better than no guard (pre-existing state), but explicit staging environments should set `NODE_ENV=production` or use a separate `ENABLE_DEBUG_COMMANDS` env var for finer control.
+
+**D-6.6-B — `handleReconnect` doesn't reset `runOutcome`/`runVictoryEssence`** [`apps/mobile-controller/src/App.tsx`]
+`handleReconnect` resets cooldowns, bond state, and connection state but not `runOutcome` or `runVictoryEssence`. The new hub-phase `useEffect` covers the normal path (server sends hub snapshot → effect fires → state cleared). Edge case: player reconnects into a still-`post-run` room where `lastRunReward` has been cleared on the server (e.g., host crashed and room restarted), leaving `runVictoryEssence` stale from the previous run. Low probability; fix when stale post-run state is reported.
+
+**D-6.6-C — Reconnecting player during the 5.5s purification window lands on ControllerScreen then abruptly jumps to PostRunMobileScreen** [`apps/simulation-server/src/rooms/GameRoom.ts:1184`]
+While online players see the purification animation on the host screen, the mobile client's phase is still `'dungeon'` (only changed via `run:complete` delta or snapshot). A player who reconnects during this 5.5-second window gets a snapshot with `phase='post-run'` immediately from the server but their mobile then shows the controller screen briefly before `run:complete` arrives. No data loss; UX is jarring. Pre-existing design; fix when post-run mobile UX is polished.
+
+**QD-6-A — Player abilities never damage the boss**
+The ability hit-scan loop in `GameRoom.ts` (~line 1251) only iterates `gameState.enemies`. The boss is never checked. Fix: after the enemy loop, add a boss hit-scan — check `isInHitZone` against `gameState.boss.position`, reduce `boss.hp` by damage, broadcast `BossDamagedDelta` (`{ type: 'boss:damaged'; bossId; newHp }`), clamp hp ≥ 0. The boss defeat event is already emitted by `tickBoss` when hp ≤ 0 on the next tick. This is a gameplay-critical fix needed for any real boss playtest.

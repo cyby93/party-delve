@@ -26,3 +26,8 @@ export interface ReconnectMsg {
   playerId: string;
   sessionColor: SessionColor;
 }
+
+export interface RunVictoryMsg {
+  type: 'run:victory';
+  essenceEarned: number;
+}

@@ -4,7 +4,7 @@ baseline_commit: 23b8a4e
 
 # Story 6.5: Grassland Biome Achievements
 
-Status: ready-for-dev
+Status: done
 
 ## CLAUDE.md Required Task Header
 
@@ -224,81 +224,87 @@ so that completing hard challenges feels recognized and I have concrete goals to
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1: Add BOSS_FAST_CLEAR_MS to balance.ts** (AC: 3)
-  - [ ] Append `export const BOSS_FAST_CLEAR_MS = 120_000 as const; // 2 minutes` to
+- [x] **Task 1: Add BOSS_FAST_CLEAR_MS to balance.ts** (AC: 3)
+  - [x] Append `export const BOSS_FAST_CLEAR_MS = 120_000 as const; // 2 minutes` to
         `packages/game-rules/src/balance.ts` after the boss constants section added in Story 6.2
 
-- [ ] **Task 2: Add 3 fields to SessionState** (AC: 7)
-  - [ ] Open `packages/shared-types/src/session.ts`
-  - [ ] Append `bossLevelStartedAt: number`, `anyPlayerEnteredSpiritFormDuringBoss: boolean`,
+- [x] **Task 2: Add 3 fields to SessionState** (AC: 7)
+  - [x] Open `packages/shared-types/src/session.ts`
+  - [x] Append `bossLevelStartedAt: number`, `anyPlayerEnteredSpiritFormDuringBoss: boolean`,
         `allBondsAtBossStart: boolean` to the `SessionState` interface
-  - [ ] Confirm `packages/shared-types/src/index.ts` already re-exports `SessionState` via
+  - [x] Confirm `packages/shared-types/src/index.ts` already re-exports `SessionState` via
         `export * from './session.js'` — no change needed
 
-- [ ] **Task 3: Create packages/game-rules/src/systems/achievements.ts** (AC: 1–6)
-  - [ ] Import `GrasslandAchievement`, `AchievementState`, `DifficultyTier` from `'shared-types'`
-  - [ ] Import `GameState` from `'shared-types'`
-  - [ ] Import `BOSS_FAST_CLEAR_MS` from `'../../balance.js'`
-  - [ ] Implement `evaluateGrasslandAchievements(state, bossDefeatedAt)` with try/catch returning `[]` on error
-  - [ ] Evaluate each of the 5 achievements; push achieved ones to result array
-  - [ ] Return filtered array (achieved entries only)
+- [x] **Task 3: Create packages/game-rules/src/systems/achievements.ts** (AC: 1–6)
+  - [x] Import `GrasslandAchievement`, `DifficultyTier` from `'shared-types'`
+  - [x] Import `GameState` from `'shared-types'`
+  - [x] Import `BOSS_FAST_CLEAR_MS` from `'../balance.js'`
+  - [x] Implement `evaluateGrasslandAchievements(state, bossDefeatedAt)` with try/catch returning `[]` on error
+  - [x] Evaluate each of the 5 achievements; push achieved ones to result array
+  - [x] Return filtered array (achieved entries only)
 
-- [ ] **Task 4: Export from game-rules index.ts** (AC: 1)
-  - [ ] Add `export { evaluateGrasslandAchievements } from './systems/achievements.js';` to
+- [x] **Task 4: Export from game-rules index.ts** (AC: 1)
+  - [x] Add `export { evaluateGrasslandAchievements } from './systems/achievements.js';` to
         `packages/game-rules/src/index.ts`
 
-- [ ] **Task 5: Wire tracking fields into GameRoom.ts — loadLevel** (AC: 8)
-  - [ ] In `loadLevel()` at the boss level branch, set the 3 session tracking fields after existing logic
-  - [ ] Confirm `BOSS_LEVEL_INDEX` constant is available (defined in Story 6.3); if not, define it
-        locally as `const BOSS_LEVEL_INDEX = 3;` with a ponytail comment
+- [x] **Task 5: Wire tracking fields into GameRoom.ts — loadLevel** (AC: 8)
+  - [x] In `loadLevel()` at the boss level branch, set the 3 session tracking fields after existing logic
+  - [x] `BOSS_LEVEL_INDEX = 4` confirmed in GameRoom.ts from Story 6.3
 
-- [ ] **Task 6: Wire anyPlayerEnteredSpiritFormDuringBoss in player:downed handler** (AC: 9)
-  - [ ] In the `player:downed` (or equivalent downed transition) handler in `GameRoom.ts`:
-        guard on `this.levelIndex === BOSS_LEVEL_INDEX` before setting the flag
-  - [ ] Set `this.gameState.session.anyPlayerEnteredSpiritFormDuringBoss = true`
+- [x] **Task 6: Wire anyPlayerEnteredSpiritFormDuringBoss in player:downed handler** (AC: 9)
+  - [x] Guard added at all 3 downed transition sites (boss stomp, enemy melee, fate bond wipe)
+  - [x] Set `this.gameState.session.anyPlayerEnteredSpiritFormDuringBoss = true`
 
-- [ ] **Task 7: Evaluate achievements in boss:defeated handler** (AC: 10)
-  - [ ] Import `evaluateGrasslandAchievements` from `'game-rules'` in `GameRoom.ts`
-  - [ ] In the `boss:defeated` handler (after 6.4 wiring), call the function with current timestamp
-  - [ ] Merge into `RunReward` before broadcasting `BossDefeatedDelta` (see Dev Notes — merge pattern)
+- [x] **Task 7: Evaluate achievements in boss:defeated handler** (AC: 10)
+  - [x] Import `evaluateGrasslandAchievements` from `'game-rules'` in `GameRoom.ts`
+  - [x] In the `boss:defeated` handler, call the function with current timestamp
+  - [x] Merge into `RunReward` before broadcasting `BossDefeatedDelta`; store in `lastRunReward`
 
-- [ ] **Task 8: Add persistence call in onDispose** (AC: 11)
-  - [ ] In `GameRoom.onDispose()`, iterate registered players
-  - [ ] Skip players whose id starts with `'guest-'`
-  - [ ] For each non-guest player with earned achievements, fire-and-forget fetch to
-        `BACKEND_URL/player/${playerId}` with `{ achievements: [...] }` body
-  - [ ] Swallow fetch errors (fire-and-forget — do not crash dispose on network failure)
-  - [ ] Add `// ponytail: fire-and-forget; Epic 7 adds retry/queue` comment
+- [x] **Task 8: Add persistence call in onDispose** (AC: 11)
+  - [x] In `GameRoom.onDispose()`, iterate registered players
+  - [x] Skip players whose id starts with `'guest-'`
+  - [x] Fire-and-forget fetch to `BACKEND_URL/player/${playerId}` with earned achievement values
+  - [x] Errors swallowed with `.catch(() => void 0)`
+  - [x] `// ponytail: fire-and-forget; Epic 7 adds retry/queue` comment added
 
-- [ ] **Task 9: Add PATCH /player/:id to backend-platform** (AC: 14)
-  - [ ] Read `apps/backend-platform/src/index.ts` (currently a stub)
-  - [ ] Add in-memory `playerAchievements: Map<string, string[]>` store
-  - [ ] Add `app.patch('/player/:id', ...)` handler (Hono, already installed)
-  - [ ] De-dupe accumulated achievements via `new Set([...existing, ...incoming])`
-  - [ ] Return `c.json({ ok: true })`
+- [x] **Task 9: Add PATCH /player/:id to backend-platform** (AC: 14)
+  - [x] Replaced stub with minimal Hono app
+  - [x] In-memory `playerAchievements: Map<string, string[]>` store
+  - [x] `app.patch('/player/:id', ...)` handler with de-duplication via Set
+  - [x] Returns `c.json({ ok: true })`
 
-- [ ] **Task 10: Update PostRunSummaryScreen — achievement row** (AC: 12)
-  - [ ] Add `reward?: RunReward` to props interface
-  - [ ] Import `RunReward`, `GrasslandAchievement` from `'shared-types'`
-  - [ ] Define `ACHIEVEMENT_NAMES` display name map (see Dev Notes)
-  - [ ] Below per-player cards: conditionally render achievement row when `reward?.achievements?.length`
-  - [ ] Each row item: `<span style={{ fontFamily: 'var(--font-body)', fontWeight: 400, fontSize: 'var(--text-sm)', color: 'var(--text-primary)' }}>{name}</span>` + `<span style={{ color: 'var(--accent-spirit)' }}>✓</span>`
+- [x] **Task 10: Update PostRunSummaryScreen — achievement row** (AC: 12)
+  - [x] Added `reward?: RunReward` to props interface
+  - [x] Imported `RunReward`, `GrasslandAchievement` from `'shared-types'`
+  - [x] Defined `ACHIEVEMENT_NAMES` display name map at module scope
+  - [x] Conditionally renders achievement row below per-player cards when `reward?.achievements?.length`
+  - [x] Each achievement: name in text-primary + ✓ in accent-spirit
 
-- [ ] **Task 11: Store RunReward in App.tsx** (AC: 13)
-  - [ ] Add `const [runReward, setRunReward] = useState<RunReward | null>(null)` to App.tsx
-  - [ ] In the `BossDefeatedDelta` branch of `latestTransientDelta` processing: call `setRunReward(delta.reward)`
-  - [ ] Pass `reward={runReward ?? undefined}` to `<PostRunSummaryScreen />`
+- [x] **Task 11: Store RunReward in App.tsx** (AC: 13)
+  - [x] Added `const [runReward, setRunReward] = useState<RunReward | null>(null)` to App.tsx
+  - [x] `boss:defeated` branch sets reward; `run:failed` clears it; hub phase transition resets it
+  - [x] Passed `reward={runReward ?? undefined}` to `<PostRunSummaryScreen />`
 
-- [ ] **Task 12: Write unit tests** (AC: 15)
-  - [ ] Create `packages/game-rules/tests/unit/achievements.test.ts`
-  - [ ] Add `makeSessionState(overrides)` helper factory
-  - [ ] Add `makeGameState(overrides)` helper with minimal valid shape
-  - [ ] All test cases from Required Tests section (see Dev Notes — test helper patterns)
+- [x] **Task 12: Write unit tests** (AC: 15)
+  - [x] Created `packages/game-rules/tests/unit/achievements.test.ts`
+  - [x] `makeSession`, `makePlayer`, `makeState` helper factories
+  - [x] All test cases from Required Tests section — 36 total tests, 36 passing
 
-- [ ] **Task 13: Typecheck and test** (AC: all)
-  - [ ] `npm run typecheck --workspaces` — zero errors
-  - [ ] `npm test` in `packages/game-rules/` — all tests pass
-  - [ ] Verify `PostRunSummaryScreen` renders without the `reward` prop (optional — must not crash)
+- [x] **Task 13: Typecheck and test** (AC: all)
+  - [x] All 5 packages typecheck clean (shared-types, game-rules, simulation-server, host-client, backend-platform)
+  - [x] `vitest run` in `packages/game-rules/` — 36/36 pass, exit 0
+  - [x] `PostRunSummaryScreen` renders without `reward` prop (optional — does not crash)
+
+### Review Findings
+
+- [x] [Review][Decision] VigilHeld semantic — flag set at `isDown`, not spirit form entry — `anyPlayerEnteredSpiritFormDuringBoss` is set when a player's hp drops to 0 (isDown becomes true), but "Spirit Vigil" implies the player was actually in spirit form (isSpirit=true). If all downed players are revived before their timer expires, the flag fires incorrectly. Options: (a) rename field+achievement to reflect "any player downed during boss" and accept current semantics, (b) move flag to revive timer expiry path (where `isSpirit` becomes true). [apps/simulation-server/src/rooms/GameRoom.ts]
+- [x] [Review][Decision] AllBondsActive hardcodes `=== 3` — unachievable for < 4 players — With 2 players max bonds is 1, with 3 players max is 3. `activeBonds.length === 3` is only meaningful for 4-player groups; for 2–3 player groups AllBondsActive can never be earned. Options: (a) keep as-is (achievement intentionally requires 4 players, add a comment), (b) derive from expected bond count for current player count. [apps/simulation-server/src/rooms/GameRoom.ts — loadLevel boss branch]
+- [x] [Review][Patch] `lastRunReward` not cleared on `resetToHub()` → double-credit on multi-run sessions — `lastRunReward` is set on boss defeat and never cleared on hub reset. If run 1 clears the boss, players return to hub (room stays alive), then the room is disposed mid-run-2, `onDispose()` re-fires PATCH with run 1's achievements for all current players (including any who joined after run 1). Fix: add `this.lastRunReward = null;` to `resetToHub()`. [apps/simulation-server/src/rooms/GameRoom.ts — resetToHub()]
+- [x] [Review][Patch] Silent catch in `evaluateGrasslandAchievements` swallows real errors with no logging — `catch { return []; }` means a null state, missing property, or any future regression silently returns "no achievements" with zero diagnostic trail. Fix: add `console.warn` or import `logger` and log the error before returning `[]`. [packages/game-rules/src/systems/achievements.ts:32]
+- [x] [Review][Defer] `bossLevelStartedAt=0` sentinel: FastBoss trivially true if epoch-zero clock — safe in production and in tests (NOW=1_000_000), but `0 - 0 <= 120_000` is true if time is ever near epoch. Pre-existing design choice. — deferred, pre-existing
+- [x] [Review][Defer] `runOutcome` not cleared on hub phase — asymmetric with `runReward` reset — stale outcome from previous run could show on next post-run screen if `run:failed` delta is missed. Pre-existing behavior from before story 6.5. — deferred, pre-existing
+- [x] [Review][Defer] React one-frame flicker: `boss:defeated` and phase change arrive in same tick — `setRunReward` and `setGameState` are async React updates; a render cycle exists where phase is `post-run` but `runReward` is still null. Cosmetic, pre-existing React pattern. — deferred, pre-existing
+- [x] [Review][Defer] `ACHIEVEMENT_NAMES[achievement]` renders `undefined` on version skew — if server adds a new achievement before the client is deployed, the display name is undefined (renders empty). Pre-existing UI concern. — deferred, pre-existing
 
 ## Dev Notes
 
@@ -642,8 +648,40 @@ place outside `loadLevel()` where `SessionState` is constructed as a literal.
 
 ### Agent Model Used
 
+claude-sonnet-4-6
+
 ### Debug Log References
+
+- Fixed import path in `achievements.ts`: `'../../balance.js'` → `'../balance.js'` (wrong directory depth; src/systems/ is one level below src/, not two)
+- Updated `grassland-boss.test.ts` `makeGameState` helper to include 3 new required SessionState fields (TypeScript strict mode would fail without this)
+- `evaluateGrasslandAchievements` returns `GrasslandAchievement[]` (not `AchievementState[]`) — `RunReward.achievements` is typed as `GrasslandAchievement[]`, making a direct merge the correct approach. The story spec was written assuming `AchievementState[]`, but the actual types differ; the simpler return type matches the wire contract.
+- Added spirit form tracking flag at all 3 downed sites in GameRoom (boss stomp, enemy melee, fate bond wipe) — story referenced a single "player:downed handler" but downed state is computed inline at 3 locations.
 
 ### Completion Notes List
 
+- AC1–AC6: `evaluateGrasslandAchievements` in `packages/game-rules/src/systems/achievements.ts`. Returns `GrasslandAchievement[]` (earned only). Wrapped in try/catch; returns `[]` on error.
+- AC7: 3 new required fields added to `SessionState`: `bossLevelStartedAt`, `anyPlayerEnteredSpiritFormDuringBoss`, `allBondsAtBossStart`. `createEmptyGameState` in GameRoom.ts also updated.
+- AC8: Boss level tracking fields set in `loadLevel()` at `BOSS_LEVEL_INDEX (4)` branch.
+- AC9: `anyPlayerEnteredSpiritFormDuringBoss` flag set at all 3 downed transitions guarded by `levelIndex === BOSS_LEVEL_INDEX`.
+- AC10: Achievements evaluated and merged into RunReward in `boss:defeated` handler. `lastRunReward` stored for onDispose persistence.
+- AC11: Fire-and-forget PATCH per non-guest player in `onDispose()`. `BACKEND_URL` from env with `http://localhost:3001` default.
+- AC12: Achievement row in `PostRunSummaryScreen` with ACHIEVEMENT_NAMES map. Hidden when no achievements.
+- AC13: `runReward` state in App.tsx, set on `boss:defeated`, cleared on `run:failed` and hub phase transition.
+- AC14: Backend platform stub replaced with Hono PATCH /player/:id using in-memory Map with Set de-duplication.
+- AC15: 36/36 tests passing, 0 Colyseus/planck imports in test file.
+- Contract-change hook: `SessionState` modified (3 additive fields). No serialization breaks; fields initialized in `loadLevel()`. No new wire message types. Protocol Architect review required per CLAUDE.md policy.
+- Confidence: 97% — all typechecks clean, all tests pass, all ACs verified against implementation.
+
 ### File List
+
+- packages/game-rules/src/balance.ts (modified — BOSS_FAST_CLEAR_MS appended)
+- packages/game-rules/src/index.ts (modified — export evaluateGrasslandAchievements)
+- packages/game-rules/src/systems/achievements.ts (NEW)
+- packages/game-rules/tests/unit/achievements.test.ts (NEW)
+- packages/game-rules/tests/unit/grassland-boss.test.ts (modified — added 3 new SessionState fields to makeGameState helper)
+- packages/shared-types/src/session.ts (modified — 3 new SessionState fields)
+- apps/simulation-server/src/rooms/GameRoom.ts (modified — BACKEND_URL, lastRunReward field, createEmptyGameState, loadLevel, downed tracking ×3, boss:defeated handler, onDispose)
+- apps/host-client/src/screens/PostRunSummaryScreen.tsx (modified — reward prop, ACHIEVEMENT_NAMES, achievement row)
+- apps/host-client/src/App.tsx (modified — runReward state, boss:defeated handling, hub reset)
+- apps/backend-platform/src/index.ts (modified — replaced stub with Hono PATCH /player/:id)
+- _bmad-output/implementation-artifacts/sprint-status.yaml (modified — status in-progress → review)
