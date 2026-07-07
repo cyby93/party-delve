@@ -12,6 +12,7 @@ export const CAT_ENEMY       = 0x0002;
 export const CAT_POI         = 0x0004;
 export const CAT_ESSENCE     = 0x0008;
 export const CAT_BOND_SENSOR = 0x0020; // bond-proximity sensor fixtures on player bodies
+export const CAT_BOSS        = 0x0040; // boss body — combat is hit-scan, same as CAT_ENEMY
 
 export function toMeters(pixels: number): number {
   return pixels / PIXELS_PER_METER;

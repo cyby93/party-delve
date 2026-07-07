@@ -9,6 +9,7 @@ import type { World } from 'planck';
 import {
   createPhysicsWorld, createPlayerBody, createPoiSensorBody, createEssenceSensorBody,
   extractPoiBeginContact, extractPoiEndContact, extractEssenceBeginContact, toMeters, toPixels,
+  CAT_BOSS,
 } from '../physics/world.js';
 import type { PoiBeginContactEvent, PoiEndContactEvent, EssenceBeginContactEvent, PhysicsBodyData } from '../physics/world.js';
 import { createRng, tickEnemy, dispatchAbility, getEnemyCount, applyDamage, isInHitZone, ABILITY_HIT_RANGE_PX, ABILITY_HIT_RADIUS_PX, applyPlayerDamage, getReviveWindowMs, ENEMY_MELEE_DAMAGE, ENEMY_MELEE_RANGE_PX, ENEMY_ATTACK_COOLDOWN_MS, REVIVE_RADIUS_PX, REVIVE_HP, SPIRIT_ABILITY_COOLDOWN_MS, generateFloorLayout, GRASSLAND_ROOM_POOL, WAVE_COUNTS, WAVE_PAUSE_MS, WAVE_ENEMY_SCALE, bondKey, getProximityBuffedPlayers, getFateBuffedPlayers, getFateBondWipeTargets, getProximityDrainTargets, BOND_PROXIMITY_RANGE_PX, BOND_DRAIN_THRESHOLD_S, BOND_DRAIN_HP_PER_TICK, BOND_DAMAGE_MULT, BOND_SPEED_MULT, assignBond, BOND_DESCRIPTIONS, BOND_MECHANICS, createBossState, tickBoss, BOSS_ADD_HP, BOSS_STOMP_DAMAGE, evaluateGrasslandAchievements, JOYSTICK_DEADBAND, createEasyLayers, createNormalLayers, createHardLayers } from 'game-rules';
@@ -904,7 +905,13 @@ export class GameRoom extends Room {
         fixedRotation: true,
         linearDamping: 0,
       });
-      bossBodyInstance.createFixture({ shape: new Circle(toMeters(48)), density: 1, friction: 0 });
+      bossBodyInstance.createFixture({
+        shape: new Circle(toMeters(48)),
+        density: 1,
+        friction: 0,
+        filterCategoryBits: CAT_BOSS,
+        filterMaskBits: 0, // combat is hit-scan; no contact callbacks needed (mirrors createEnemyBody)
+      });
       bossBodyInstance.setUserData({ type: 'boss', bossId } satisfies PhysicsBodyData);
       this.bossBody = bossBodyInstance;
       this.gameState.boss = createBossState(this.gameState.session.runSeed);

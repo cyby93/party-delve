@@ -1,6 +1,11 @@
 import type { GameState } from 'shared-types';
 import type { DeltaEventMsg } from './messages/server-to-host.js';
 
+// Local Party Mode has exactly one host renderer per session — this is a single-consumer
+// cosmetic value, not a multi-client-synced one. It only needs to expire before the next
+// periodic snapshot (SNAPSHOT_INTERVAL_S) reconciles player state from the server.
+const STOMP_VISUAL_SLOW_MS = 3000;
+
 export function applyDelta(state: GameState, evt: DeltaEventMsg): GameState {
   switch (evt.type) {
     case 'player:moved': {
@@ -118,8 +123,7 @@ export function applyDelta(state: GameState, evt: DeltaEventMsg): GameState {
       };
     }
     case 'enemy:stomped': {
-      // ponytail: 3 s visual slow; snapshot reconciles any stale values after expiry
-      const stompedUntil = Date.now() + 3000;
+      const stompedUntil = Date.now() + STOMP_VISUAL_SLOW_MS;
       return {
         ...state,
         players: state.players.map(p => {

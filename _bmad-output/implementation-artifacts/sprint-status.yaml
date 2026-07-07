@@ -49,6 +49,9 @@ last_updated: 2026-07-07
 # (deferred-work.md) was never picked up despite its own stated revisit condition
 # ("Story 3.x when cooldowns persist into dungeon runs") having been met since; created
 # 2.7 to close it.
+# 2026-07-07: epic-3 reopened to in-progress — 2 deferred findings from the 3.9 code
+# review (deferred-work.md, D-3.9-A, D-3.9-B) had no follow-up story; created 3.10 to
+# close them.
 project: party-delve
 project_key: NOKEY
 tracking_system: file-system
@@ -91,7 +94,7 @@ development_status:
   # dungeon combat. Players use abilities, go down, get revived, enter spirit
   # form. "Clear" objective type is operational.
   # FRs: FR9(Clear), FR11, FR12, FR13, FR17, FR18, FR19, FR20, FR21, FR22, FR23
-  epic-3: done
+  epic-3: in-progress
   3-1-xoshiro128-prng-and-planckjs-physics-world: done
   3-2-enemy-ai-base-fsm-and-layered-difficulty-behaviors: done
   3-3-4-alpha-class-implementations-abilities-and-input-types: done
@@ -101,6 +104,7 @@ development_status:
   3-7-clear-objective-and-level-completion: done
   3-8-login-flow-update: done
   3-9-epic-3-deferred-hardening: done
+  3-10-epic-3-post-39-deferred-hardening: done
   epic-3-retrospective: optional
 
   # ─── Dev infra fixes (no epic) ──────────────────────────────────────────────
@@ -119,7 +123,8 @@ development_status:
   4-6-end-to-end-run-e2e-test-and-latency-baseline: done
   4-7-session-url-sync-on-join: done
   4-8-forced-class-selection-on-join: done
-  4-9-epic-4-deferred-hardening: in-progress
+  4-9-epic-4-deferred-hardening: review
+  4-10-epic-4-post-49-deferred-hardening: ready-for-dev
   epic-4-retrospective: optional
 
   # ─── E5: Spirit Bond System ─────────────────────────────────────────────────

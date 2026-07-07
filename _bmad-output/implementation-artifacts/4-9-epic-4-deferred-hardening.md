@@ -4,7 +4,7 @@ baseline_commit: f69bcca
 
 # Story 4.9: Epic 4 — Deferred Hardening
 
-Status: in-progress
+Status: review
 
 ## CLAUDE.md Required Task Header
 
@@ -114,6 +114,7 @@ Typecheck: 0 errors. Test suite: 347 pass, 0 fail (3 worktree port-conflict fail
 ### Change Log
 
 - Closed D-4.1-B, D-4.3-B, D-4.4-A, D-4.5-A, D-4.5-C, D-4.5-D in `resetToHub()` and `tick()` (2026-07-07)
+- Re-verified on resume (2026-07-07): all 6 tasks and all 5 patch findings confirmed present in `GameRoom.ts` at HEAD (0523b97). `tsc --noEmit -p apps/simulation-server/tsconfig.json` — 0 errors. `npx vitest run` — 168 pass, 0 fail, 7 skipped (the previously-noted flaky `boss defeat path` test did not fail this run). Status advanced to `review`.
 
 ---
 
