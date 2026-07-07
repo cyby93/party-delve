@@ -1,5 +1,5 @@
 import { Room, Client, CloseCode } from 'colyseus';
-import type { GameState, PlayerState, RunReward } from 'shared-types';
+import type { GameState, PlayerState, RunReward, RunProposal } from 'shared-types';
 import { TICK_RATE_HZ, RECONNECT_GRACE_S, SNAPSHOT_INTERVAL_S, MAX_PLAYERS, PlayerClass, SessionColor, INTERACTIVE_HUB_POIS, PURIFICATION_PULSE_DURATION_MS, REWARD_REVEAL_DURATION_MS } from 'shared-types';
 import { EventNames } from 'net-protocol';
 import type { InputEventMsg, SnapshotMsg, DeltaEventMsg, CooldownUpdateMsg, SpiritFormMsg, RunProposeMsg, VoteMsg, BondNotificationMsg, RunVictoryMsg } from 'net-protocol';
@@ -164,7 +164,7 @@ export class GameRoom extends Room {
         logger.warn({ roomId: this.roomId, unready: unready.length }, 'host:start rejected — players without class');
         return;
       }
-      this.startDungeon(DifficultyTier.EASY);
+      this.startDungeon(DifficultyTier.EASY, null);
     });
 
     this.onMessage(EventNames.RUN_PROPOSE, (client: Client, raw: unknown) => {
@@ -277,7 +277,13 @@ export class GameRoom extends Room {
       if (this.bondMomentNextLevel === -1 || this.gameState.session.phase !== 'dungeon') return;
       const nextLevel = this.bondMomentNextLevel;
       this.bondMomentNextLevel = -1;
-      this.loadLevel(nextLevel);
+      try {
+        this.loadLevel(nextLevel);
+      } catch (err) {
+        this.bondMomentNextLevel = nextLevel; // restore — allow a repeat CONTINUE to retry
+        logger.error({ err, roomId: this.roomId, nextLevel }, 'loadLevel failed during CONTINUE — level not loaded, retry armed');
+        return;
+      }
       this.broadcast(EventNames.SNAPSHOT, { type: 'snapshot', state: this.gameState } satisfies SnapshotMsg);
       logger.info({ roomId: this.roomId, nextLevel }, 'bond-moment CONTINUE — loading next level');
     });
@@ -548,23 +554,41 @@ export class GameRoom extends Room {
     if (activePlayers.some(p => p.class === null)) return;
     if (!activePlayers.every(p => this.runVotes.get(p.id) === 'accept')) return;
     const proposal = this.gameState.runProposal;
-    const startDelta: DeltaEventMsg = { type: 'run:starting', biome: proposal.biome, difficulty: proposal.difficulty };
-    this.broadcast(EventNames.DELTA, startDelta);
-    this.startDungeon(proposal.difficulty);
+    this.startDungeon(proposal.difficulty, proposal);
     logger.info({ roomId: this.roomId, difficulty: proposal.difficulty }, 'run starting — unanimous accept');
   }
 
-  private startDungeon(difficulty: DifficultyTier): void {
+  private startDungeon(difficulty: DifficultyTier, proposal: RunProposal | null): void {
+    const previousPhase = this.gameState.session.phase;
+    const previousDifficulty = this.gameState.session.difficulty;
+    const previousProposal = this.gameState.runProposal;
     this.gameState.session.phase = 'dungeon';
     this.gameState.session.difficulty = difficulty;
     this.gameState.runProposal = null;
     for (const p of this.gameState.players) p.nearPoiId = null;
-    const floorRng = createRng(this.gameState.session.runSeed ^ OFFSET_FLOOR_LAYOUT);
-    const roomRng  = createRng(this.gameState.session.runSeed ^ OFFSET_ROOM_POOL);
-    this.gameState.floorLayout = generateFloorLayout(floorRng, roomRng, 'early', GRASSLAND_ROOM_POOL);
-    this.bondRng = createRng(this.gameState.session.runSeed ^ OFFSET_SPIRIT_BOND);
     this.bondMomentNextLevel = -1;
-    this.loadLevel(1);
+    try {
+      const floorRng = createRng(this.gameState.session.runSeed ^ OFFSET_FLOOR_LAYOUT);
+      const roomRng  = createRng(this.gameState.session.runSeed ^ OFFSET_ROOM_POOL);
+      this.gameState.floorLayout = generateFloorLayout(floorRng, roomRng, 'early', GRASSLAND_ROOM_POOL);
+      this.bondRng = createRng(this.gameState.session.runSeed ^ OFFSET_SPIRIT_BOND);
+      this.loadLevel(1);
+    } catch (err) {
+      this.gameState.session.phase = previousPhase;
+      this.gameState.session.difficulty = previousDifficulty;
+      this.gameState.runProposal = previousProposal;
+      // Clear stale votes so a fresh VOTE round is required — otherwise an unrelated
+      // resolveVoteIfComplete() call (e.g. from onLeave's disconnect/grace-expiry paths)
+      // would silently replay the pre-failure unanimous accept and re-attempt this same
+      // failing start with no new action from any player.
+      this.runVotes.clear();
+      logger.error({ err, roomId: this.roomId }, 'startDungeon failed — reverted to previous phase');
+      return;
+    }
+    if (proposal) {
+      const startDelta: DeltaEventMsg = { type: 'run:starting', biome: proposal.biome, difficulty };
+      this.broadcast(EventNames.DELTA, startDelta);
+    }
     const snapshot: SnapshotMsg = { type: 'snapshot', state: this.gameState };
     this.broadcast(EventNames.SNAPSHOT, snapshot);
     logger.info({ roomId: this.roomId, difficulty }, 'dungeon phase started');
@@ -889,13 +913,18 @@ export class GameRoom extends Room {
       if (body) body.setPosition(Vec2(toMeters(spawn.x), toMeters(spawn.y)));
     }
 
-    this.gameState.session.levelIndex = index;
-
     if (index === BOSS_LEVEL_INDEX) {
       this.gameState.session.bossLevelStartedAt = Date.now();
       this.gameState.session.anyPlayerDownedDuringBoss = false;
-      // ponytail: one bond assigned per dungeon level; BOSS_LEVEL_INDEX-1 = 3 expected bonds
-      this.gameState.session.allBondsAtBossStart = this.gameState.activeBonds.length === BOSS_LEVEL_INDEX - 1;
+      // ponytail: one bond assigned per dungeon level (BOSS_LEVEL_INDEX-1 = 3 max), but a
+      // 2-player session only has 1 possible pair — expect min(3, achievable pairs), not a
+      // fixed 3, or AllBondsActive is permanently unreachable for 2-player sessions (D-5.7-C)
+      const playerCount = this.gameState.players.length;
+      const maxAchievableBonds = playerCount >= 2
+        ? Math.min(BOSS_LEVEL_INDEX - 1, (playerCount * (playerCount - 1)) / 2)
+        : 0;
+      this.gameState.session.allBondsAtBossStart = this.gameState.activeBonds.length === maxAchievableBonds
+        && maxAchievableBonds > 0;
       // ponytail: boss is level index 4; dungeon runs levels 1-3
       this.arenaWallBodies = loadBossArena(this.physicsWorld);
       const bossId = `boss-grassland-${this.gameState.session.runSeed}`;
@@ -915,8 +944,10 @@ export class GameRoom extends Room {
       bossBodyInstance.setUserData({ type: 'boss', bossId } satisfies PhysicsBodyData);
       this.bossBody = bossBodyInstance;
       this.gameState.boss = createBossState(this.gameState.session.runSeed);
+      this.gameState.session.levelIndex = index; // commit only after boss setup succeeds
       logger.info({ roomId: this.roomId }, 'boss arena loaded');
     } else if (index === 2) {
+      this.gameState.session.levelIndex = index;
       this.levelObjective = 'survive-waves';
       this.totalWaves = WAVE_COUNTS['mid'];
       this.waveIndex = 0;
@@ -926,6 +957,7 @@ export class GameRoom extends Room {
       this.gameState.session.totalWaves = this.totalWaves;
       this.spawnWave(1, 'mid', index);
     } else {
+      this.gameState.session.levelIndex = index;
       this.levelObjective = 'clear';
       this.waveIndex = 0; this.totalWaves = 0; this.wavePauseUntil = 0;
       this.gameState.session.levelObjective = 'clear';
@@ -963,8 +995,11 @@ export class GameRoom extends Room {
     this.gameState.tick = this.tickCount;
 
     // Pre-compute bond buff sets for this tick (empty unless activeBonds is populated by 5.4)
+    const spiritPlayerIds = this.gameState.activeBonds.length > 0
+      ? new Set(this.gameState.players.filter(p => p.isSpirit).map(p => p.id))
+      : new Set<string>();
     const proximityBuffed = this.gameState.activeBonds.length > 0
-      ? getProximityBuffedPlayers(this.gameState.activeBonds, this.bondsInRange)
+      ? getProximityBuffedPlayers(this.gameState.activeBonds, this.bondsInRange, spiritPlayerIds)
       : new Set<string>();
     const fateBuffed = this.gameState.activeBonds.length > 0
       ? getFateBuffedPlayers(this.gameState.activeBonds)
@@ -987,7 +1022,7 @@ export class GameRoom extends Room {
       const body = this.playerBodies.get(player.id);
       if (!body) continue;
 
-      if (player.isFrozen || player.class === null || player.isDown || player.isSpirit) {
+      if (player.isFrozen || player.class === null || player.isDown) {
         body.setLinearVelocity(Vec2(0, 0));
         continue;
       }
@@ -997,7 +1032,7 @@ export class GameRoom extends Room {
       const jy = joystick?.y ?? 0;
       const inDeadzone = Math.abs(jx) < JOYSTICK_DEADBAND && Math.abs(jy) < JOYSTICK_DEADBAND;
 
-      const speed = fateBuffed.has(player.id) ? SPEED * BOND_SPEED_MULT : SPEED;
+      const speed = (fateBuffed.has(player.id) && !player.isSpirit) ? SPEED * BOND_SPEED_MULT : SPEED;
       body.setLinearVelocity(inDeadzone
         ? Vec2(0, 0)
         : Vec2(toMeters(jx * speed), toMeters(jy * speed))
@@ -1065,7 +1100,7 @@ export class GameRoom extends Room {
 
       const drop = this.gameState.essenceDrops[dropIdx]!;
       const player = this.gameState.players.find(p => p.id === playerId);
-      if (!player) continue;
+      if (!player || player.isSpirit) continue;
 
       this.gameState.essenceDrops.splice(dropIdx, 1);
 
@@ -1533,6 +1568,7 @@ export class GameRoom extends Room {
         this.bondEnterTime,
         BOND_DRAIN_THRESHOLD_S * 1000,
         nowDrain,
+        spiritPlayerIds,
       );
       for (const { playerA, playerB } of drainTargets) {
         let drained = false;
@@ -1674,7 +1710,11 @@ export class GameRoom extends Room {
           this.broadcast(EventNames.SNAPSHOT, { type: 'snapshot', state: this.gameState } satisfies SnapshotMsg);
         }
       } else {
-        if (this.bondMomentNextLevel === -1 && allEnemiesDead) {
+        // Boss-level completion is driven solely by the `boss:defeated` event from tickBoss
+        // (see the Boss tick block above) — never by this generic check. Phase3 boss "adds"
+        // are pushed into gameState.enemies and can all die while the boss itself survives.
+        if (this.gameState.session.levelIndex !== BOSS_LEVEL_INDEX &&
+            this.bondMomentNextLevel === -1 && allEnemiesDead) {
           const levelIndex = this.gameState.session.levelIndex;
           if (!this.tryEnterBondMoment(levelIndex, 'clear-objective')) return;
           this.broadcast(EventNames.DELTA, { type: 'level:complete' as const, levelIndex } satisfies DeltaEventMsg);

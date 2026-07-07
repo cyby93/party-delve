@@ -52,6 +52,10 @@ last_updated: 2026-07-07
 # 2026-07-07: epic-3 reopened to in-progress — 2 deferred findings from the 3.9 code
 # review (deferred-work.md, D-3.9-A, D-3.9-B) had no follow-up story; created 3.10 to
 # close them.
+# 2026-07-07: epic-5 reopened to in-progress — 3 deferred findings from the 5.7 code
+# review (deferred-work.md, D-5.7-A/B/C) had no follow-up story; created 5.8 to close them
+# (D-5.7-A verified as already fixed by 5.7's own review patch — 5.8 only adds a
+# regression test for it; D-5.7-B narrowed per explicit Product/Game Design decision).
 project: party-delve
 project_key: NOKEY
 tracking_system: file-system
@@ -124,14 +128,15 @@ development_status:
   4-7-session-url-sync-on-join: done
   4-8-forced-class-selection-on-join: done
   4-9-epic-4-deferred-hardening: review
-  4-10-epic-4-post-49-deferred-hardening: ready-for-dev
+  4-10-epic-4-post-49-deferred-hardening: done
+  4-11-epic-4-post-410-deferred-hardening: done
   epic-4-retrospective: optional
 
   # ─── E5: Spirit Bond System ─────────────────────────────────────────────────
   # Bond assigned at level end, buff+price pairs, in-canvas particle tethers,
   # 3 bonds accumulate across 3 levels.
   # FRs: FR14, FR15, FR16
-  epic-5: done
+  epic-5: in-progress
   5-1-spirit-bond-shared-types-and-protocol-contracts: done
   5-2-bond-assignment-logic-and-deterministic-pair-selection: done
   5-3-per-tick-bond-effects-proximity-and-fate-bond-types: done
@@ -139,6 +144,7 @@ development_status:
   5-5-host-bond-visualization-assignment-overlay-and-particle-tethers: done
   5-6-mobile-bond-card-and-continue-ux: done
   5-7-epic-5-deferred-hardening: done
+  5-8-epic-5-post-57-deferred-hardening: done
   epic-5-retrospective: optional
 
   # ─── E6: Grassland Boss Encounter ───────────────────────────────────────────

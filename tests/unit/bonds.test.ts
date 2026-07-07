@@ -164,6 +164,18 @@ describe('assignBond', () => {
     }
   });
 
+  it('bondKey is stable across repeat calls for the same pair (D-5.7-A regression)', () => {
+    const rng = createRng(SEED);
+    const state = makeState(2);
+    const first = assignBond(state, rng);
+    const second = assignBond(state, rng);
+    expect(first.ok && second.ok).toBe(true);
+    if (first.ok && second.ok) {
+      expect(bondKey(first.value.playerA, first.value.playerB))
+        .toBe(bondKey(second.value.playerA, second.value.playerB));
+    }
+  });
+
   it('determinism: identical seeds produce identical bond sequences', () => {
     const state1 = makeState(3);
     const rng1 = createRng(SEED ^ OFFSET_SPIRIT_BOND);
@@ -199,13 +211,13 @@ describe('bondKey', () => {
 describe('getProximityBuffedPlayers', () => {
   it('returns empty set when no bonds are in range', () => {
     const bonds = [makeProximityBond('p0', 'p1')];
-    expect(getProximityBuffedPlayers(bonds, new Set()).size).toBe(0);
+    expect(getProximityBuffedPlayers(bonds, new Set(), new Set()).size).toBe(0);
   });
 
   it('buffs both players when their bond key is in range', () => {
     const bonds = [makeProximityBond('p0', 'p1')];
     const inRange = new Set(['p0+p1']);
-    const result = getProximityBuffedPlayers(bonds, inRange);
+    const result = getProximityBuffedPlayers(bonds, inRange, new Set());
     expect(result.has('p0')).toBe(true);
     expect(result.has('p1')).toBe(true);
   });
@@ -213,16 +225,35 @@ describe('getProximityBuffedPlayers', () => {
   it('ignores Fate bonds', () => {
     const bonds = [makeFateBond('p0', 'p1')];
     const inRange = new Set(['p0+p1']); // even if key is in set, Fate bonds are not proximity
-    expect(getProximityBuffedPlayers(bonds, inRange).size).toBe(0);
+    expect(getProximityBuffedPlayers(bonds, inRange, new Set()).size).toBe(0);
   });
 
   it('handles multiple proximity bonds independently', () => {
     const bonds = [makeProximityBond('p0', 'p1'), makeProximityBond('p0', 'p2')];
     const inRange = new Set(['p0+p1']); // only first bond in range
-    const result = getProximityBuffedPlayers(bonds, inRange);
+    const result = getProximityBuffedPlayers(bonds, inRange, new Set());
     expect(result.has('p0')).toBe(true);  // p0 is in the in-range bond
     expect(result.has('p1')).toBe(true);
     expect(result.has('p2')).toBe(false); // second bond not in range
+  });
+
+  it('excludes a pair where either player is isSpirit (D-5.7-B)', () => {
+    const bonds = [makeProximityBond('p0', 'p1')];
+    const inRange = new Set(['p0+p1']);
+    const resultA = getProximityBuffedPlayers(bonds, inRange, new Set(['p0']));
+    expect(resultA.size).toBe(0);
+    const resultB = getProximityBuffedPlayers(bonds, inRange, new Set(['p1']));
+    expect(resultB.size).toBe(0);
+  });
+
+  it('excludes only the spirit pair when multiple in-range bonds are present', () => {
+    const bonds = [makeProximityBond('p0', 'p1'), makeProximityBond('p2', 'p3')];
+    const inRange = new Set(['p0+p1', 'p2+p3']);
+    const result = getProximityBuffedPlayers(bonds, inRange, new Set(['p0']));
+    expect(result.has('p0')).toBe(false);
+    expect(result.has('p1')).toBe(false);
+    expect(result.has('p2')).toBe(true);
+    expect(result.has('p3')).toBe(true);
   });
 });
 
@@ -303,14 +334,14 @@ describe('getProximityDrainTargets', () => {
     const bonds = [makeProximityBond('p0', 'p1')];
     const inRange = new Set(['p0+p1']);
     const enterTimes = new Map([['p0+p1', NOW - THRESHOLD_MS + 1]]); // 1ms short
-    expect(getProximityDrainTargets(bonds, inRange, enterTimes, THRESHOLD_MS, NOW)).toHaveLength(0);
+    expect(getProximityDrainTargets(bonds, inRange, enterTimes, THRESHOLD_MS, NOW, new Set())).toHaveLength(0);
   });
 
   it('drains at exactly the threshold', () => {
     const bonds = [makeProximityBond('p0', 'p1')];
     const inRange = new Set(['p0+p1']);
     const enterTimes = new Map([['p0+p1', NOW - THRESHOLD_MS]]); // exactly at threshold
-    const result = getProximityDrainTargets(bonds, inRange, enterTimes, THRESHOLD_MS, NOW);
+    const result = getProximityDrainTargets(bonds, inRange, enterTimes, THRESHOLD_MS, NOW, new Set());
     expect(result).toHaveLength(1);
     expect(result[0]).toEqual({ playerA: 'p0', playerB: 'p1' });
   });
@@ -319,13 +350,32 @@ describe('getProximityDrainTargets', () => {
     const bonds = [makeProximityBond('p0', 'p1')];
     const inRange = new Set<string>(); // not in range
     const enterTimes = new Map([['p0+p1', NOW - THRESHOLD_MS * 2]]); // long past threshold
-    expect(getProximityDrainTargets(bonds, inRange, enterTimes, THRESHOLD_MS, NOW)).toHaveLength(0);
+    expect(getProximityDrainTargets(bonds, inRange, enterTimes, THRESHOLD_MS, NOW, new Set())).toHaveLength(0);
   });
 
   it('ignores Fate bonds', () => {
     const bonds = [makeFateBond('p0', 'p1')];
     const inRange = new Set(['p0+p1']);
     const enterTimes = new Map([['p0+p1', NOW - THRESHOLD_MS * 2]]);
-    expect(getProximityDrainTargets(bonds, inRange, enterTimes, THRESHOLD_MS, NOW)).toHaveLength(0);
+    expect(getProximityDrainTargets(bonds, inRange, enterTimes, THRESHOLD_MS, NOW, new Set())).toHaveLength(0);
+  });
+
+  it('excludes a pair where either player is isSpirit (D-5.7-B)', () => {
+    const bonds = [makeProximityBond('p0', 'p1')];
+    const inRange = new Set(['p0+p1']);
+    const enterTimes = new Map([['p0+p1', NOW - THRESHOLD_MS]]); // at threshold
+    expect(getProximityDrainTargets(bonds, inRange, enterTimes, THRESHOLD_MS, NOW, new Set(['p0']))).toHaveLength(0);
+    expect(getProximityDrainTargets(bonds, inRange, enterTimes, THRESHOLD_MS, NOW, new Set(['p1']))).toHaveLength(0);
+  });
+
+  it('excludes only the spirit pair when multiple bonds are past threshold', () => {
+    const bonds = [makeProximityBond('p0', 'p1'), makeProximityBond('p2', 'p3')];
+    const inRange = new Set(['p0+p1', 'p2+p3']);
+    const enterTimes = new Map([
+      ['p0+p1', NOW - THRESHOLD_MS],
+      ['p2+p3', NOW - THRESHOLD_MS],
+    ]);
+    const result = getProximityDrainTargets(bonds, inRange, enterTimes, THRESHOLD_MS, NOW, new Set(['p0']));
+    expect(result).toEqual([{ playerA: 'p2', playerB: 'p3' }]);
   });
 });

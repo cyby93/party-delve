@@ -78,11 +78,13 @@ export function bondKey(playerA: string, playerB: string): string {
 export function getProximityBuffedPlayers(
   bonds: BondState[],
   inRangeKeys: ReadonlySet<string>,
+  spiritPlayerIds: ReadonlySet<string>,
 ): Set<string> {
   const buffed = new Set<string>();
   for (const bond of bonds) {
     if (bond.type !== BondType.Proximity) continue;
     if (!inRangeKeys.has(bondKey(bond.playerA, bond.playerB))) continue;
+    if (spiritPlayerIds.has(bond.playerA) || spiritPlayerIds.has(bond.playerB)) continue;
     buffed.add(bond.playerA);
     buffed.add(bond.playerB);
   }
@@ -142,10 +144,12 @@ export function getProximityDrainTargets(
   enterTimes: ReadonlyMap<string, number>,
   drainThresholdMs: number,
   nowMs: number,
+  spiritPlayerIds: ReadonlySet<string>,
 ): ProximityDrainTarget[] {
   const result: ProximityDrainTarget[] = [];
   for (const bond of bonds) {
     if (bond.type !== BondType.Proximity) continue;
+    if (spiritPlayerIds.has(bond.playerA) || spiritPlayerIds.has(bond.playerB)) continue;
     const key = bondKey(bond.playerA, bond.playerB);
     if (!inRangeKeys.has(key)) continue;
     const enterTime = enterTimes.get(key);
