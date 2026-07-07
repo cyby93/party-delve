@@ -1,5 +1,8 @@
 import type { PlayerClass, BondType } from 'shared-types';
 
+// ── Movement ──────────────────────────────────────────────────────────────────
+export const JOYSTICK_DEADBAND = 0.05;
+
 // ── Revive system ─────────────────────────────────────────────────────────────
 // Escalating revive windows per down (1-indexed: downCount=1 → index 0 → 60s).
 export const REVIVE_WINDOWS_MS = [60000, 40000, 20000, 10000, 5000, 2000] as const;
@@ -100,6 +103,7 @@ export function getEnemyCount(
   playerCount: number,
   levelTier: 'early' | 'mid' | 'late',
 ): number {
+  if (playerCount <= 0) return 0;
   return Math.ceil(playerCount * ENEMY_RATIO[levelTier]);
 }
 

@@ -12,7 +12,7 @@ const ACHIEVEMENT_NAMES: Record<GrasslandAchievement, string> = {
 interface PostRunSummaryScreenProps {
   gameState: GameState;
   runOutcome: 'complete' | 'failed';
-  reward?: RunReward;
+  reward?: RunReward | null;
 }
 
 export function PostRunSummaryScreen({ gameState, runOutcome, reward }: PostRunSummaryScreenProps) {

@@ -80,7 +80,7 @@ export function App() {
     return <DungeonScreen gameState={gameState} session={session} latestTransientDelta={latestTransientDelta} />;
   }
   if (gameState?.session.phase === 'post-run') {
-    return <PostRunSummaryScreen gameState={gameState} runOutcome={runOutcome ?? 'complete'} reward={runReward ?? undefined} />;
+    return <PostRunSummaryScreen gameState={gameState} runOutcome={runOutcome ?? 'complete'} reward={runReward} />;
   }
   return <HubWorldScreen gameState={gameState} session={session} />;
 }

@@ -12,6 +12,7 @@ import { serialize, EventNames } from 'net-protocol';
 import type { SnapshotMsg } from 'net-protocol';
 import { deserialize } from 'net-protocol';
 import { generateRoomCode } from '../src/rooms/GameRoom.js';
+import { JOYSTICK_DEADBAND } from 'game-rules';
 
 // Pure helper — extracted for direct testability.
 function createEmptyGameState(roomId: string): GameState {
@@ -28,6 +29,9 @@ function createEmptyGameState(roomId: string): GameState {
       levelObjective: 'clear' as const,
       waveIndex: 0,
       totalWaves: 0,
+      bossLevelStartedAt: 0,
+      anyPlayerDownedDuringBoss: false,
+      allBondsAtBossStart: false,
     },
     players: [],
     enemies: [],
@@ -197,7 +201,7 @@ function simulateMovementTick(
     const joystick = lastKnownJoystick.get(player.id);
     if (!joystick) continue;
     const { x, y } = joystick;
-    if (Math.abs(x) < 0.05 && Math.abs(y) < 0.05) continue;
+    if (Math.abs(x) < JOYSTICK_DEADBAND && Math.abs(y) < JOYSTICK_DEADBAND) continue;
     player.x += x * SPEED * DT;
     player.y += y * SPEED * DT;
   }

@@ -178,6 +178,7 @@ export function App() {
       setSession(s);
       history.replaceState(null, '', '?session=' + roomId);
       setScreen('class-select-forced');
+      setSessionEntryInitialCode(undefined);
     } catch (err) {
       throw err; // re-throw so SessionCodeEntryScreen can reset its loading state and show the error
     }
@@ -233,7 +234,10 @@ export function App() {
   }
   if (screen === 'session-entry') {
     return (
+      // Room codes are always sanitizeCode-normalized 4-char uppercase alpha, so the
+      // 'manual' fallback below can never collide with a real code. Revisit if the code format changes.
       <SessionCodeEntryScreen
+        key={sessionEntryInitialCode ?? 'manual'}
         {...(sessionEntryInitialCode !== undefined ? { initialCode: sessionEntryInitialCode } : {})}
         onJoin={handleJoin}
       />
@@ -245,6 +249,7 @@ export function App() {
         onBack={() => {
           session?.disconnect();
           setSession(null);
+          history.replaceState(null, '', window.location.pathname);
           setScreen('session-entry');
         }}
         onPickClass={(classId) => {

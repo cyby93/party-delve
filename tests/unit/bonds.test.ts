@@ -17,6 +17,7 @@ function makeState(playerCount: number): GameState {
       playerCount, maxPlayers: 8, runSeed: SEED,
       levelIndex: 0, difficulty: DifficultyTier.NORMAL, levelObjective: 'clear',
       waveIndex: 0, totalWaves: 0,
+      bossLevelStartedAt: 0, anyPlayerDownedDuringBoss: false, allBondsAtBossStart: false,
     },
     players: Array.from({ length: playerCount }, (_, i) => ({
       id: `p${i}`, displayName: `Player${i}`, class: null,
@@ -139,6 +140,30 @@ describe('assignBond', () => {
     expect(state.activeBonds).toHaveLength(3);
   });
 
+  it('skips duplicate pair — with 2 players, the pair is always the same and a second call does not push', () => {
+    const rng = createRng(SEED);
+    const state = makeState(2);
+    assignBond(state, rng);
+    assignBond(state, rng);
+    expect(state.activeBonds).toHaveLength(1);
+  });
+
+  it('duplicate-pair call reports the EXISTING bond, not a freshly-rolled one', () => {
+    const rng = createRng(SEED);
+    const state = makeState(2);
+    const first = assignBond(state, rng);
+    const second = assignBond(state, rng);
+    expect(state.activeBonds).toHaveLength(1);
+    expect(first.ok && second.ok).toBe(true);
+    if (first.ok && second.ok) {
+      // second call must describe exactly the bond that's actually stored —
+      // not a new roll that the caller would broadcast as if it were real.
+      expect(second.value.bondType).toBe(first.value.bondType);
+      expect(second.value.bondColor).toBe(first.value.bondColor);
+      expect(second.value).toEqual(first.value);
+    }
+  });
+
   it('determinism: identical seeds produce identical bond sequences', () => {
     const state1 = makeState(3);
     const rng1 = createRng(SEED ^ OFFSET_SPIRIT_BOND);
@@ -221,9 +246,9 @@ describe('getFateBuffedPlayers', () => {
 
 describe('getFateBondWipeTargets', () => {
   const alivePlayers = [
-    { id: 'p0', isDown: false, isSpirit: false },
-    { id: 'p1', isDown: false, isSpirit: false },
-    { id: 'p2', isDown: false, isSpirit: false },
+    { id: 'p0', isDown: false, isSpirit: false, isFrozen: false },
+    { id: 'p1', isDown: false, isSpirit: false, isFrozen: false },
+    { id: 'p2', isDown: false, isSpirit: false, isFrozen: false },
   ];
 
   it('returns the partner when a Fate bonded player is downed', () => {
@@ -235,8 +260,8 @@ describe('getFateBondWipeTargets', () => {
   it('skips a partner who is already isDown', () => {
     const bonds = [makeFateBond('p0', 'p1')];
     const players = [
-      { id: 'p0', isDown: false, isSpirit: false },
-      { id: 'p1', isDown: true,  isSpirit: false }, // already down
+      { id: 'p0', isDown: false, isSpirit: false, isFrozen: false },
+      { id: 'p1', isDown: true,  isSpirit: false, isFrozen: false }, // already down
     ];
     expect(getFateBondWipeTargets(bonds, 'p0', players)).toEqual([]);
   });
@@ -244,8 +269,17 @@ describe('getFateBondWipeTargets', () => {
   it('skips a partner who is isSpirit', () => {
     const bonds = [makeFateBond('p0', 'p1')];
     const players = [
-      { id: 'p0', isDown: false, isSpirit: false },
-      { id: 'p1', isDown: false, isSpirit: true },
+      { id: 'p0', isDown: false, isSpirit: false, isFrozen: false },
+      { id: 'p1', isDown: false, isSpirit: true, isFrozen: false },
+    ];
+    expect(getFateBondWipeTargets(bonds, 'p0', players)).toEqual([]);
+  });
+
+  it('skips a partner who is isFrozen (AC3)', () => {
+    const bonds = [makeFateBond('p0', 'p1')];
+    const players = [
+      { id: 'p0', isDown: false, isSpirit: false, isFrozen: false },
+      { id: 'p1', isDown: false, isSpirit: false, isFrozen: true },
     ];
     expect(getFateBondWipeTargets(bonds, 'p0', players)).toEqual([]);
   });

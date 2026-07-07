@@ -1,6 +1,7 @@
 import type { Body, Fixture, Contact } from 'planck';
 import { Circle } from 'planck';
 import type { PhysicsBodyData } from './world.js';
+import { CAT_BOND_SENSOR, CAT_PLAYER } from './world.js';
 
 /** Stored as fixture.getUserData() on bond sensor fixtures. */
 export interface BondSensorFixtureData {
@@ -27,6 +28,8 @@ export function createBondSensor(
   const fixture = playerBody.createFixture({
     shape: new Circle(rangeM),
     isSensor: true,
+    filterCategoryBits: CAT_BOND_SENSOR,
+    filterMaskBits: CAT_PLAYER,
   });
   fixture.setUserData({ type: 'bond-sensor', bondKey, targetPlayerId } satisfies BondSensorFixtureData);
   return fixture;

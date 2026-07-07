@@ -39,9 +39,25 @@ export function assignBond(
   }
 
   const [playerA, playerB] = selectBondPair(state.players, state.activeBonds, rng);
+
+  // ponytail: skip duplicate bond assignment — with few unbonded players left,
+  // selectBondPair can return a pair that's already bonded; pushing again would
+  // double-count that pair in every per-tick drain/buff pass. Report the EXISTING
+  // bond's type/color (not a freshly-rolled one) so the broadcast the caller sends
+  // from this return value matches what's actually stored in activeBonds.
+  const existing = state.activeBonds.find(
+    b => (b.playerA === playerA && b.playerB === playerB) ||
+         (b.playerA === playerB && b.playerB === playerA),
+  );
+  if (existing) {
+    return {
+      ok: true,
+      value: { playerA: existing.playerA, playerB: existing.playerB, bondType: existing.type, bondColor: existing.color },
+    };
+  }
+
   const bondType = selectBondType(rng);
   const bondColor = BOND_TYPE_COLORS[bondType];
-
   const bond: BondState = { playerA, playerB, type: bondType, color: bondColor };
   state.activeBonds.push(bond);
 
@@ -92,7 +108,7 @@ export function getFateBuffedPlayers(bonds: BondState[]): Set<string> {
 export function getFateBondWipeTargets(
   bonds: BondState[],
   downedPlayerId: string,
-  players: ReadonlyArray<{ id: string; isDown: boolean; isSpirit: boolean }>,
+  players: ReadonlyArray<{ id: string; isDown: boolean; isSpirit: boolean; isFrozen: boolean }>,
 ): string[] {
   const targets: string[] = [];
   for (const bond of bonds) {
@@ -102,7 +118,9 @@ export function getFateBondWipeTargets(
     else if (bond.playerB === downedPlayerId) partnerId = bond.playerA;
     if (partnerId === null) continue;
     const partner = players.find(p => p.id === partnerId);
-    if (!partner || partner.isDown || partner.isSpirit) continue;
+    // ponytail: explicit isFrozen guard — applyPlayerDamage rejects frozen players too,
+    // but we make the invariant visible here rather than relying on that downstream check
+    if (!partner || partner.isDown || partner.isSpirit || partner.isFrozen) continue;
     targets.push(partnerId);
   }
   return targets;

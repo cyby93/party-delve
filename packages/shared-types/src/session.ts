@@ -27,6 +27,9 @@ export interface RoomOptions {
 
 export interface SimEvents {
   'player:downed': { playerId: string; downCount: number };
+  // bondColor is not part of SimEvents: it's computed in game-rules' assignBond
+  // (BOND_TYPE_COLORS[bondType]) and forwarded through GameRoom into the wire-level
+  // BondAssignedDelta (net-protocol) — never silently undefined at broadcast time.
   'bond:assigned': { playerA: string; playerB: string; bondType: BondType };
   'enemy:killed': { enemyId: string; byPlayerId: string };
   'level:complete': { levelIndex: number };

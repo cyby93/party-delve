@@ -346,7 +346,6 @@ export function ClassSelectionScreen({ onBack, onPickClass }: ClassSelectionScre
           alignItems: 'center',
           padding: '12px 24px',
           gap: 14,
-          WebkitOverflowScrolling: 'touch',
           scrollSnapType: 'x mandatory',
           touchAction: 'pan-x',
           transition: 'bottom 200ms ease-out',
@@ -1136,6 +1135,7 @@ export function ControllerScreen({ session, gameState, cooldowns, bondNotificati
     el.addEventListener('touchcancel', onTouchEnd, { passive: false });
 
     return () => {
+      stopJoystick();
       el.removeEventListener('touchstart', onTouchStart);
       el.removeEventListener('touchmove', onTouchMove);
       el.removeEventListener('touchend', onTouchEnd);

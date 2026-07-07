@@ -122,6 +122,7 @@ export function HubWorldScreen({ gameState, session }: HubWorldScreenProps) {
   // Always holds the latest gameState so initPixi can render it after async init
   const latestGameStateRef = useRef<GameState | null>(null);
   latestGameStateRef.current = gameState;
+  const rafRef = useRef<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -178,6 +179,7 @@ export function HubWorldScreen({ gameState, session }: HubWorldScreenProps) {
     void initPixi();
     return () => {
       cancelled = true;
+      if (rafRef.current !== null) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
       const app = pixiAppRef.current;
       if (app) {
         app.canvas.remove();
@@ -192,6 +194,27 @@ export function HubWorldScreen({ gameState, session }: HubWorldScreenProps) {
   useEffect(() => {
     if (!pixiAppRef.current || !gameState) return;
     renderFrame(gameState, pixiAppRef.current, playerGraphicsRef.current, poiGraphicsRef.current);
+    // Start a short-lived rAF loop if a class-confirmation flash is active and none is already running
+    if (rafRef.current === null) {
+      const anyFlash = [...playerGraphicsRef.current.values()].some(e => e.flashUntil > Date.now());
+      if (anyFlash) {
+        const tick = () => {
+          const app = pixiAppRef.current;
+          const state = latestGameStateRef.current;
+          if (!app || !state) { rafRef.current = null; return; }
+          renderFrame(state, app, playerGraphicsRef.current, poiGraphicsRef.current);
+          if ([...playerGraphicsRef.current.values()].some(e => e.flashUntil > Date.now())) {
+            rafRef.current = requestAnimationFrame(tick);
+          } else {
+            rafRef.current = null;
+          }
+        };
+        rafRef.current = requestAnimationFrame(tick);
+      }
+    }
+    return () => {
+      if (rafRef.current !== null) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
+    };
   }, [gameState]);
 
   const players = gameState?.players ?? [];

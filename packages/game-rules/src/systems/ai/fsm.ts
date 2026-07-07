@@ -1,6 +1,8 @@
 import { EnemyFSMState } from 'shared-types';
 import type { EnemyState } from 'shared-types';
 import type { Result, GameError } from '../../state/result.js';
+import { ChargeLayer } from './layers/charge.js';
+import { StompLayer } from './layers/stomp.js';
 import {
   ENEMY_CHASE_RANGE, ENEMY_ATTACK_RANGE,
   ENEMY_CHASE_SPEED, ENEMY_ATTACK_COOLDOWN_TICKS,
@@ -24,6 +26,11 @@ export interface BehaviorLayer {
   cooldown: number;
   currentCooldown: number;
 }
+
+// Difficulty tier layer presets — ordering matters; first matching layer wins.
+export const createEasyLayers   = (): BehaviorLayer[] => [];
+export const createNormalLayers = (): BehaviorLayer[] => [new ChargeLayer()];
+export const createHardLayers   = (): BehaviorLayer[] => [new ChargeLayer(), new StompLayer()];
 
 const VALID_FSM_STATES = new Set(Object.values(EnemyFSMState));
 

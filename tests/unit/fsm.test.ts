@@ -209,4 +209,9 @@ describe('Enemy count scaling (FR22)', () => {
   it('4 players late = ceil(4 * 2.5) = 10', () => {
     expect(getEnemyCount(4, 'late')).toBe(10);
   });
+
+  it('returns 0 for playerCount <= 0 (AC4)', () => {
+    expect(getEnemyCount(0, 'early')).toBe(0);
+    expect(getEnemyCount(-1, 'mid')).toBe(0);
+  });
 });

@@ -20,7 +20,10 @@ function getLocalIp(): string {
     candidates.find(ip => ip.startsWith('10.')) ??
     candidates.find(ip => /^172\.(1[6-9]|2\d|3[01])\./.test(ip)) ??
     candidates[0] ??
-    'localhost'
+    (() => {
+      logger.warn('getLocalIp: no IPv4 interface detected, falling back to localhost. Set VITE_SIM_URL on mobile clients for non-standard network topologies.');
+      return 'localhost';
+    })()
   );
 }
 

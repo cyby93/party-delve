@@ -11,7 +11,7 @@ import {
   extractPoiBeginContact, extractPoiEndContact, extractEssenceBeginContact, toMeters, toPixels,
 } from '../physics/world.js';
 import type { PoiBeginContactEvent, PoiEndContactEvent, EssenceBeginContactEvent, PhysicsBodyData } from '../physics/world.js';
-import { createRng, tickEnemy, dispatchAbility, getEnemyCount, applyDamage, isInHitZone, ABILITY_HIT_RANGE_PX, ABILITY_HIT_RADIUS_PX, applyPlayerDamage, getReviveWindowMs, ENEMY_MELEE_DAMAGE, ENEMY_MELEE_RANGE_PX, ENEMY_ATTACK_COOLDOWN_MS, REVIVE_RADIUS_PX, REVIVE_HP, SPIRIT_ABILITY_COOLDOWN_MS, generateFloorLayout, GRASSLAND_ROOM_POOL, WAVE_COUNTS, WAVE_PAUSE_MS, WAVE_ENEMY_SCALE, bondKey, getProximityBuffedPlayers, getFateBuffedPlayers, getFateBondWipeTargets, getProximityDrainTargets, BOND_PROXIMITY_RANGE_PX, BOND_DRAIN_THRESHOLD_S, BOND_DRAIN_HP_PER_TICK, BOND_DAMAGE_MULT, BOND_SPEED_MULT, assignBond, BOND_DESCRIPTIONS, BOND_MECHANICS, createBossState, tickBoss, BOSS_ADD_HP, BOSS_STOMP_DAMAGE, evaluateGrasslandAchievements } from 'game-rules';
+import { createRng, tickEnemy, dispatchAbility, getEnemyCount, applyDamage, isInHitZone, ABILITY_HIT_RANGE_PX, ABILITY_HIT_RADIUS_PX, applyPlayerDamage, getReviveWindowMs, ENEMY_MELEE_DAMAGE, ENEMY_MELEE_RANGE_PX, ENEMY_ATTACK_COOLDOWN_MS, REVIVE_RADIUS_PX, REVIVE_HP, SPIRIT_ABILITY_COOLDOWN_MS, generateFloorLayout, GRASSLAND_ROOM_POOL, WAVE_COUNTS, WAVE_PAUSE_MS, WAVE_ENEMY_SCALE, bondKey, getProximityBuffedPlayers, getFateBuffedPlayers, getFateBondWipeTargets, getProximityDrainTargets, BOND_PROXIMITY_RANGE_PX, BOND_DRAIN_THRESHOLD_S, BOND_DRAIN_HP_PER_TICK, BOND_DAMAGE_MULT, BOND_SPEED_MULT, assignBond, BOND_DESCRIPTIONS, BOND_MECHANICS, createBossState, tickBoss, BOSS_ADD_HP, BOSS_STOMP_DAMAGE, evaluateGrasslandAchievements, JOYSTICK_DEADBAND, createEasyLayers, createNormalLayers, createHardLayers } from 'game-rules';
 import type { BehaviorLayer, EnemyContext, EnemyAIEvent, BossEvent, BossStompedEvent } from 'game-rules';
 import { BOSS_ARENA_SPAWN_POINTS, loadBossArena } from '../levels/boss-arena.js';
 import { CLASS_DEFINITIONS } from 'shared-types';
@@ -144,6 +144,8 @@ export class GameRoom extends Room {
   private arenaWallBodies: Body[] = [];
   private pendingBossStompEvents: BossStompedEvent[] = [];
   private lastRunReward: RunReward | null = null;
+  private classSelectLastAccepted = new Map<string, number>();
+  private levelTransitionFailedFor: number | null = null;
 
   async onCreate(_options: unknown): Promise<void> {
     this.roomId = generateRoomCode();
@@ -218,12 +220,15 @@ export class GameRoom extends Room {
 
     this.onMessage(EventNames.CLASS_SELECT, (client: Client, raw: unknown) => {
       try {
+        const last = this.classSelectLastAccepted.get(client.sessionId) ?? 0;
+        if (Date.now() - last < 1000) return;
         const msg = (typeof raw === 'string' ? JSON.parse(raw) : raw) as { classId: unknown };
         const validClasses = Object.values(PlayerClass) as string[];
         if (typeof msg?.classId !== 'string' || !validClasses.includes(msg.classId)) {
           logger.warn({ clientId: client.sessionId, roomId: this.roomId }, 'invalid CLASS_SELECT payload — discarded');
           return;
         }
+        this.classSelectLastAccepted.set(client.sessionId, Date.now());
         const classId = msg.classId as PlayerClass;
         const player = this.gameState.players.find(p => p.id === client.sessionId);
         if (!player) {
@@ -389,6 +394,7 @@ export class GameRoom extends Room {
       this.cooldownMap.delete(client.sessionId);
       this.spiritCooldownMap.delete(client.sessionId);
       this.lastKnownJoystick.delete(client.sessionId);
+      this.classSelectLastAccepted.delete(client.sessionId);
       const leaveBody = this.playerBodies.get(client.sessionId);
       if (leaveBody) {
         this.physicsWorld.destroyBody(leaveBody);
@@ -431,6 +437,20 @@ export class GameRoom extends Room {
       this.broadcast(EventNames.DELTA, reconnectDelta);
       const snapshot: SnapshotMsg = { type: 'snapshot', state: this.gameState };
       reconnectedClient.send(EventNames.SNAPSHOT, snapshot);
+      const nowReconnect = Date.now();
+      const playerCooldownsOnReconnect = this.cooldownMap.get(reconnectedClient.sessionId);
+      if (playerCooldownsOnReconnect) {
+        for (let i = 0; i < playerCooldownsOnReconnect.length; i++) {
+          const expiresAt = playerCooldownsOnReconnect[i];
+          if (expiresAt !== undefined && expiresAt > nowReconnect) {
+            reconnectedClient.send(EventNames.COOLDOWN_UPDATE, {
+              type: 'cooldown:update',
+              abilityIndex: i,
+              remainingMs: expiresAt - nowReconnect,
+            } satisfies CooldownUpdateMsg);
+          }
+        }
+      }
       if (this.gameState.session.phase === 'post-run' && this.lastRunReward !== null) {
         const share = this.lastRunReward.perPlayer.find(p => p.playerId === reconnectedClient.sessionId);
         reconnectedClient.send(EventNames.RUN_VICTORY, {
@@ -446,6 +466,7 @@ export class GameRoom extends Room {
       this.cooldownMap.delete(client.sessionId);
       this.spiritCooldownMap.delete(client.sessionId);
       this.lastKnownJoystick.delete(client.sessionId);
+      this.classSelectLastAccepted.delete(client.sessionId);
       const expireBody = this.playerBodies.get(client.sessionId);
       if (expireBody) {
         this.physicsWorld.destroyBody(expireBody);
@@ -572,6 +593,11 @@ export class GameRoom extends Room {
       const body = createEnemyBody(this.physicsWorld, id, x, y);
       this.enemyBodies.set(id, body);
       this.enemyAttackCooldowns.set(id, 0);
+      this.enemyLayers.set(id,
+        difficulty === DifficultyTier.HARD   ? createHardLayers()   :
+        difficulty === DifficultyTier.NORMAL ? createNormalLayers()  :
+        createEasyLayers()
+      );
     }
     logger.info({ roomId: this.roomId, count, tier, levelIndex }, 'enemies spawned');
   }
@@ -611,6 +637,11 @@ export class GameRoom extends Room {
       const body = createEnemyBody(this.physicsWorld, id, x, y);
       this.enemyBodies.set(id, body);
       this.enemyAttackCooldowns.set(id, 0);
+      this.enemyLayers.set(id,
+        difficulty === DifficultyTier.HARD   ? createHardLayers()   :
+        difficulty === DifficultyTier.NORMAL ? createNormalLayers()  :
+        createEasyLayers()
+      );
     }
 
     this.waveIndex = waveNum;
@@ -692,6 +723,16 @@ export class GameRoom extends Room {
     // Reset session
     this.gameState.session.phase = 'hub';
     this.gameState.session.levelIndex = 0;
+    this.gameState.session.levelObjective = 'clear';
+    this.gameState.session.waveIndex = 0;
+    this.gameState.session.totalWaves = 0;
+    this.gameState.session.difficulty = null;
+    this.gameState.session.bossLevelStartedAt = 0;
+    this.gameState.session.anyPlayerDownedDuringBoss = false;
+    this.gameState.session.allBondsAtBossStart = false;
+    this.gameState.floorLayout = null;
+    this.gameState.session.runSeed = randomInt(0, 0x1_0000_0000);
+    this.levelTransitionFailedFor = null;
 
     // Clear server-local dungeon state
     this.returnReadySet.clear();
@@ -703,6 +744,7 @@ export class GameRoom extends Room {
       this.spiritCooldownMap.set(p.id, 0);
     }
     this.lastKnownJoystick.clear();
+    this.classSelectLastAccepted.clear();
     this.enemyAttackCooldowns.clear();
     this.runVotes.clear();
     this.pendingPoiBeginContacts = [];
@@ -721,7 +763,7 @@ export class GameRoom extends Room {
   }
 
   private enterBondMoment(levelIndex: number): void {
-    if (levelIndex >= 4) {
+    if (levelIndex >= BOSS_LEVEL_INDEX) {
       this.loadLevel(levelIndex + 1);
       this.broadcast(EventNames.SNAPSHOT, { type: 'snapshot', state: this.gameState } satisfies SnapshotMsg);
       return;
@@ -773,6 +815,24 @@ export class GameRoom extends Room {
     logger.info({ roomId: this.roomId, levelIndex, playerA, playerB, bondType }, 'bond assigned — bond-moment pause started');
   }
 
+  // Wraps enterBondMoment for tick()'s level-complete call sites. Returns true only once
+  // the transition has actually happened, so the caller can defer its level:complete
+  // broadcast until success (no partial broadcast on failure). On repeated failure for the
+  // same levelIndex, logs once instead of every tick — avoids a 30Hz error/log spam loop.
+  private tryEnterBondMoment(levelIndex: number, branch: 'survive-waves' | 'clear-objective'): boolean {
+    try {
+      this.enterBondMoment(levelIndex);
+      this.levelTransitionFailedFor = null;
+      return true;
+    } catch (err) {
+      if (this.levelTransitionFailedFor !== levelIndex) {
+        this.levelTransitionFailedFor = levelIndex;
+        logger.error({ err, roomId: this.roomId, levelIndex, branch }, 'enterBondMoment failed during tick — skipping level transition');
+      }
+      return false;
+    }
+  }
+
   private loadLevel(index: number): void {
     // Clear current enemies
     for (const body of this.enemyBodies.values()) this.physicsWorld.destroyBody(body);
@@ -812,10 +872,13 @@ export class GameRoom extends Room {
     // Auto-revive downed/spirit players; carry downCount (shorter next revive window)
     for (const player of this.gameState.players) {
       if (player.isDown || player.isSpirit) {
+        const wasSpirit = player.isSpirit;
         player.isDown = false;
         player.isSpirit = false;
         player.reviveTimerExpiresAt = 0;
         player.hp = REVIVE_HP;
+        // Flush class-ability cooldowns that expired during spirit form (AC7 fix)
+        if (wasSpirit) this.flushExpiredClassCooldowns(player.id);
       }
       const spawnIdx = this.gameState.players.indexOf(player);
       const spawn = DUNGEON_SPAWN_POSITIONS[spawnIdx] ?? { x: 400, y: 540 };
@@ -917,7 +980,7 @@ export class GameRoom extends Room {
       const body = this.playerBodies.get(player.id);
       if (!body) continue;
 
-      if (player.isFrozen || player.class === null) {
+      if (player.isFrozen || player.class === null || player.isDown || player.isSpirit) {
         body.setLinearVelocity(Vec2(0, 0));
         continue;
       }
@@ -925,7 +988,7 @@ export class GameRoom extends Room {
       const joystick = this.lastKnownJoystick.get(player.id);
       const jx = joystick?.x ?? 0;
       const jy = joystick?.y ?? 0;
-      const inDeadzone = Math.abs(jx) < 0.05 && Math.abs(jy) < 0.05;
+      const inDeadzone = Math.abs(jx) < JOYSTICK_DEADBAND && Math.abs(jy) < JOYSTICK_DEADBAND;
 
       const speed = fateBuffed.has(player.id) ? SPEED * BOND_SPEED_MULT : SPEED;
       body.setLinearVelocity(inDeadzone
@@ -1256,10 +1319,16 @@ export class GameRoom extends Room {
           ? Math.round(rawDamage * BOND_DAMAGE_MULT)
           : rawDamage;
 
+        // AC6: normalize direction so sub-unit joystick magnitude doesn't shrink hit range
+        const mag = Math.hypot(dirX, dirY);
+        if (isDirectional && mag === 0) continue; // no direction = no hit
+        const normDirX = isDirectional && mag > 0 ? dirX / mag : dirX;
+        const normDirY = isDirectional && mag > 0 ? dirY / mag : dirY;
+
         for (let ei = 0; ei < this.gameState.enemies.length; ei++) {
           const enemy = this.gameState.enemies[ei]!;
           if (!enemy.isAlive) continue;
-          if (!isInHitZone(player.x, player.y, dirX, dirY, enemy.x, enemy.y, hitRadius, hitRange, isDirectional)) continue;
+          if (!isInHitZone(player.x, player.y, normDirX, normDirY, enemy.x, enemy.y, hitRadius, hitRange, isDirectional)) continue;
 
           const dropId = `drop-${this.tickCount}-${enemy.id}`;
           const dmgResult = applyDamage(enemy, damage, dropId);
@@ -1544,6 +1613,8 @@ export class GameRoom extends Room {
             // isActive: false signals return to normal combat (not in spirit form)
             revivedClient.send(EventNames.SPIRIT_FORM, { type: 'spirit:form', isActive: false } satisfies SpiritFormMsg);
           }
+          // Flush any class-ability cooldowns that expired during spirit form (AC7 fix)
+          this.flushExpiredClassCooldowns(player.id);
 
           logger.info({ roomId: this.roomId, playerId: player.id, revivedBy }, 'player revived by proximity');
         }
@@ -1580,8 +1651,8 @@ export class GameRoom extends Room {
 
           if (completedWave >= this.totalWaves) {
             const levelIndex = this.gameState.session.levelIndex;
+            if (!this.tryEnterBondMoment(levelIndex, 'survive-waves')) return;
             this.broadcast(EventNames.DELTA, { type: 'level:complete' as const, levelIndex } satisfies DeltaEventMsg);
-            this.enterBondMoment(levelIndex);
             logger.info({ roomId: this.roomId, levelIndex, waves: completedWave }, 'survive-waves level complete');
           } else {
             this.wavePauseUntil = Date.now() + WAVE_PAUSE_MS;
@@ -1598,8 +1669,8 @@ export class GameRoom extends Room {
       } else {
         if (this.bondMomentNextLevel === -1 && allEnemiesDead) {
           const levelIndex = this.gameState.session.levelIndex;
+          if (!this.tryEnterBondMoment(levelIndex, 'clear-objective')) return;
           this.broadcast(EventNames.DELTA, { type: 'level:complete' as const, levelIndex } satisfies DeltaEventMsg);
-          this.enterBondMoment(levelIndex);
           logger.info({ roomId: this.roomId, levelIndex }, 'level complete — entering bond moment');
         }
       }
@@ -1612,6 +1683,9 @@ export class GameRoom extends Room {
         const expiry = cooldowns[i];
         if (expiry !== undefined && expiry > 0 && nowExpiry >= expiry) {
           cooldowns[i] = 0;
+          // AC7: spirit players can't use class abilities (slots 0-2) — reset stored cooldown but skip message
+          const player = this.gameState.players.find(p => p.id === clientId);
+          if (player?.isSpirit && i < 3) continue;
           const targetClient = this.clients.find(c => c.sessionId === clientId);
           if (targetClient) {
             targetClient.send(EventNames.COOLDOWN_UPDATE, {
@@ -1644,6 +1718,24 @@ export class GameRoom extends Room {
     if (this.tickCount % (SNAPSHOT_INTERVAL_S * TICK_RATE_HZ) === 0) {
       const snapshot: SnapshotMsg = { type: 'snapshot', state: this.gameState };
       this.broadcast(EventNames.SNAPSHOT, snapshot);
+    }
+  }
+
+  // Send COOLDOWN_UPDATE(remainingMs=0) for class slots 0-2 that expired while the player
+  // was in spirit form (server cleared cooldowns[i] to 0 but skipped the message per AC7).
+  private flushExpiredClassCooldowns(playerId: string): void {
+    const cooldowns = this.cooldownMap.get(playerId);
+    if (!cooldowns) return;
+    const targetClient = this.clients.find(c => c.sessionId === playerId);
+    if (!targetClient) return;
+    for (let i = 0; i < 3; i++) {
+      if (cooldowns[i] === 0) {
+        targetClient.send(EventNames.COOLDOWN_UPDATE, {
+          type: 'cooldown:update',
+          abilityIndex: i,
+          remainingMs: 0,
+        } satisfies CooldownUpdateMsg);
+      }
     }
   }
 }

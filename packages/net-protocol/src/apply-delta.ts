@@ -117,8 +117,20 @@ export function applyDelta(state: GameState, evt: DeltaEventMsg): GameState {
         ),
       };
     }
-    case 'enemy:stomped':
-      return state;  // ponytail: AoE slow applied in Story 3.5+
+    case 'enemy:stomped': {
+      // ponytail: 3 s visual slow; snapshot reconciles any stale values after expiry
+      const stompedUntil = Date.now() + 3000;
+      return {
+        ...state,
+        players: state.players.map(p => {
+          const dx = p.x - evt.x;
+          const dy = p.y - evt.y;
+          return dx * dx + dy * dy <= evt.radius * evt.radius
+            ? { ...p, stompedUntil }
+            : p;
+        }),
+      };
+    }
     case 'enemy:moved': {
       if (!state.enemies.some(e => e.id === evt.enemyId)) return state;
       const enemies = state.enemies.map(e =>

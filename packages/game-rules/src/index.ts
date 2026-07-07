@@ -4,6 +4,7 @@ export type { LevelTier } from './generation/floor-layout.js';
 export { GRASSLAND_ROOM_POOL, BOSS_FLOOR_LAYOUT } from './generation/room-pool.js';
 export type { Result, GameError } from './state/result.js';
 export {
+  JOYSTICK_DEADBAND,
   ABILITY_COOLDOWNS_MS, ABILITY_DAMAGE,
   ABILITY_HIT_RANGE_PX, ABILITY_HIT_RADIUS_PX,
   ESSENCE_DROP_AMOUNT, ESSENCE_COLLECT_RADIUS_PX,
@@ -25,7 +26,7 @@ export { applyPlayerDamage, getReviveWindowMs } from './systems/player-health.js
 export type { PlayerDamageResult, HealthError } from './systems/player-health.js';
 export { applyDamage, isInHitZone } from './systems/combat.js';
 export type { DamageResult, CombatError } from './systems/combat.js';
-export { tickEnemy, tickBaseFSM } from './systems/ai/fsm.js';
+export { tickEnemy, tickBaseFSM, createEasyLayers, createNormalLayers, createHardLayers } from './systems/ai/fsm.js';
 export type { EnemyContext, BehaviorLayer, EnemyAIEvent } from './systems/ai/fsm.js';
 export { ChargeLayer } from './systems/ai/layers/charge.js';
 export { StompLayer } from './systems/ai/layers/stomp.js';

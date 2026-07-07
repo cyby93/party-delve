@@ -104,6 +104,9 @@ function wireRoomHandlers(
 
   // Disable SDK's built-in auto-reconnect so onLeave fires immediately on network drop,
   // giving the app's manual reconnect UX the full 30-second server grace window to work with.
+  // Verified against installed @colyseus/sdk 0.17.43: `reconnection.enabled` is a real,
+  // typed field on Room (see node_modules/@colyseus/sdk/build/Room.d.ts) and
+  // handleReconnection() checks it before attempting auto-reconnect — not a no-op.
   room.reconnection.enabled = false;
 }
 
