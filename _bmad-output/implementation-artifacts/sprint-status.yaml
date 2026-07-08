@@ -67,7 +67,7 @@ development_status:
   # via QR code or session code. They appear in an empty hub world.
   # Disconnect/reconnect within grace period works.
   # FRs: FR1, FR2, FR3 (guest join), FR27, FR28, FR31, FR32, FR33, FR37, FR38
-  epic-1: in-progress
+  epic-1: done
   1-1-monorepo-architecture-clean-slate-and-package-scaffold: done
   1-2-simulation-server-session-lifecycle-and-30hz-tick-loop: done
   1-3-host-app-main-menu-and-lobby-screen: done
@@ -83,14 +83,14 @@ development_status:
   # Players explore the tribe village hub, interact with POIs (class selection,
   # training dummy), browse and select a class, and confirm their choice.
   # FRs: FR5, FR11 (4 alpha classes defined), FR12, FR13
-  epic-2: in-progress
+  epic-2: done
   2-1-hub-world-poi-layout-and-interact-button: done
   2-2-class-selection-flow-card-browse-and-selection: done
   2-3-class-confirmation-and-hub-controller-transition: done
   2-4-training-dummy-poi: done
   2-5-server-persistent-joystick-vector: done
   2-6-epic-2-deferred-hardening: done
-  2-7-epic-2-post-26-deferred-hardening: review
+  2-7-epic-2-post-26-deferred-hardening: done
   epic-2-retrospective: optional
 
   # ─── E3: Core Combat — 4 Alpha Classes ──────────────────────────────────────
@@ -98,7 +98,7 @@ development_status:
   # dungeon combat. Players use abilities, go down, get revived, enter spirit
   # form. "Clear" objective type is operational.
   # FRs: FR9(Clear), FR11, FR12, FR13, FR17, FR18, FR19, FR20, FR21, FR22, FR23
-  epic-3: in-progress
+  epic-3: done
   3-1-xoshiro128-prng-and-planckjs-physics-world: done
   3-2-enemy-ai-base-fsm-and-layered-difficulty-behaviors: done
   3-3-4-alpha-class-implementations-abilities-and-input-types: done
@@ -127,7 +127,7 @@ development_status:
   4-6-end-to-end-run-e2e-test-and-latency-baseline: done
   4-7-session-url-sync-on-join: done
   4-8-forced-class-selection-on-join: done
-  4-9-epic-4-deferred-hardening: review
+  4-9-epic-4-deferred-hardening: done
   4-10-epic-4-post-49-deferred-hardening: done
   4-11-epic-4-post-410-deferred-hardening: done
   epic-4-retrospective: optional
@@ -136,7 +136,7 @@ development_status:
   # Bond assigned at level end, buff+price pairs, in-canvas particle tethers,
   # 3 bonds accumulate across 3 levels.
   # FRs: FR14, FR15, FR16
-  epic-5: in-progress
+  epic-5: done
   5-1-spirit-bond-shared-types-and-protocol-contracts: done
   5-2-bond-assignment-logic-and-deterministic-pair-selection: done
   5-3-per-tick-bond-effects-proximity-and-fate-bond-types: done
