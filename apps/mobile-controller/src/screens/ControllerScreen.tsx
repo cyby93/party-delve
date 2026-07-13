@@ -209,9 +209,10 @@ function ClassCard({ def, isSelected, onTap }: ClassCardProps) {
 }
 
 const ABILITY_BADGE_BORDER: Record<AbilityInputType, string> = {
-  AUTO:    'var(--accent-spirit)',
-  RELEASE: 'var(--accent-warm)',
-  TAP:     'var(--border)',
+  AUTO:     'var(--accent-spirit)',
+  RELEASE:  'var(--accent-warm)',
+  TAP:      'var(--border)',
+  AIM_CAST: 'var(--accent-warm)',  // shares RELEASE's fire-on-release behavior until Story 3.18
 };
 
 interface AbilityChipProps {
@@ -676,7 +677,7 @@ function SkillCell({ index, ability, cooldownState: cd, isInteractive, badgeBord
       if (t === null) return;
       for (let i = 0; i < e.changedTouches.length; i++) {
         if (e.changedTouches[i]!.identifier === t.id) {
-          if (ability.inputType === 'RELEASE' && !t.releaseFired) {
+          if ((ability.inputType === 'RELEASE' || ability.inputType === 'AIM_CAST') && !t.releaseFired) {
             t.releaseFired = true;
             onAbilityFire(index, t.lastDirX, t.lastDirY, false);
           }
@@ -695,7 +696,7 @@ function SkillCell({ index, ability, cooldownState: cd, isInteractive, badgeBord
       if (t === null) return;
       for (let i = 0; i < e.changedTouches.length; i++) {
         if (e.changedTouches[i]!.identifier === t.id) {
-          if (ability.inputType === 'RELEASE' && !t.releaseFired) {
+          if ((ability.inputType === 'RELEASE' || ability.inputType === 'AIM_CAST') && !t.releaseFired) {
             t.releaseFired = true;
             onAbilityFire(index, t.lastDirX, t.lastDirY, false);
           }
@@ -1300,6 +1301,7 @@ export function ControllerScreen({ session, gameState, cooldowns, bondNotificati
           const badgeBorderColor = ability !== null
             ? (ability.inputType === 'AUTO' ? 'var(--accent-spirit)'
               : ability.inputType === 'RELEASE' ? 'var(--accent-warm)'
+              : ability.inputType === 'AIM_CAST' ? 'var(--accent-warm)'
               : 'var(--border)')
             : 'var(--border)';
 

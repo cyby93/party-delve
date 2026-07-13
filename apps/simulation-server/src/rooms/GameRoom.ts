@@ -1363,7 +1363,11 @@ export class GameRoom extends Room {
 
         // AC6: normalize direction so sub-unit joystick magnitude doesn't shrink hit range
         const mag = Math.hypot(dirX, dirY);
-        if (isDirectional && mag === 0) continue; // no direction = no hit
+        // Story 3.11: hitRange=0 directional abilities (e.g. Stone Wall, Void
+        // Pulse) hit at the player's own position regardless of direction —
+        // don't require a drag for those, only for abilities whose hit
+        // circle is actually offset by direction.
+        if (isDirectional && mag === 0 && hitRange > 0) continue; // no direction = no hit
         const normDirX = isDirectional && mag > 0 ? dirX / mag : dirX;
         const normDirY = isDirectional && mag > 0 ? dirY / mag : dirY;
 

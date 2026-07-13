@@ -42,7 +42,23 @@
 # Phase2 legacy stories (old Phase-based keys) are tracked below under PHASE 2 STORIES.
 
 generated: 2026-06-22
-last_updated: 2026-07-07
+last_updated: 2026-07-13
+# 2026-07-11: created 3.12-3.20 in one batch, completing the "Ability
+# Mechanics Rework" extension started by 3.11 (epics.md Stories 3.11-3.20).
+# Dependency order: 3.11 -> {3.12,3.13,3.14,3.15 in any order, all shared
+# engine capability, no visible gameplay change} -> 3.16 -> 3.17 -> 3.18 ->
+# 3.19 -> 3.20 (kit-rework stories are sequenced; each reuses tables/helpers
+# the previous ones introduced — see each story's Dev Notes for exact
+# cross-story dependencies). Several stories carry corrections to epics.md's
+# literal AC wording where it didn't match the current codebase (wrong file
+# path in 3.11 carried forward as a pattern-check; 3.14's displacement must
+# NOT use body.applyLinearImpulse — verified inert in this architecture,
+# use direct position mutation instead — see 3.14's Context section).
+# 2026-07-11: epic-3 reopened to in-progress (again) — new scope, not deferred
+# hardening: the 2026-07-08 brainstorming session designed the "Ability Mechanics
+# Rework" extension (epics.md, Stories 3.11-3.20) fixing 7 placeholder/no-op
+# abilities and 1 mislabeled one. Created 3.11, the first of 5 shared-engine-
+# capability stories the kit reworks (3.16-3.20) depend on.
 # 2026-07-07: epic-1 reopened to in-progress — 2 deferred findings from the
 # 1.8 code review (deferred-work.md) had no follow-up story; created 1.9 to close them.
 # 2026-07-07: epic-2 reopened to in-progress — D-2.4-A from the 2.4 code review
@@ -98,7 +114,7 @@ development_status:
   # dungeon combat. Players use abilities, go down, get revived, enter spirit
   # form. "Clear" objective type is operational.
   # FRs: FR9(Clear), FR11, FR12, FR13, FR17, FR18, FR19, FR20, FR21, FR22, FR23
-  epic-3: done
+  epic-3: in-progress
   3-1-xoshiro128-prng-and-planckjs-physics-world: done
   3-2-enemy-ai-base-fsm-and-layered-difficulty-behaviors: done
   3-3-4-alpha-class-implementations-abilities-and-input-types: done
@@ -109,6 +125,20 @@ development_status:
   3-8-login-flow-update: done
   3-9-epic-3-deferred-hardening: done
   3-10-epic-3-post-39-deferred-hardening: done
+  # Epic 3 Extension: Ability Mechanics Rework (scoped from the 2026-07-08
+  # brainstorming session, not new PRD FRs) — 3.11-3.15 build shared engine
+  # capabilities, 3.16-3.20 apply them per class. Sequenced so no story
+  # depends on a later one.
+  3-11-ability-input-taxonomy-expansion-and-type-corrections: done
+  3-12-status-effect-engine-buffs-debuffs-with-duration: ready-for-dev
+  3-13-projectile-physics-and-zone-field-entities: ready-for-dev
+  3-14-displacement-pull-physics-primitive: ready-for-dev
+  3-15-self-cost-resource-and-mixed-faction-target-resolution: ready-for-dev
+  3-16-stonehide-kit-rework: ready-for-dev
+  3-17-spiritcaller-kit-rework-ancestors-voice-spirit-nova-warding-cry: ready-for-dev
+  3-18-soul-mend-ranged-spirit-targeting-revive: ready-for-dev
+  3-19-souldrinker-kit-rework-blood-spike-crimson-lash-dark-pact-void-pulse: ready-for-dev
+  3-20-stormcaller-storm-eye-rework: ready-for-dev
   epic-3-retrospective: optional
 
   # ─── Dev infra fixes (no epic) ──────────────────────────────────────────────

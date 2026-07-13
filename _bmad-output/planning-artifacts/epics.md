@@ -1,10 +1,11 @@
 ---
-stepsCompleted: ['step-01-validate-prerequisites', 'step-02-design-epics', 'step-03-create-stories', 'step-04-final-validation', 'step-03-epic-6-stories']
+stepsCompleted: ['step-01-validate-prerequisites', 'step-02-design-epics', 'step-03-create-stories', 'step-04-final-validation', 'step-03-epic-6-stories', 'step-03-epic-3-extension-ability-mechanics']
 inputDocuments:
   - '_bmad-output/planning-artifacts/gdds/gdd-party-delve-2026-06-13/gdd.md'
   - '_bmad-output/game-architecture.md'
   - '_bmad-output/planning-artifacts/ux-designs/ux-party-delve-2026-06-16/DESIGN.md'
   - '_bmad-output/planning-artifacts/ux-designs/ux-party-delve-2026-06-16/EXPERIENCE.md'
+  - '_bmad-output/brainstorming/brainstorming-session-2026-07-08-131737.md'
 ---
 
 # party-delve - Epic Breakdown
@@ -790,6 +791,317 @@ So that the dungeon run has a clear moment of victory and forward progression.
 **When** the test suite runs
 **Then** `tests/contract/net-protocol.test.ts` verifies serialize→deserialize round-trips for all new message types introduced in E3
 **And** `tests/unit/fsm.test.ts` passes all difficulty-tier transition tests
+
+---
+
+### Epic 3 Extension: Ability Mechanics Rework
+
+Scoped from the 2026-07-08 brainstorming session (`_bmad-output/brainstorming/brainstorming-session-2026-07-08-131737.md`), not from new PRD FRs. Of the 16 abilities across the 4 alpha classes, 7 were placeholder no-ops (Iron Skin, Ancestor's Voice, Spirit Nova, Soul Mend, Warding Cry, Dark Pact, Storm Eye), Spirit Nova was mislabeled, and Blood Draw had no lifesteal despite its flavor. Stories 3.11–3.15 build the 5 shared engine capabilities the reworked kit depends on (input taxonomy, status effects, projectiles/zones, displacement, self-cost/mixed-faction targeting); Stories 3.16–3.20 apply them per class. Sequenced so no story depends on a later one.
+
+### Story 3.11: Ability Input Taxonomy Expansion & Type Corrections
+
+As a simulation engineer,
+I want the `AbilityInputType` taxonomy extended to cover Aim+Cast alongside the existing three types, and the real input-type mismatches corrected,
+So that every ability's server-side dispatch matches its actual intended activation feel before any ability rework begins.
+
+**Acceptance Criteria:**
+
+**Given** `packages/shared-types/src/input.ts` defines `AbilityInputType`
+**When** the type is extended
+**Then** it becomes `'AUTO' | 'RELEASE' | 'TAP' | 'AIM_CAST'` — the existing three values are kept as-is (they already map to Aim+Hold/Channel, Aim+Release, and Instant/Tap respectively) and only `AIM_CAST` is added, since no ability in the final spec uses a non-aimed Cast/Charge type
+**And** no rename of `AUTO`/`RELEASE`/`TAP` occurs, to avoid unnecessary churn across `game-rules`, `simulation-server`, and `mobile-controller`
+
+**Given** `packages/shared-types/src/class-definitions.ts` `CLASS_DEFINITIONS`
+**When** the input types are cross-checked against the brainstorming session's Final Ability Spec Sheet table
+**Then** exactly 6 corrections are applied: Tremor Stomp `RELEASE`→`TAP`, Stone Wall `TAP`→`RELEASE`, Soul Mend `RELEASE`→`AIM_CAST`, Dark Pact `TAP`→`RELEASE`, Void Pulse `TAP`→`RELEASE`, Storm Eye `AUTO`→`RELEASE`
+**And** Avalanche's `AUTO` and Ancestor's Voice's `AUTO` are left unchanged — the session's "Stone Wall/Avalanche swap" note does not match the final spec table, which only changes Stone Wall and Tremor Stomp
+
+**Given** `packages/game-rules/src/systems/abilities.ts` `dispatchAbility`
+**When** resolving `directionX`/`directionY` for an ability
+**Then** only `TAP` abilities zero the direction; `AUTO`, `RELEASE`, and `AIM_CAST` all pass through the caller-supplied direction
+**And** `AIM_CAST` is accepted by `dispatchAbility` without a runtime error, even though the channel/cancel behavior itself is implemented in Story 3.18
+
+**Given** unit tests
+**When** `tests/unit/abilities.test.ts` runs
+**Then** a table-driven test asserts all 16 abilities' `inputType` in `CLASS_DEFINITIONS` matches the corrected spec, and `dispatchAbility`'s direction-zeroing behavior is verified for all 4 input types
+
+---
+
+### Story 3.12: Status-Effect Engine (Buffs/Debuffs with Duration)
+
+As a simulation engineer,
+I want a reusable status-effect system for timed buffs and debuffs on players and enemies,
+So that Iron Skin, Tremor Stomp's slow, Dark Pact's buff, Warding Cry's shield, and Storm Eye's tick all share one mechanism instead of bespoke per-ability flags.
+
+**Acceptance Criteria:**
+
+**Given** `packages/shared-types/src/player.ts` `PlayerState` and `packages/shared-types/src/enemy.ts` `EnemyState`
+**When** the status-effect engine lands
+**Then** both gain a `statusEffects: StatusEffect[]` field, where `StatusEffect = { type: 'damageReduction' | 'slow' | 'damageBuff' | 'shield'; magnitude: number; expiresAtMs: number }`
+**And** the existing single-purpose `stompedUntil` field on `PlayerState` is removed in favor of a `'slow'` status effect, so there is one mechanism, not two
+
+**Given** `packages/game-rules/src/systems/status-effects.ts` (new)
+**When** `applyStatusEffect(target, effect, nowMs)` is called
+**Then** it returns `Result<{ target: PlayerState | EnemyState }, StatusEffectError>` with the effect appended, replacing any existing effect of the same type rather than stacking duplicates
+**And** `tickStatusEffects(target, nowMs)` returns the target with all effects whose `expiresAtMs <= nowMs` removed — pure, no I/O, no throw
+
+**Given** a damage or movement calculation reads an entity's status effects
+**When** a `'damageReduction'` effect is present
+**Then** incoming damage in `combat.ts`/`player-health.ts` is multiplied by `(1 - magnitude)` before being applied
+**And** when a `'slow'` effect is present, movement speed is multiplied by `(1 - magnitude)` in the movement system, replacing the StompLayer's direct `stompedUntil` check from Story 3.2
+
+**Given** the sim tick loop
+**When** a status effect is applied or expires
+**Then** a `status:applied` / `status:expired` delta event is broadcast with target id, effect type, and expiry, and the host renders a generic status badge/aura (per-ability-specific art is out of scope)
+
+**Given** unit tests
+**When** `tests/unit/status-effects.test.ts` runs
+**Then** apply/replace/tick/expire and the damage-reduction/slow multiplier math are each covered, with no Colyseus or planck.js imports
+
+---
+
+### Story 3.13: Projectile Physics & Zone/Field Entities
+
+As a simulation engineer,
+I want projectile bodies that travel and collide, and persistent Zone/Field entities that tick and can be chained from a projectile impact,
+So that Blood Spike, Void Pulse, and Storm Eye have the delivery mechanisms their specs require instead of instant hitscan.
+
+**Acceptance Criteria:**
+
+**Given** `apps/simulation-server/src/physics/world.ts`
+**When** a projectile-type ability fires
+**Then** `createProjectileBody()` spawns a dynamic planck.js body with `isSensor: true`, velocity along the input direction, and a max travel distance/lifetime from new `balance.ts` constants (`PROJECTILE_SPEED_PX_S`, `PROJECTILE_MAX_RANGE_PX`)
+**And** the projectile is tracked in `GameState` via a new `ProjectileState[]` array (id, ownerId, x, y, class, abilityIndex)
+
+**Given** a projectile's sensor body overlaps an enemy or ally body
+**When** the planck.js contact listener fires (same pattern as the existing Spirit Bond proximity sensors in `apps/simulation-server/src/physics/sensors.ts`)
+**Then** the projectile resolves its effect via `combat.ts`/`player-health.ts` exactly once, broadcasts `projectile:hit`, and is removed from `GameState`
+**And** a projectile that exceeds its max range/lifetime without a hit is removed with a `projectile:expired` delta and no effect applied
+
+**Given** `packages/game-rules/src/systems/zones.ts` (new)
+**When** a Zone/Field ability fires — spawned directly (Storm Eye) or chained from a projectile impact (Void Pulse)
+**Then** a `ZoneState` entity (id, ownerId, x, y, radius, effectType, tickIntervalMs, expiresAtMs) is added to `GameState`, backed by a stationary planck.js sensor body
+**And** every `tickIntervalMs`, all bodies overlapping the zone's sensor have the zone's effect reapplied, broadcast as `zone:tick`
+**And** when `nowMs >= expiresAtMs`, the zone and its sensor body are removed with `zone:expired`
+
+**Given** a projectile-impact ability configured to chain into a zone (Void Pulse)
+**When** the projectile resolves its hit
+**Then** impact damage is applied first, then a `ZoneState` is spawned at the impact position using that ability's zone parameters from `balance.ts` — the chain is declarative per-ability config, not a special-cased branch in the projectile code
+
+**Given** unit tests
+**When** `tests/unit/zones.test.ts` and `tests/unit/projectiles.test.ts` run
+**Then** zone tick reapplication and expiry, and projectile hit/expire resolution, are covered as pure functions; physics body creation itself is exercised via a sim-server integration test, matching the existing `world.ts` test split
+
+---
+
+### Story 3.14: Displacement/Pull Physics Primitive
+
+As a simulation engineer,
+I want a reusable displacement/pull force,
+So that Stone Wall's drag and Void Pulse's vacuum zone use one mechanism instead of two bespoke implementations.
+
+**Acceptance Criteria:**
+
+**Given** `packages/game-rules/src/systems/displacement.ts` (new)
+**When** `applyDisplacement(target, sourceX, sourceY, strength)` is called
+**Then** it returns a velocity vector pointing from the target toward the source, scaled by `strength`, as a pure calculation with no planck.js import
+**And** `apps/simulation-server` applies this vector as a one-tick impulse via `body.applyLinearImpulse` (not a direct position mutation), preserving normal collision resolution
+
+**Given** Stone Wall fires (Cone/Line, long reach)
+**When** any enemy overlaps the cone's hit zone (`isInHitZone`)
+**Then** each hit enemy takes Stone Wall's configured damage and receives a displacement impulse pulling it toward the caster's position at cast time
+
+**Given** Void Pulse's chained zone (Story 3.13)
+**When** a unit — ally or enemy — is inside the zone on a tick
+**Then** it receives a displacement impulse toward the zone's center on every zone tick, using the same `applyDisplacement` function as Stone Wall
+
+**Given** displacement is applied near arena bounds or other bodies
+**When** the impulse would push a unit into a wall or another body
+**Then** planck.js's own collision resolution handles it — no bespoke bounds-clamping is added (ponytail: revisit only if playtesting shows a problem)
+
+**Given** unit tests
+**When** `tests/unit/displacement.test.ts` runs
+**Then** `applyDisplacement`'s direction/magnitude math is verified across several source/target configurations, including target-equals-source (zero-vector guard, no divide-by-zero)
+
+---
+
+### Story 3.15: Self-Cost Resource & Mixed-Faction Target Resolution
+
+As a simulation engineer,
+I want a self-cost (HP-as-resource) mechanic and a single-query mixed-faction target resolver,
+So that Blood Spike, Crimson Lash, and Dark Pact share one cost mechanism, and Ancestor's Voice/Spirit Nova share one targeting query instead of separate ally/enemy code paths.
+
+**Acceptance Criteria:**
+
+**Given** `packages/game-rules/src/systems/abilities.ts` `dispatchAbility`
+**When** an ability has a self-cost defined in a new `ABILITY_SELF_COST_HP` table in `balance.ts` (0 for abilities without a cost)
+**Then** the caster's HP is reduced by `min(selfCostHp, casterHp - 1)` before the ability resolves — a 1-HP safety floor that caps the cost rather than blocking the cast, per the session's Blood Spike ruling
+**And** if the caster's HP is already 1, the ability still fires with zero HP actually deducted
+
+**Given** Blood Spike hits an enemy
+**When** damage is applied via `combat.ts`
+**Then** the caster is healed for 50% of the damage dealt (lifesteal = Damage+Heal fired together, not a new primitive)
+**And** on a miss (projectile expires without a hit), the self-cost HP is still lost with no compensating heal
+
+**Given** `packages/game-rules/src/systems/targeting.ts` (new)
+**When** a mixed-faction ability (Ancestor's Voice, Spirit Nova) resolves its hit zone
+**Then** `resolveMixedFactionTargets(casterFaction, targetsInZone)` returns allies (receive the ability's heal value) and enemies (receive the ability's damage value) from one hit-zone query — no separate ally-query/enemy-query paths
+**And** a target's faction is derived from whether it is a `PlayerState` or `EnemyState`, with no new stored "faction" field
+
+**Given** Crimson Lash fires
+**When** damage is calculated
+**Then** damage scales inversely with the caster's current HP fraction via a new tunable `balance.ts` constant, verified by a test asserting damage increases as caster HP decreases
+
+**Given** unit tests
+**When** `tests/unit/self-cost.test.ts` and `tests/unit/targeting.test.ts` run
+**Then** the 1-HP floor edge case, lifesteal math, and mixed-faction split are each covered independently of any specific ability
+
+---
+
+### Story 3.16: Stonehide Kit Rework
+
+As a player,
+I want Stonehide's full kit — Iron Skin, Avalanche, Tremor Stomp, Stone Wall — implemented per the final spec,
+So that Stonehide plays as a gather/mitigate/control/sustain tank instead of shipping two placeholder abilities.
+
+**Acceptance Criteria:**
+
+**Given** Iron Skin fires (`TAP`, Self)
+**When** the ability resolves
+**Then** a `'damageReduction'` status effect (magnitude and duration from new `balance.ts` constants) is applied to the caster via `applyStatusEffect` (Story 3.12), replacing the current damage=0 no-op
+
+**Given** Tremor Stomp fires (`TAP` after Story 3.11's correction, self-centered Proximity/Radius)
+**When** it resolves
+**Then** all enemies within `ABILITY_HIT_RADIUS_PX` of the caster take AoE damage and receive a `'slow'` status effect (magnitude/duration from `balance.ts`)
+
+**Given** Stone Wall fires (`RELEASE` after Story 3.11's correction, Cone/Line, long reach)
+**When** it resolves
+**Then** every enemy in the cone takes Stone Wall's configured damage and is pulled toward the caster via `applyDisplacement` (Story 3.14)
+
+**Given** Avalanche (basic attack) fires (`AUTO`, Cone/Line)
+**When** it resolves
+**Then** it deals its existing configured damage unchanged — Avalanche was already correct; this story only confirms no regression via existing test coverage
+
+**Given** `tests/unit/abilities.test.ts`
+**When** Stonehide's full kit is exercised
+**Then** Iron Skin's damage reduction, Tremor Stomp's damage+slow, and Stone Wall's damage+pull each have a dedicated test case
+
+---
+
+### Story 3.17: Spiritcaller Kit Rework (Ancestor's Voice, Spirit Nova, Warding Cry)
+
+As a player,
+I want Ancestor's Voice, Spirit Nova, and Warding Cry implemented per the final spec,
+So that Spiritcaller's sustain/burst/defend kit works as intended (Soul Mend's revive interaction is covered separately in Story 3.18).
+
+**Acceptance Criteria:**
+
+**Given** Ancestor's Voice fires (`AUTO`, Cone/Line, mid-range)
+**When** it resolves
+**Then** `resolveMixedFactionTargets` (Story 3.15) splits targets in the cone into allies (healed) and enemies (damaged) from one query, replacing the current heal-only placeholder
+
+**Given** Spirit Nova fires (`TAP`, Expanding Radius)
+**When** it resolves
+**Then** a new `resolveExpandingRadius` helper in `packages/game-rules/src/systems/targeting.ts` grows a hit-zone radius from 0 to its max over a short duration, ticking on the sim's cadence, applying mixed-faction heal/damage to everyone it sweeps over — fixing the current mislabel (code deals damage only; spec is mixed-faction)
+
+**Given** Warding Cry fires (`TAP`, self-centered Proximity/Radius)
+**When** it resolves
+**Then** all allies within `ABILITY_HIT_RADIUS_PX` of the caster receive a `'shield'` status effect (temporary flat damage absorption, Story 3.12), replacing the current damage=0 no-op
+
+**Given** Soul Mend
+**When** this story is scoped
+**Then** Soul Mend is explicitly out of scope — it is fully covered by Story 3.18
+
+**Given** `tests/unit/abilities.test.ts` and `tests/unit/targeting.test.ts`
+**When** Spiritcaller's reworked kit is exercised
+**Then** Ancestor's Voice and Spirit Nova's mixed-faction resolution, and Warding Cry's shield application, are each covered
+
+---
+
+### Story 3.18: Soul Mend — Ranged Spirit-Targeting Revive
+
+As a Spiritcaller,
+I want to channel Soul Mend at a downed ally's spirit from range to revive them directly,
+So that I can save a teammate without walking to their body, at the cost of a longer, interruptible cast.
+
+**Acceptance Criteria:**
+
+**Given** a player triggers Soul Mend (`AIM_CAST`)
+**When** they hold the input aimed at a downed ally's spirit-form position
+**Then** the sim server starts a 2–3s channel (duration from a new `balance.ts` constant), tracked per-player in `GameState` via `channelingAbility: { abilityIndex, targetPlayerId, startedAt, durationMs } | null`, and a `cast:started` delta is broadcast
+
+**Given** a channel is in progress
+**When** the caster releases input early, moves out of range, or the target dies or is revived by someone else before completion
+**Then** the channel is cancelled server-side, `channelingAbility` is cleared, and `cast:cancelled` is broadcast — no ability effect is applied and Soul Mend does not enter cooldown on a cancelled cast
+
+**Given** the target must be a downed ally's spirit specifically
+**When** the sim validates the Soul Mend target
+**Then** it rejects targets not currently in `isDown` state (reuses `PlayerState.isDown`; no new spirit-targeting field), using the same range-limit rule as every other ability (no map-wide exception, per the session's ruling)
+
+**Given** the channel completes without interruption
+**When** `nowMs >= startedAt + durationMs`
+**Then** the target is revived directly — same state transition as the existing proximity-based revive in `player-health.ts` (`isDown: false`, `reviveTimerExpiresAt: 0`, HP set to `REVIVE_HP`) — bypassing the normal walk-to-body proximity-sensor revive flow entirely, and Soul Mend enters its normal cooldown
+
+**Given** unit and integration tests
+**When** `tests/unit/soul-mend.test.ts` runs
+**Then** channel-start, cancel-on-each-interrupt-cause, target validation, and completion-revive are covered as pure `game-rules` logic, with a sim-server integration test verifying the channel timer ticks correctly across multiple ticks
+
+---
+
+### Story 3.19: Souldrinker Kit Rework (Blood Spike, Crimson Lash, Dark Pact, Void Pulse)
+
+As a player,
+I want Souldrinker's full kit — Blood Spike, Crimson Lash, Dark Pact, Void Pulse — implemented per the final spec,
+So that Souldrinker plays as a coherent risk/reward blood-magic class instead of a flat-damage drain with no lifesteal.
+
+**Acceptance Criteria:**
+
+**Given** Blood Draw is renamed Blood Spike (`AUTO`, unchanged, Projectile delivery)
+**When** it fires
+**Then** it spawns a projectile (Story 3.13) with the self-cost + 50%-lifesteal-on-hit behavior from Story 3.15, replacing the current instant-hitscan drain with no lifesteal
+**And** the display name updates from "Blood Draw" to "Blood Spike" in `CLASS_DEFINITIONS` and the mobile skill-cell label
+
+**Given** Crimson Lash fires (`RELEASE`, unchanged, Cone/Line)
+**When** it resolves
+**Then** damage scales inversely with the caster's current HP per Story 3.15's formula, hitting every enemy in the cone
+
+**Given** Dark Pact fires (`RELEASE` after Story 3.11's correction, targets a living ally)
+**When** it resolves
+**Then** it drains 10% of the target ally's current HP to the caster (applied to both players in the same tick via `player-health.ts`) and grants the caster a `'damageBuff'` status effect (+25% damage, temporary, Story 3.12) — no down-safety floor, so this can push the target into a down state (intentional risk per the session's ruling)
+
+**Given** Void Pulse fires (`RELEASE` after Story 3.11's correction, Projectile → chained Zone/Field)
+**When** the projectile impacts
+**Then** it deals its configured damage and spawns a pull zone (Story 3.13's chaining + Story 3.14's displacement) affecting both allies and enemies
+
+**Given** `tests/unit/abilities.test.ts`
+**When** Souldrinker's full reworked kit is exercised
+**Then** Blood Spike's self-cost/lifesteal/projectile behavior, Crimson Lash's inverse-HP scaling, Dark Pact's drain-transfer, and Void Pulse's impact+pull each have a dedicated test case
+
+---
+
+### Story 3.20: Stormcaller — Storm Eye Rework
+
+As a Stormcaller,
+I want Storm Eye to place a persistent damage zone with periodic lightning strikes,
+So that my ultimate creates lasting area pressure instead of doing nothing.
+
+**Acceptance Criteria:**
+
+**Given** Storm Eye fires (`RELEASE` after Story 3.11's correction, placement)
+**When** it resolves
+**Then** a `ZoneState` (Story 3.13) is placed at the aimed position with a steady damage tick for its configured duration, replacing the current damage=0 no-op
+
+**Given** the Storm Eye zone is active
+**When** each periodic strike interval elapses (a separate, longer interval than the steady tick, from a new `balance.ts` constant)
+**Then** a bonus lightning-bolt strike deals extra damage to one random target currently inside the zone, selected via the sim's xoshiro128++ RNG instance — no `Math.random()` (AR8) — broadcast as its own delta distinct from the steady `zone:tick` event
+
+**Given** Lightning Arc, Tempest Hurl, and Thunder Clap
+**When** this story is scoped
+**Then** these three abilities are explicitly out of scope — the session confirmed them as already correct, no rework needed
+
+**Given** unit tests
+**When** `tests/unit/storm-eye.test.ts` runs
+**Then** steady-tick damage and random-strike selection (with a seeded RNG for determinism, per NFR7) are each covered
 
 ---
 

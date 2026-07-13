@@ -1,6 +1,6 @@
 import { PlayerClass } from './player.js';
 
-export type AbilityInputType = 'AUTO' | 'RELEASE' | 'TAP';
+export type AbilityInputType = 'AUTO' | 'RELEASE' | 'TAP' | 'AIM_CAST';
 
 export interface ClassAbilityDef {
   name: string;
@@ -22,8 +22,8 @@ export const CLASS_DEFINITIONS: Record<PlayerClass, ClassDef> = {
     role: 'Tank · Frontline Anchor',
     flavor: 'Called from the mountain clans, where endurance is prayer.',
     abilities: [
-      { name: 'Stone Wall',    inputType: 'TAP'     },
-      { name: 'Tremor Stomp', inputType: 'RELEASE'  },
+      { name: 'Stone Wall',    inputType: 'RELEASE' },
+      { name: 'Tremor Stomp', inputType: 'TAP'      },
       { name: 'Iron Skin',    inputType: 'TAP'      },
       { name: 'Avalanche',    inputType: 'AUTO'     },
     ],
@@ -36,7 +36,7 @@ export const CLASS_DEFINITIONS: Record<PlayerClass, ClassDef> = {
     abilities: [
       { name: "Ancestor's Voice", inputType: 'AUTO'    },
       { name: 'Spirit Nova',      inputType: 'TAP'     },
-      { name: 'Soul Mend',        inputType: 'RELEASE' },
+      { name: 'Soul Mend',        inputType: 'AIM_CAST' },
       { name: 'Warding Cry',      inputType: 'TAP'     },
     ],
   },
@@ -48,8 +48,8 @@ export const CLASS_DEFINITIONS: Record<PlayerClass, ClassDef> = {
     abilities: [
       { name: 'Blood Draw',   inputType: 'AUTO'    },
       { name: 'Crimson Lash', inputType: 'RELEASE' },
-      { name: 'Dark Pact',    inputType: 'TAP'     },
-      { name: 'Void Pulse',   inputType: 'TAP'     },
+      { name: 'Dark Pact',    inputType: 'RELEASE' },
+      { name: 'Void Pulse',   inputType: 'RELEASE' },
     ],
   },
   [PlayerClass.STORMCALLER]: {
@@ -61,7 +61,7 @@ export const CLASS_DEFINITIONS: Record<PlayerClass, ClassDef> = {
       { name: 'Lightning Arc', inputType: 'AUTO'    },
       { name: 'Tempest Hurl',  inputType: 'RELEASE' },
       { name: 'Thunder Clap',  inputType: 'TAP'     },
-      { name: 'Storm Eye',     inputType: 'AUTO'    },
+      { name: 'Storm Eye',     inputType: 'RELEASE' },
     ],
   },
 };

@@ -1,6 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import { dispatchAbility } from 'game-rules';
-import { PlayerClass } from 'shared-types';
+import { PlayerClass, CLASS_DEFINITIONS } from 'shared-types';
+
+const EXPECTED_INPUT_TYPES: Record<PlayerClass, [string, string, string, string]> = {
+  [PlayerClass.STONEHIDE]:    ['RELEASE', 'TAP', 'TAP', 'AUTO'],
+  [PlayerClass.SPIRITCALLER]: ['AUTO', 'TAP', 'AIM_CAST', 'TAP'],
+  [PlayerClass.SOULDRINKER]:  ['AUTO', 'RELEASE', 'RELEASE', 'RELEASE'],
+  [PlayerClass.STORMCALLER]:  ['AUTO', 'RELEASE', 'TAP', 'RELEASE'],
+};
 
 describe('dispatchAbility', () => {
   const baseCtx = {
@@ -29,11 +36,11 @@ describe('dispatchAbility', () => {
   });
 
   it('TAP ability returns direction (0, 0) regardless of input direction', () => {
-    // Stonehide slot 0 = Stone Wall (TAP)
+    // Stonehide slot 1 = Tremor Stomp (TAP)
     const result = dispatchAbility({
       ...baseCtx,
       playerClass: PlayerClass.STONEHIDE,
-      abilityIndex: 0,
+      abilityIndex: 1,
       directionX: 1,
       directionY: 0.5,
     });
@@ -58,11 +65,11 @@ describe('dispatchAbility', () => {
   });
 
   it('RELEASE ability preserves direction', () => {
-    // Stonehide slot 1 = Tremor Stomp (RELEASE)
+    // Stonehide slot 0 = Stone Wall (RELEASE)
     const result = dispatchAbility({
       ...baseCtx,
       playerClass: PlayerClass.STONEHIDE,
-      abilityIndex: 1,
+      abilityIndex: 0,
       directionX: -0.5,
       directionY: 0.8,
     });
@@ -70,6 +77,30 @@ describe('dispatchAbility', () => {
     if (result.ok) {
       expect(result.value.directionX).toBeCloseTo(-0.5);
       expect(result.value.directionY).toBeCloseTo(0.8);
+    }
+  });
+
+  it('AIM_CAST ability preserves direction', () => {
+    // Spiritcaller slot 2 = Soul Mend (AIM_CAST)
+    const result = dispatchAbility({
+      ...baseCtx,
+      playerClass: PlayerClass.SPIRITCALLER,
+      abilityIndex: 2,
+      directionX: 0.3,
+      directionY: -0.9,
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.directionX).toBeCloseTo(0.3);
+      expect(result.value.directionY).toBeCloseTo(-0.9);
+    }
+  });
+
+  it('all 16 abilities have the corrected inputType', () => {
+    for (const cls of Object.values(PlayerClass)) {
+      CLASS_DEFINITIONS[cls].abilities.forEach((ability, i) => {
+        expect(ability.inputType).toBe(EXPECTED_INPUT_TYPES[cls][i]);
+      });
     }
   });
 
