@@ -21,7 +21,11 @@ export {
   WAVE_ENEMY_SCALE,
   BOSS_ADD_HP,
   BOSS_STOMP_DAMAGE,
+  PROJECTILE_SPEED_PX_S,
+  PROJECTILE_MAX_RANGE_PX,
+  ABILITY_CHAINED_ZONE,
 } from './balance.js';
+export type { ChainedZoneConfig } from './balance.js';
 export { applyPlayerDamage, getReviveWindowMs } from './systems/player-health.js';
 export type { PlayerDamageResult, HealthError } from './systems/player-health.js';
 export { applyDamage, isInHitZone } from './systems/combat.js';
@@ -40,3 +44,6 @@ export type { BossEvent, BossAddSpawnedEvent, BossStompedEvent } from './entitie
 export { evaluateGrasslandAchievements } from './systems/achievements.js';
 export { applyStatusEffect, tickStatusEffects, getStatusEffectMagnitude } from './systems/status-effects.js';
 export type { StatusEffectTarget, StatusEffectError } from './systems/status-effects.js';
+export { resolveProjectileHit, isProjectileExpired } from './systems/projectiles.js';
+export type { ProjectileError } from './systems/projectiles.js';
+export { shouldZoneTick, isZoneExpired } from './systems/zones.js';

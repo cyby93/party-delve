@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { serialize, deserialize, applyDelta, EventNames } from 'net-protocol';
-import type { SnapshotMsg, DeltaEventMsg, InputEventMsg, PlayerPoiEnteredDelta, PlayerPoiExitedDelta, AbilityFiredDelta, EnemyDamagedDelta, PlayerDownedDelta, BondNotificationMsg, ContinueMsg, BossDamagedDelta, BossPhaseChangedDelta, BossDefeatedDelta, RunVictoryMsg, StatusAppliedDelta, StatusExpiredDelta } from 'net-protocol';
-import type { GameState, PlayerState, RunReward } from 'shared-types';
+import type { SnapshotMsg, DeltaEventMsg, InputEventMsg, PlayerPoiEnteredDelta, PlayerPoiExitedDelta, AbilityFiredDelta, EnemyDamagedDelta, PlayerDownedDelta, BondNotificationMsg, ContinueMsg, BossDamagedDelta, BossPhaseChangedDelta, BossDefeatedDelta, RunVictoryMsg, StatusAppliedDelta, StatusExpiredDelta, ProjectileHitDelta, ProjectileExpiredDelta, ZoneTickDelta, ZoneExpiredDelta } from 'net-protocol';
+import type { GameState, PlayerState, RunReward, ProjectileState, ZoneState } from 'shared-types';
 import { PlayerClass, SessionColor, EnemyType, DifficultyTier, EnemyFSMState, BondType, BossPhase, GrasslandAchievement } from 'shared-types';
 
 function mockGameState(): GameState {
@@ -30,6 +30,8 @@ function mockGameState(): GameState {
     floorLayout: null,
     runProposal: null,
     boss: null,
+    projectiles: [],
+    zones: [],
   };
 }
 
@@ -709,6 +711,82 @@ describe('net-protocol contract tests', () => {
     it('applyDelta status:expired returns same reference for unknown targetId', () => {
       const state: GameState = mockGameState();
       const delta: DeltaEventMsg = { type: 'status:expired', targetId: 'ghost', effectType: 'slow' };
+      expect(applyDelta(state, delta)).toBe(state);
+    });
+  });
+
+  describe('Story 3.13 projectile/zone delta round-trips', () => {
+    function mockProjectile(overrides?: Partial<ProjectileState>): ProjectileState {
+      return {
+        id: 'proj-1',
+        ownerId: 'p1',
+        x: 100,
+        y: 100,
+        class: PlayerClass.SOULDRINKER,
+        abilityIndex: 3,
+        ...overrides,
+      };
+    }
+
+    function mockZone(overrides?: Partial<ZoneState>): ZoneState {
+      return {
+        id: 'zone-1',
+        ownerId: 'p1',
+        x: 100,
+        y: 100,
+        radius: 150,
+        effectType: 'damage',
+        tickIntervalMs: 1000,
+        expiresAtMs: 10_000,
+        ...overrides,
+      };
+    }
+
+    it('ProjectileHitDelta survives serialize → deserialize', () => {
+      const delta: ProjectileHitDelta = { type: 'projectile:hit', projectileId: 'proj-1', x: 120, y: 130 };
+      expect(deserialize<DeltaEventMsg>(serialize(delta))).toEqual(delta);
+    });
+
+    it('ProjectileExpiredDelta survives serialize → deserialize', () => {
+      const delta: ProjectileExpiredDelta = { type: 'projectile:expired', projectileId: 'proj-1' };
+      expect(deserialize<DeltaEventMsg>(serialize(delta))).toEqual(delta);
+    });
+
+    it('ZoneTickDelta survives serialize → deserialize', () => {
+      const delta: ZoneTickDelta = { type: 'zone:tick', zoneId: 'zone-1' };
+      expect(deserialize<DeltaEventMsg>(serialize(delta))).toEqual(delta);
+    });
+
+    it('ZoneExpiredDelta survives serialize → deserialize', () => {
+      const delta: ZoneExpiredDelta = { type: 'zone:expired', zoneId: 'zone-1' };
+      expect(deserialize<DeltaEventMsg>(serialize(delta))).toEqual(delta);
+    });
+
+    it('applyDelta projectile:hit removes the projectile from state', () => {
+      const state: GameState = { ...mockGameState(), projectiles: [mockProjectile()] };
+      const delta: DeltaEventMsg = { type: 'projectile:hit', projectileId: 'proj-1', x: 120, y: 130 };
+      const next = applyDelta(state, delta);
+      expect(next.projectiles).toEqual([]);
+      expect(state.projectiles).toHaveLength(1); // original not mutated
+    });
+
+    it('applyDelta projectile:expired removes the projectile from state', () => {
+      const state: GameState = { ...mockGameState(), projectiles: [mockProjectile()] };
+      const delta: DeltaEventMsg = { type: 'projectile:expired', projectileId: 'proj-1' };
+      const next = applyDelta(state, delta);
+      expect(next.projectiles).toEqual([]);
+    });
+
+    it('applyDelta zone:expired removes the zone from state', () => {
+      const state: GameState = { ...mockGameState(), zones: [mockZone()] };
+      const delta: DeltaEventMsg = { type: 'zone:expired', zoneId: 'zone-1' };
+      const next = applyDelta(state, delta);
+      expect(next.zones).toEqual([]);
+    });
+
+    it('applyDelta zone:tick is a no-op on state', () => {
+      const state: GameState = { ...mockGameState(), zones: [mockZone()] };
+      const delta: DeltaEventMsg = { type: 'zone:tick', zoneId: 'zone-1' };
       expect(applyDelta(state, delta)).toBe(state);
     });
   });

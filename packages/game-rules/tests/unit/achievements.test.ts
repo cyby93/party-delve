@@ -38,6 +38,7 @@ function makeState(
     players,
     enemies: [], activeBonds: [], essenceDrops: [],
     tick: 0, floorLayout: null, runProposal: null, boss: null,
+    projectiles: [], zones: [],
   };
 }
 

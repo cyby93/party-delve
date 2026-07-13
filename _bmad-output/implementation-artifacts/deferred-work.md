@@ -881,3 +881,25 @@ Only `loadLevel` (on the next level load) and the boss-defeat handler destroy th
 
 **D-3.12-B — `tickStatusEffects` expiry-broadcast diff relies on effect-object reference equality, undocumented fragility for future changes** [`apps/simulation-server/src/rooms/GameRoom.ts`, tick loop's "Tick status effects" block]
 The loop detects which effects expired via `ticked.statusEffects.includes(effect)` (identity comparison against the pre-tick array). This is correct today because `tickStatusEffects` only filters (never clones/mutates individual effect objects) and `applyStatusEffect` replaces-by-reference rather than mutating in place. If a future change makes either function transform individual effect objects in place (e.g., decaying `magnitude` over time), `includes` would break silently and misreport every effect as expired every tick. No test guards this invariant. Revisit when/if per-tick magnitude decay or in-place effect mutation is introduced (e.g., a "stacks that decay" mechanic).
+
+---
+
+## Deferred from: code review of 3-13-projectile-physics-and-zone-field-entities (2026-07-13)
+
+**D-3.13-A — Projectile sensor radius (12px) vs. host-rendered dot radius (8px) mismatch** [`apps/simulation-server/src/physics/world.ts` `createProjectileBody`; `apps/host-client/src/screens/DungeonScreen.tsx` projectile render block]
+Neither value was specified by the story (only fixture *behavior* was) — both are free-choice tuning knobs. A mismatch means enemies can take damage slightly before the drawn dot visually reaches them. Cosmetic only; no AC governs exact radii. Revisit when Story 3.19/3.20 give a concrete ability its own visual identity for its projectile.
+
+**D-3.13-B — Projectiles pass through level geometry (walls)** [`apps/simulation-server/src/physics/world.ts` `createProjectileBody`, `filterMaskBits: CAT_ENEMY`]
+The projectile fixture is a sensor with no wall/obstacle category in its mask (sensors never produce collision response regardless of mask anyway). The only stopping mechanism is `isProjectileExpired`'s max-range check. No AC requires wall collision, and player/enemy bodies aren't wall-blocked either in the current codebase — consistent with existing scope, not a regression. Revisit if a future story adds level geometry that should block projectiles.
+
+**D-3.13-C — Zone overlap tracking loses target type (enemy vs. player) at the point of capture** [`apps/simulation-server/src/rooms/GameRoom.ts`, `zoneOverlapping: Map<string, Set<string>>`]
+`pendingZoneContactBegin`/`End` destructure only `targetId` (dropping `targetType`) into one untyped `Set<string>` shared by both enemy and player ids. Harmless today because the only implemented `effectType` is `'damage'`, which only looks targets up in `gameState.enemies` (silently ignoring any player id that lands in the same set). Story 3.14's `'pull'` effect on players will need a typed key (or a second map) to tell the two apart. Marked in-code with a `ponytail:` comment at the field declaration naming this ceiling.
+
+**D-3.13-D — No validation guards a non-positive `tickIntervalMs` in `ABILITY_CHAINED_ZONE`** [`packages/game-rules/src/balance.ts`, `ABILITY_CHAINED_ZONE`]
+`shouldZoneTick` would fire every tick if `tickIntervalMs` were ever `0` or negative. Unreachable today since every `ABILITY_CHAINED_ZONE` entry is `null` (this story's own AC4 scope: "can leave the config table empty/unused until 3.19 populates it"). Add a guard (or just author correct values) when Story 3.19 populates a real entry.
+
+**D-3.13-E — `DungeonScreen.tsx`'s new `projectileGraphicsRef`/`zoneGraphicsRef` Maps aren't cleared on component unmount** [`apps/host-client/src/screens/DungeonScreen.tsx`]
+Pre-existing pattern shared by every other per-entity Graphics ref in this file (`playerGraphicsRef`, `enemyGraphicsRef`, `essenceFlashesRef`, etc. — none of them clear on unmount either); the two new refs added by this story just follow the same established convention. Not a regression introduced by this story. Revisit if React StrictMode double-invoke or route-based remounting of `DungeonScreen` is ever observed to cause stale-Graphics errors in practice — likely a single shared fix across all these refs at once, not per-ref.
+
+**D-3.13-F — Essence-drop id naming is inconsistent between the projectile-hit path and the zone-tick-kill path** [`packages/game-rules/src/systems/projectiles.ts` `resolveProjectileHit`, `apps/simulation-server/src/rooms/GameRoom.ts` zone-tick kill branch]
+`resolveProjectileHit` builds its drop id as `` `drop-${projectile.id}` ``; the zone-tick-kill branch (and the pre-existing ability hit-scan flow) both use `` `drop-${this.tickCount}-${enemyId}` ``. Both schemes produce unique ids in their own context (no bug), just two different naming conventions for the same concept. Cosmetic; unify if a shared drop-id helper is ever introduced.

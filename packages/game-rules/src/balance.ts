@@ -1,4 +1,4 @@
-import type { PlayerClass, BondType } from 'shared-types';
+import type { PlayerClass, BondType, ZoneEffectType } from 'shared-types';
 
 // ── Movement ──────────────────────────────────────────────────────────────────
 export const JOYSTICK_DEADBAND = 0.05;
@@ -75,6 +75,27 @@ export const ABILITY_HIT_RADIUS_PX: Record<PlayerClass, readonly [number, number
   spiritcaller: [ 50, 90,  60,  90],
   souldrinker:  [ 50, 65,  80,  80],
   stormcaller:  [ 60, 70, 110,  80],
+};
+
+// ── Projectiles ───────────────────────────────────────────────────────────────
+export const PROJECTILE_SPEED_PX_S = 600;
+export const PROJECTILE_MAX_RANGE_PX = 800;
+
+// ── Declarative projectile→zone chaining ─────────────────────────────────────
+// Populated per-ability by Story 3.19 (Void Pulse); all-null until then so
+// GameRoom reads this table instead of special-casing any one ability.
+export interface ChainedZoneConfig {
+  effectType: ZoneEffectType;
+  radius: number;
+  tickIntervalMs: number;
+  durationMs: number;
+}
+
+export const ABILITY_CHAINED_ZONE: Record<PlayerClass, readonly [ChainedZoneConfig | null, ChainedZoneConfig | null, ChainedZoneConfig | null, ChainedZoneConfig | null]> = {
+  stonehide:    [null, null, null, null],
+  spiritcaller: [null, null, null, null],
+  souldrinker:  [null, null, null, null],
+  stormcaller:  [null, null, null, null],
 };
 
 // ── Spirit Essence ────────────────────────────────────────────────────────────

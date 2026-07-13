@@ -1,5 +1,5 @@
 # generated: 2026-06-22
-# last_updated: 2026-07-07
+# last_updated: 2026-07-13
 # project: party-delve
 # project_key: NOKEY
 # tracking_system: file-system
@@ -136,7 +136,7 @@ development_status:
   # depends on a later one.
   3-11-ability-input-taxonomy-expansion-and-type-corrections: done
   3-12-status-effect-engine-buffs-debuffs-with-duration: done
-  3-13-projectile-physics-and-zone-field-entities: ready-for-dev
+  3-13-projectile-physics-and-zone-field-entities: done
   3-14-displacement-pull-physics-primitive: ready-for-dev
   3-15-self-cost-resource-and-mixed-faction-target-resolution: ready-for-dev
   3-16-stonehide-kit-rework: ready-for-dev

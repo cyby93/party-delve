@@ -229,6 +229,28 @@ export type BossDefeatedDelta = {
   reward: RunReward;
 };
 
+export type ProjectileHitDelta = {
+  type: 'projectile:hit';
+  projectileId: string;
+  x: number;
+  y: number;
+};
+
+export type ProjectileExpiredDelta = {
+  type: 'projectile:expired';
+  projectileId: string;
+};
+
+export type ZoneTickDelta = {
+  type: 'zone:tick';
+  zoneId: string;
+};
+
+export type ZoneExpiredDelta = {
+  type: 'zone:expired';
+  zoneId: string;
+};
+
 export type DeltaEventMsg =
   | PlayerMovedDelta
   | PlayerDownedDelta
@@ -265,4 +287,8 @@ export type DeltaEventMsg =
   | BossStompedDelta
   | BossAddSpawnedDelta
   | StatusAppliedDelta
-  | StatusExpiredDelta;
+  | StatusExpiredDelta
+  | ProjectileHitDelta
+  | ProjectileExpiredDelta
+  | ZoneTickDelta
+  | ZoneExpiredDelta;

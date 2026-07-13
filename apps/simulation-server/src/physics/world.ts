@@ -13,6 +13,8 @@ export const CAT_POI         = 0x0004;
 export const CAT_ESSENCE     = 0x0008;
 export const CAT_BOND_SENSOR = 0x0020; // bond-proximity sensor fixtures on player bodies
 export const CAT_BOSS        = 0x0040; // boss body — combat is hit-scan, same as CAT_ENEMY
+export const CAT_PROJECTILE  = 0x0080;
+export const CAT_ZONE        = 0x0100;
 
 export function toMeters(pixels: number): number {
   return pixels / PIXELS_PER_METER;
@@ -28,7 +30,9 @@ export type PhysicsBodyData =
   | { type: 'poi';     poiId: string; poiType: PoiType }
   | { type: 'enemy';   enemyId: string }
   | { type: 'essence'; dropId: string }
-  | { type: 'boss';    bossId: string };
+  | { type: 'boss';    bossId: string }
+  | { type: 'projectile'; projectileId: string }
+  | { type: 'zone';       zoneId: string };
 
 export function createPhysicsWorld(): World {
   return new World({ gravity: Vec2(0, 0) });
@@ -46,7 +50,7 @@ export function createPlayerBody(world: World, playerId: string, x: number, y: n
     density: 1,
     friction: 0,
     filterCategoryBits: CAT_PLAYER,
-    filterMaskBits: CAT_POI | CAT_ESSENCE | CAT_BOND_SENSOR,
+    filterMaskBits: CAT_POI | CAT_ESSENCE | CAT_BOND_SENSOR | CAT_ZONE,
   });
   body.setUserData({ type: 'player', playerId } satisfies PhysicsBodyData);
   return body;
@@ -64,7 +68,7 @@ export function createEnemyBody(world: World, enemyId: string, x: number, y: num
     density: 1,
     friction: 0,
     filterCategoryBits: CAT_ENEMY,
-    filterMaskBits: 0, // combat is hit-scan; no contact callbacks needed
+    filterMaskBits: CAT_PROJECTILE | CAT_ZONE,
   });
   body.setUserData({ type: 'enemy', enemyId } satisfies PhysicsBodyData);
   return body;
@@ -97,6 +101,42 @@ export function createEssenceSensorBody(world: World, dropId: string, x: number,
     filterMaskBits: CAT_PLAYER,
   });
   body.setUserData({ type: 'essence', dropId } satisfies PhysicsBodyData);
+  return body;
+}
+
+export function createProjectileBody(
+  world: World,
+  projectileId: string,
+  x: number,
+  y: number,
+  dirX: number,
+  dirY: number,
+  speed: number,
+): Body {
+  const body = world.createBody({
+    type: 'dynamic',
+    position: Vec2(toMeters(x), toMeters(y)),
+  });
+  body.createFixture({
+    shape: new Circle(toMeters(12)),
+    isSensor: true,
+    filterCategoryBits: CAT_PROJECTILE,
+    filterMaskBits: CAT_ENEMY,
+  });
+  body.setUserData({ type: 'projectile', projectileId } satisfies PhysicsBodyData);
+  body.setLinearVelocity(Vec2(toMeters(dirX * speed), toMeters(dirY * speed)));
+  return body;
+}
+
+export function createZoneBody(world: World, zoneId: string, x: number, y: number, radiusPx: number): Body {
+  const body = world.createBody({ type: 'static', position: Vec2(toMeters(x), toMeters(y)) });
+  body.createFixture({
+    shape: new Circle(toMeters(radiusPx)),
+    isSensor: true,
+    filterCategoryBits: CAT_ZONE,
+    filterMaskBits: CAT_ENEMY | CAT_PLAYER,
+  });
+  body.setUserData({ type: 'zone', zoneId } satisfies PhysicsBodyData);
   return body;
 }
 

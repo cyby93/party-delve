@@ -40,6 +40,7 @@ function makeGameState(playerCount: number, downCount = 0, spiritCount = 0): Gam
     players, enemies: [], activeBonds: [], essenceDrops: [],
     tick: 0, floorLayout: null, runProposal: null,
     boss: null,
+    projectiles: [], zones: [],
   };
 }
 

@@ -9,18 +9,18 @@ import type { World } from 'planck';
 import {
   createPhysicsWorld, createPlayerBody, createPoiSensorBody, createEssenceSensorBody,
   extractPoiBeginContact, extractPoiEndContact, extractEssenceBeginContact, toMeters, toPixels,
-  CAT_BOSS,
+  CAT_BOSS, createZoneBody,
 } from '../physics/world.js';
 import type { PoiBeginContactEvent, PoiEndContactEvent, EssenceBeginContactEvent, PhysicsBodyData } from '../physics/world.js';
-import { createRng, tickEnemy, dispatchAbility, getEnemyCount, applyDamage, isInHitZone, ABILITY_HIT_RANGE_PX, ABILITY_HIT_RADIUS_PX, applyPlayerDamage, getReviveWindowMs, ENEMY_MELEE_DAMAGE, ENEMY_MELEE_RANGE_PX, ENEMY_ATTACK_COOLDOWN_MS, REVIVE_RADIUS_PX, REVIVE_HP, SPIRIT_ABILITY_COOLDOWN_MS, generateFloorLayout, GRASSLAND_ROOM_POOL, WAVE_COUNTS, WAVE_PAUSE_MS, WAVE_ENEMY_SCALE, bondKey, getProximityBuffedPlayers, getFateBuffedPlayers, getFateBondWipeTargets, getProximityDrainTargets, BOND_PROXIMITY_RANGE_PX, BOND_DRAIN_THRESHOLD_S, BOND_DRAIN_HP_PER_TICK, BOND_DAMAGE_MULT, BOND_SPEED_MULT, assignBond, BOND_DESCRIPTIONS, BOND_MECHANICS, createBossState, tickBoss, BOSS_ADD_HP, BOSS_STOMP_DAMAGE, evaluateGrasslandAchievements, JOYSTICK_DEADBAND, createEasyLayers, createNormalLayers, createHardLayers, tickStatusEffects, getStatusEffectMagnitude, applyStatusEffect } from 'game-rules';
-import type { BehaviorLayer, EnemyContext, EnemyAIEvent, BossEvent, BossStompedEvent } from 'game-rules';
+import { createRng, tickEnemy, dispatchAbility, getEnemyCount, applyDamage, isInHitZone, ABILITY_HIT_RANGE_PX, ABILITY_HIT_RADIUS_PX, ABILITY_DAMAGE, applyPlayerDamage, getReviveWindowMs, ENEMY_MELEE_DAMAGE, ENEMY_MELEE_RANGE_PX, ENEMY_ATTACK_COOLDOWN_MS, REVIVE_RADIUS_PX, REVIVE_HP, SPIRIT_ABILITY_COOLDOWN_MS, generateFloorLayout, GRASSLAND_ROOM_POOL, WAVE_COUNTS, WAVE_PAUSE_MS, WAVE_ENEMY_SCALE, bondKey, getProximityBuffedPlayers, getFateBuffedPlayers, getFateBondWipeTargets, getProximityDrainTargets, BOND_PROXIMITY_RANGE_PX, BOND_DRAIN_THRESHOLD_S, BOND_DRAIN_HP_PER_TICK, BOND_DAMAGE_MULT, BOND_SPEED_MULT, assignBond, BOND_DESCRIPTIONS, BOND_MECHANICS, createBossState, tickBoss, BOSS_ADD_HP, BOSS_STOMP_DAMAGE, evaluateGrasslandAchievements, JOYSTICK_DEADBAND, createEasyLayers, createNormalLayers, createHardLayers, tickStatusEffects, getStatusEffectMagnitude, applyStatusEffect, resolveProjectileHit, isProjectileExpired, shouldZoneTick, isZoneExpired, PROJECTILE_MAX_RANGE_PX, ABILITY_CHAINED_ZONE } from 'game-rules';
+import type { BehaviorLayer, EnemyContext, EnemyAIEvent, BossEvent, BossStompedEvent, ChainedZoneConfig } from 'game-rules';
 import { BOSS_ARENA_SPAWN_POINTS, loadBossArena } from '../levels/boss-arena.js';
 import { CLASS_DEFINITIONS } from 'shared-types';
-import type { EnemyState, StatusEffect } from 'shared-types';
+import type { EnemyState, StatusEffect, ZoneState } from 'shared-types';
 import { EnemyType, DifficultyTier, EnemyFSMState, OFFSET_ENEMY_SPAWN, OFFSET_FLOOR_LAYOUT, OFFSET_ROOM_POOL, OFFSET_SPIRIT_BOND } from 'shared-types';
 import { createEnemyBody } from '../physics/world.js';
-import { createBondSensor, extractBondSensorContact } from '../physics/sensors.js';
-import type { BondProximityEvent } from '../physics/sensors.js';
+import { createBondSensor, extractBondSensorContact, extractProjectileEnemyContact, extractZoneContact } from '../physics/sensors.js';
+import type { BondProximityEvent, ProjectileEnemyContactEvent, ZoneContactEvent } from '../physics/sensors.js';
 import { logger } from '../logger.js';
 
 // ponytail: boss is level index 4; dungeon runs levels 1-3
@@ -71,6 +71,8 @@ function createEmptyGameState(roomId: string): GameState {
     floorLayout: null,
     runProposal: null,
     boss: null,
+    projectiles: [],
+    zones: [],
   };
 }
 
@@ -148,6 +150,20 @@ export class GameRoom extends Room {
   private lastRunReward: RunReward | null = null;
   private classSelectLastAccepted = new Map<string, number>();
   private levelTransitionFailedFor: number | null = null;
+  // ── Projectiles ────────────────────────────────────────────────────────────
+  private projectileBodies = new Map<string, Body>();
+  private projectileSpawnPositions = new Map<string, { x: number; y: number }>(); // GameRoom-local — not on wire-visible ProjectileState
+  private pendingProjectileHitContacts: Array<ProjectileEnemyContactEvent> = [];
+  // ── Zones ──────────────────────────────────────────────────────────────────
+  private zoneBodies = new Map<string, Body>();
+  private zoneLastTickAtMs = new Map<string, number>();
+  // ponytail: target ids only, no type tag — fine while only 'damage' (enemies-only) is
+  // implemented; Story 3.14's 'pull' effect on players will need a typed key (or a second map)
+  private zoneOverlapping = new Map<string, Set<string>>(); // zoneId → target ids currently in sensor range
+  private zoneDamagePerTick = new Map<string, number>(); // GameRoom-local — not on wire-visible ZoneState
+  private pendingZoneContactBegin: Array<ZoneContactEvent> = [];
+  private pendingZoneContactEnd: Array<ZoneContactEvent> = [];
+  private nextZoneSeq = 0; // disambiguates zone ids when one owner chains 2+ zones in the same tick
 
   async onCreate(_options: unknown): Promise<void> {
     this.roomId = generateRoomCode();
@@ -345,12 +361,19 @@ export class GameRoom extends Room {
       // Bond proximity sensor
       const bondBeginEvt = extractBondSensorContact(contact);
       if (bondBeginEvt) this.pendingBondProximityBegin.push(bondBeginEvt);
+      // Projectile/zone sensors
+      const projectileHitEvt = extractProjectileEnemyContact(contact);
+      if (projectileHitEvt) this.pendingProjectileHitContacts.push(projectileHitEvt);
+      const zoneBeginEvt = extractZoneContact(contact);
+      if (zoneBeginEvt) this.pendingZoneContactBegin.push(zoneBeginEvt);
     });
     this.physicsWorld.on('end-contact', (contact: Contact) => {
       const evt = extractPoiEndContact(contact);
       if (evt) this.pendingPoiEndContacts.push(evt);
       const bondEndEvt = extractBondSensorContact(contact);
       if (bondEndEvt) this.pendingBondProximityEnd.push(bondEndEvt);
+      const zoneEndEvt = extractZoneContact(contact);
+      if (zoneEndEvt) this.pendingZoneContactEnd.push(zoneEndEvt);
     });
 
     this.tickTimer = setInterval(() => {
@@ -779,6 +802,19 @@ export class GameRoom extends Room {
     this.pendingPoiEndContacts = [];
     this.pendingEssenceBeginContacts = [];
     this.pendingVictoryContact = false;
+    for (const body of this.projectileBodies.values()) this.physicsWorld.destroyBody(body);
+    this.projectileBodies.clear();
+    this.projectileSpawnPositions.clear();
+    this.pendingProjectileHitContacts.length = 0;
+    this.gameState.projectiles = [];
+    for (const body of this.zoneBodies.values()) this.physicsWorld.destroyBody(body);
+    this.zoneBodies.clear();
+    this.zoneLastTickAtMs.clear();
+    this.zoneOverlapping.clear();
+    this.zoneDamagePerTick.clear();
+    this.pendingZoneContactBegin.length = 0;
+    this.pendingZoneContactEnd.length = 0;
+    this.gameState.zones = [];
     this.waveIndex = 0;
     this.totalWaves = 0;
     this.wavePauseUntil = 0;
@@ -873,6 +909,21 @@ export class GameRoom extends Room {
     for (const body of this.essenceSensorBodies.values()) this.physicsWorld.destroyBody(body);
     this.essenceSensorBodies.clear();
     this.gameState.essenceDrops = [];
+
+    // Clear projectiles and zones
+    for (const body of this.projectileBodies.values()) this.physicsWorld.destroyBody(body);
+    this.projectileBodies.clear();
+    this.projectileSpawnPositions.clear();
+    this.pendingProjectileHitContacts.length = 0;
+    this.gameState.projectiles = [];
+    for (const body of this.zoneBodies.values()) this.physicsWorld.destroyBody(body);
+    this.zoneBodies.clear();
+    this.zoneLastTickAtMs.clear();
+    this.zoneOverlapping.clear();
+    this.zoneDamagePerTick.clear();
+    this.pendingZoneContactBegin.length = 0;
+    this.pendingZoneContactEnd.length = 0;
+    this.gameState.zones = [];
 
     // Clear previous victory trigger
     if (this.victoryTriggerBody) {
@@ -1015,6 +1066,35 @@ export class GameRoom extends Room {
     return result.value.target as T;
   }
 
+  // Called from the projectile-hit-resolution phase when the hitting ability's
+  // ABILITY_CHAINED_ZONE entry is non-null (Story 3.19's Void Pulse). Declarative —
+  // this method has no knowledge of which ability triggered it.
+  private spawnChainedZone(
+    ownerId: string,
+    x: number,
+    y: number,
+    config: ChainedZoneConfig,
+    damagePerTick: number,
+    nowMs: number,
+  ): void {
+    const zoneId = `zone-${this.tickCount}-${ownerId}-${this.nextZoneSeq++}`;
+    const zone: ZoneState = {
+      id: zoneId,
+      ownerId,
+      x, y,
+      radius: config.radius,
+      effectType: config.effectType,
+      tickIntervalMs: config.tickIntervalMs,
+      expiresAtMs: nowMs + config.durationMs,
+    };
+    this.gameState.zones.push(zone);
+    const body = createZoneBody(this.physicsWorld, zoneId, x, y, config.radius);
+    this.zoneBodies.set(zoneId, body);
+    this.zoneLastTickAtMs.set(zoneId, nowMs);
+    this.zoneOverlapping.set(zoneId, new Set());
+    this.zoneDamagePerTick.set(zoneId, damagePerTick);
+  }
+
   private tick(): void {
     this.tickCount++;
     this.gameState.tick = this.tickCount;
@@ -1092,6 +1172,15 @@ export class GameRoom extends Room {
       }
     }
 
+    // ── Planck phase 3b: read back projectile positions ──────────────────────────
+    for (const projectile of this.gameState.projectiles) {
+      const body = this.projectileBodies.get(projectile.id);
+      if (!body) continue;
+      const pos = body.getPosition();
+      projectile.x = toPixels(pos.x);
+      projectile.y = toPixels(pos.y);
+    }
+
     // ── Planck phase 4: process POI contact events from this tick's world.step() ─
     // POI interactions only apply in hub phase — skip (but always drain) during dungeon.
     if (this.gameState.session.phase !== 'dungeon') {
@@ -1148,6 +1237,175 @@ export class GameRoom extends Room {
       } satisfies DeltaEventMsg);
     }
     this.pendingEssenceBeginContacts.length = 0;
+
+    // ── Flush zone overlap contacts (begin/end-contact tracking, bond-sensor style) ─
+    for (const { zoneId, targetId } of this.pendingZoneContactBegin) {
+      let overlap = this.zoneOverlapping.get(zoneId);
+      if (!overlap) {
+        overlap = new Set();
+        this.zoneOverlapping.set(zoneId, overlap);
+      }
+      overlap.add(targetId);
+    }
+    for (const { zoneId, targetId } of this.pendingZoneContactEnd) {
+      this.zoneOverlapping.get(zoneId)?.delete(targetId);
+    }
+    this.pendingZoneContactBegin.length = 0;
+    this.pendingZoneContactEnd.length = 0;
+
+    // ── Zone tick/expiry ──────────────────────────────────────────────────────
+    for (let zi = this.gameState.zones.length - 1; zi >= 0; zi--) {
+      const zone = this.gameState.zones[zi]!;
+
+      if (isZoneExpired(zone, tickNowMs)) {
+        this.gameState.zones.splice(zi, 1);
+        const zoneBody = this.zoneBodies.get(zone.id);
+        if (zoneBody) {
+          this.physicsWorld.destroyBody(zoneBody);
+          this.zoneBodies.delete(zone.id);
+        }
+        this.zoneLastTickAtMs.delete(zone.id);
+        this.zoneOverlapping.delete(zone.id);
+        this.zoneDamagePerTick.delete(zone.id);
+        this.broadcast(EventNames.DELTA, { type: 'zone:expired' as const, zoneId: zone.id } satisfies DeltaEventMsg);
+        continue;
+      }
+
+      const lastTick = this.zoneLastTickAtMs.get(zone.id) ?? 0;
+      if (!shouldZoneTick(zone, tickNowMs, lastTick)) continue;
+      this.zoneLastTickAtMs.set(zone.id, tickNowMs);
+
+      // 'pull' is a physics-impulse placeholder implemented by Story 3.14 — nothing to apply here yet.
+      if (zone.effectType === 'damage') {
+        const damage = this.zoneDamagePerTick.get(zone.id) ?? 0;
+        const overlapping = this.zoneOverlapping.get(zone.id);
+        if (damage > 0 && overlapping) {
+          for (const targetId of overlapping) {
+            const ei = this.gameState.enemies.findIndex(e => e.id === targetId);
+            if (ei === -1) continue;
+            const enemy = this.gameState.enemies[ei]!;
+            if (!enemy.isAlive) continue;
+
+            const dropId = `drop-${this.tickCount}-${enemy.id}`;
+            const dmgResult = applyDamage(enemy, damage, dropId, tickNowMs);
+            if (!dmgResult.ok) continue;
+            this.gameState.enemies[ei] = dmgResult.value.enemy;
+
+            if (dmgResult.value.killed) {
+              this.broadcast(EventNames.DELTA, {
+                type: 'enemy:killed' as const,
+                enemyId: targetId,
+                byPlayerId: zone.ownerId,
+              } satisfies DeltaEventMsg);
+              const enemyBody = this.enemyBodies.get(targetId);
+              if (enemyBody) {
+                this.physicsWorld.destroyBody(enemyBody);
+                this.enemyBodies.delete(targetId);
+              }
+              this.enemyAttackCooldowns.delete(targetId);
+
+              const drop = dmgResult.value.essenceDrop!;
+              this.gameState.essenceDrops.push(drop);
+              this.broadcast(EventNames.DELTA, { type: 'essence:dropped' as const, drop } satisfies DeltaEventMsg);
+              const sensor = createEssenceSensorBody(this.physicsWorld, drop.id, drop.x, drop.y);
+              this.essenceSensorBodies.set(drop.id, sensor);
+            } else {
+              this.broadcast(EventNames.DELTA, {
+                type: 'enemy:damaged' as const,
+                enemyId: targetId,
+                damage,
+                remainingHp: dmgResult.value.enemy.hp,
+              } satisfies DeltaEventMsg);
+            }
+          }
+        }
+      }
+
+      this.broadcast(EventNames.DELTA, { type: 'zone:tick' as const, zoneId: zone.id } satisfies DeltaEventMsg);
+    }
+
+    // ── Projectile expiry check ──────────────────────────────────────────────
+    for (let pi = this.gameState.projectiles.length - 1; pi >= 0; pi--) {
+      const projectile = this.gameState.projectiles[pi]!;
+      const spawn = this.projectileSpawnPositions.get(projectile.id);
+      if (!spawn || !isProjectileExpired(projectile, spawn.x, spawn.y, PROJECTILE_MAX_RANGE_PX)) continue;
+
+      this.gameState.projectiles.splice(pi, 1);
+      const projectileBody = this.projectileBodies.get(projectile.id);
+      if (projectileBody) {
+        this.physicsWorld.destroyBody(projectileBody);
+        this.projectileBodies.delete(projectile.id);
+      }
+      this.projectileSpawnPositions.delete(projectile.id);
+      this.broadcast(EventNames.DELTA, { type: 'projectile:expired' as const, projectileId: projectile.id } satisfies DeltaEventMsg);
+    }
+
+    // ── Projectile hit resolution ────────────────────────────────────────────
+    for (const { projectileId, enemyId } of this.pendingProjectileHitContacts) {
+      const pi = this.gameState.projectiles.findIndex(p => p.id === projectileId);
+      if (pi === -1) continue; // already resolved or expired earlier this tick
+      const ei = this.gameState.enemies.findIndex(e => e.id === enemyId);
+      if (ei === -1) continue;
+      const enemy = this.gameState.enemies[ei]!;
+      if (!enemy.isAlive) continue;
+
+      const projectile = this.gameState.projectiles[pi]!;
+      const damage = ABILITY_DAMAGE[projectile.class][projectile.abilityIndex as 0 | 1 | 2 | 3] ?? 0;
+      const hitResult = resolveProjectileHit(projectile, enemy, damage, tickNowMs);
+      if (!hitResult.ok) continue;
+
+      this.gameState.enemies[ei] = hitResult.value.enemy;
+      this.gameState.projectiles.splice(pi, 1);
+      const projectileBody = this.projectileBodies.get(projectileId);
+      if (projectileBody) {
+        this.physicsWorld.destroyBody(projectileBody);
+        this.projectileBodies.delete(projectileId);
+      }
+      this.projectileSpawnPositions.delete(projectileId);
+
+      if (hitResult.value.enemy.isAlive) {
+        this.broadcast(EventNames.DELTA, {
+          type: 'enemy:damaged' as const,
+          enemyId,
+          damage,
+          remainingHp: hitResult.value.enemy.hp,
+        } satisfies DeltaEventMsg);
+      } else {
+        this.broadcast(EventNames.DELTA, {
+          type: 'enemy:killed' as const,
+          enemyId,
+          byPlayerId: projectile.ownerId,
+        } satisfies DeltaEventMsg);
+        const enemyBody = this.enemyBodies.get(enemyId);
+        if (enemyBody) {
+          this.physicsWorld.destroyBody(enemyBody);
+          this.enemyBodies.delete(enemyId);
+        }
+        this.enemyAttackCooldowns.delete(enemyId);
+
+        if (hitResult.value.essenceDrop) {
+          const drop = hitResult.value.essenceDrop;
+          this.gameState.essenceDrops.push(drop);
+          this.broadcast(EventNames.DELTA, { type: 'essence:dropped' as const, drop } satisfies DeltaEventMsg);
+          const sensor = createEssenceSensorBody(this.physicsWorld, drop.id, drop.x, drop.y);
+          this.essenceSensorBodies.set(drop.id, sensor);
+        }
+      }
+
+      this.broadcast(EventNames.DELTA, {
+        type: 'projectile:hit' as const,
+        projectileId,
+        x: projectile.x,
+        y: projectile.y,
+      } satisfies DeltaEventMsg);
+
+      // Declarative chain: only fires once 3.19/3.20 populate ABILITY_CHAINED_ZONE for their ability.
+      const chainConfig = ABILITY_CHAINED_ZONE[projectile.class][projectile.abilityIndex as 0 | 1 | 2 | 3];
+      if (chainConfig) {
+        this.spawnChainedZone(projectile.ownerId, projectile.x, projectile.y, chainConfig, damage, tickNowMs);
+      }
+    }
+    this.pendingProjectileHitContacts.length = 0;
 
     // ── Flush bond proximity contacts ────────────────────────────────────────
     if (this.gameState.session.phase === 'dungeon') {

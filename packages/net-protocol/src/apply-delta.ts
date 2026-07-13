@@ -233,6 +233,17 @@ export function applyDelta(state: GameState, evt: DeltaEventMsg): GameState {
       }
       return state;
     }
+    case 'projectile:hit': {
+      return { ...state, projectiles: state.projectiles.filter(p => p.id !== evt.projectileId) };
+    }
+    case 'projectile:expired': {
+      return { ...state, projectiles: state.projectiles.filter(p => p.id !== evt.projectileId) };
+    }
+    case 'zone:tick':
+      return state;  // ponytail: effect reapplication comes via separate player:hp-updated/enemy:damaged deltas
+    case 'zone:expired': {
+      return { ...state, zones: state.zones.filter(z => z.id !== evt.zoneId) };
+    }
     default: {
       // Exhaustiveness guard: adding a new DeltaEventMsg variant without a case here causes a TS error.
       const _exhaustive: never = evt;

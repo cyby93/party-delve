@@ -41,6 +41,8 @@ function createEmptyGameState(roomId: string): GameState {
     floorLayout: null,
     runProposal: null,
     boss: null,
+    projectiles: [],
+    zones: [],
   };
 }
 

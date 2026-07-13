@@ -14,3 +14,5 @@ export * from './boss.js';
 export * from './achievements.js';
 export * from './run-reward.js';
 export * from './status-effect.js';
+export * from './projectile.js';
+export * from './zone.js';

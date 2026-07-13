@@ -34,6 +34,8 @@ function makeState(playerCount: number): GameState {
     floorLayout: null,
     runProposal: null,
     boss: null,
+    projectiles: [],
+    zones: [],
   };
 }
 

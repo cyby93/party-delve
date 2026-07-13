@@ -80,6 +80,8 @@ function renderFrame(
   tetherGraphics: Map<string, Graphics>,
   isPurified: boolean,
   statusBadgeGraphics: Map<string, Graphics>,
+  projectileGraphics: Map<string, Graphics>,
+  zoneGraphics: Map<string, Graphics>,
 ): void {
   app.stage.scale.set(app.screen.width / VIRTUAL_W, app.screen.height / VIRTUAL_H);
 
@@ -237,6 +239,48 @@ function renderFrame(
     });
   }
 
+  // ── Projectiles ───────────────────────────────────────────────────────────────
+  const activeProjectileIds = new Set(state.projectiles.map(p => p.id));
+  for (const [id, g] of projectileGraphics) {
+    if (!activeProjectileIds.has(id)) {
+      app.stage.removeChild(g);
+      g.destroy();
+      projectileGraphics.delete(id);
+    }
+  }
+  for (const projectile of state.projectiles) {
+    let g = projectileGraphics.get(projectile.id);
+    if (!g) {
+      g = new Graphics();
+      app.stage.addChild(g);
+      projectileGraphics.set(projectile.id, g);
+    }
+    g.position.set(projectile.x, projectile.y);
+    g.clear();
+    g.circle(0, 0, 8).fill({ color: 0xffffff });
+  }
+
+  // ── Zones/Fields ──────────────────────────────────────────────────────────────
+  const activeZoneIds = new Set(state.zones.map(z => z.id));
+  for (const [id, g] of zoneGraphics) {
+    if (!activeZoneIds.has(id)) {
+      app.stage.removeChild(g);
+      g.destroy();
+      zoneGraphics.delete(id);
+    }
+  }
+  for (const zone of state.zones) {
+    let g = zoneGraphics.get(zone.id);
+    if (!g) {
+      g = new Graphics();
+      app.stage.addChildAt(g, 0); // below sprites, like bond tethers
+      zoneGraphics.set(zone.id, g);
+    }
+    g.position.set(zone.x, zone.y);
+    g.clear();
+    g.circle(0, 0, zone.radius).fill({ color: 0x9b59b6, alpha: 0.25 });
+  }
+
   // ── Essence flashes ───────────────────────────────────────────────────────────
   for (const [dropId, flash] of essenceFlashes) {
     const remaining = flash.deadline - now;
@@ -267,6 +311,8 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
   const essenceFlashesRef = useRef<Map<string, EssenceFlash>>(new Map());
   const tetherGraphicsRef = useRef<Map<string, Graphics>>(new Map());
   const statusBadgeGraphicsRef = useRef<Map<string, Graphics>>(new Map());
+  const projectileGraphicsRef = useRef<Map<string, Graphics>>(new Map());
+  const zoneGraphicsRef = useRef<Map<string, Graphics>>(new Map());
   const latestGameStateRef = useRef<GameState | null>(null);
   latestGameStateRef.current = gameState;
   const reviveDeadlinesRef = useRef<Map<string, ReviveDeadline>>(new Map());
@@ -317,6 +363,8 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
           tetherGraphicsRef.current,
           isPurifiedRef.current,
           statusBadgeGraphicsRef.current,
+          projectileGraphicsRef.current,
+          zoneGraphicsRef.current,
         );
 
         // Boss sprite — managed in ticker to keep renderFrame signature stable

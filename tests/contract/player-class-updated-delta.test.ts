@@ -30,6 +30,8 @@ function mockGameState(): GameState {
     floorLayout: null,
     runProposal: null,
     boss: null,
+    projectiles: [],
+    zones: [],
   };
 }
 
