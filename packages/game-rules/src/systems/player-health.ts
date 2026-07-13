@@ -1,6 +1,7 @@
 import type { PlayerState } from 'shared-types';
 import type { Result } from '../state/result.js';
 import { REVIVE_WINDOWS_MS } from '../balance.js';
+import { getStatusEffectMagnitude } from './status-effects.js';
 
 export interface PlayerDamageResult {
   player: PlayerState;
@@ -13,6 +14,7 @@ export type HealthError = { code: string; detail?: string };
 export function applyPlayerDamage(
   player: PlayerState,
   damage: number,
+  nowMs: number,
 ): Result<PlayerDamageResult, HealthError> {
   if (player.isDown || player.isSpirit) {
     return { ok: false, error: { code: 'PLAYER_NOT_DAMAGEABLE' } };
@@ -24,7 +26,9 @@ export function applyPlayerDamage(
     return { ok: false, error: { code: 'NEGATIVE_DAMAGE', detail: String(damage) } };
   }
 
-  const newHp = Math.max(0, player.hp - damage);
+  const damageReduction = getStatusEffectMagnitude(player, 'damageReduction', nowMs);
+  const mitigatedDamage = damage * (1 - damageReduction);
+  const newHp = Math.max(0, player.hp - mitigatedDamage);
   const downed = newHp === 0;
   const newDownCount = downed ? player.downCount + 1 : player.downCount;
   const reviveWindowMs = downed ? getReviveWindowMs(newDownCount) : undefined;

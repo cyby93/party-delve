@@ -38,3 +38,5 @@ export { BOND_TYPE_COLORS, BOND_PROXIMITY_RANGE_PX, BOND_DRAIN_THRESHOLD_S, BOND
 export { createBossState, tickBoss } from './entities/grassland-boss.js';
 export type { BossEvent, BossAddSpawnedEvent, BossStompedEvent } from './entities/grassland-boss.js';
 export { evaluateGrasslandAchievements } from './systems/achievements.js';
+export { applyStatusEffect, tickStatusEffects, getStatusEffectMagnitude } from './systems/status-effects.js';
+export type { StatusEffectTarget, StatusEffectError } from './systems/status-effects.js';

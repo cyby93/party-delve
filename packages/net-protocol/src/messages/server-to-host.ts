@@ -1,4 +1,4 @@
-import type { GameState, BondType, EssenceDrop, PlayerClass, DifficultyTier, BossPhase, RunReward } from 'shared-types';
+import type { GameState, BondType, EssenceDrop, PlayerClass, DifficultyTier, BossPhase, RunReward, StatusEffectType } from 'shared-types';
 
 export interface SnapshotMsg {
   type: 'snapshot';
@@ -197,6 +197,20 @@ export type BossAddSpawnedDelta = {
   y: number;
 };
 
+export type StatusAppliedDelta = {
+  type: 'status:applied';
+  targetId: string;
+  effectType: StatusEffectType;
+  magnitude: number;
+  expiresAtMs: number;
+};
+
+export type StatusExpiredDelta = {
+  type: 'status:expired';
+  targetId: string;
+  effectType: StatusEffectType;
+};
+
 export type BossDamagedDelta = {
   type: 'boss:damaged';
   bossId: string;
@@ -249,4 +263,6 @@ export type DeltaEventMsg =
   | BossDefeatedDelta
   | BossMovedDelta
   | BossStompedDelta
-  | BossAddSpawnedDelta;
+  | BossAddSpawnedDelta
+  | StatusAppliedDelta
+  | StatusExpiredDelta;

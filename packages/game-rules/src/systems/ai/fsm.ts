@@ -7,6 +7,7 @@ import {
   ENEMY_CHASE_RANGE, ENEMY_ATTACK_RANGE,
   ENEMY_CHASE_SPEED, ENEMY_ATTACK_COOLDOWN_TICKS,
 } from '../../balance.js';
+import { getStatusEffectMagnitude } from '../status-effects.js';
 
 // Local event types — structurally identical to DeltaEventMsg variants in net-protocol.
 // The sim server assigns EnemyAIEvent to DeltaEventMsg via structural typing — no cast needed.
@@ -18,6 +19,7 @@ export interface EnemyContext {
   nearestPlayerPos: { x: number; y: number } | null;
   nearestPlayerDistance: number;
   dt: number;
+  nowMs: number;
 }
 
 export interface BehaviorLayer {
@@ -87,7 +89,8 @@ function tickChase(enemy: EnemyState, ctx: EnemyContext): EnemyAIEvent[] {
   const len = Math.sqrt(dx * dx + dy * dy);
   if (len === 0) return [];
 
-  const moveAmount = ENEMY_CHASE_SPEED * ctx.dt;
+  const slowMagnitude = getStatusEffectMagnitude(enemy, 'slow', ctx.nowMs);
+  const moveAmount = ENEMY_CHASE_SPEED * ctx.dt * (1 - slowMagnitude);
   enemy.x += (dx / len) * moveAmount;
   enemy.y += (dy / len) * moveAmount;
 

@@ -16,13 +16,14 @@ function mockPlayer(overrides?: Partial<PlayerState>): PlayerState {
     nearPoiId: null,
     essenceTotal: 0,
     reviveTimerExpiresAt: 0,
+    statusEffects: [],
     ...overrides,
   };
 }
 
 describe('applyPlayerDamage', () => {
   it('reduces hp by damage', () => {
-    const r = applyPlayerDamage(mockPlayer(), 15);
+    const r = applyPlayerDamage(mockPlayer(), 15, 0);
     expect(r.ok).toBe(true);
     if (r.ok) {
       expect(r.value.player.hp).toBe(85);
@@ -31,7 +32,7 @@ describe('applyPlayerDamage', () => {
   });
 
   it('clamps to 0 and sets downed=true when damage >= hp', () => {
-    const r = applyPlayerDamage(mockPlayer({ hp: 10 }), 50);
+    const r = applyPlayerDamage(mockPlayer({ hp: 10 }), 50, 0);
     expect(r.ok).toBe(true);
     if (r.ok) {
       expect(r.value.player.hp).toBe(0);
@@ -42,25 +43,25 @@ describe('applyPlayerDamage', () => {
   });
 
   it('increments downCount when downed', () => {
-    const r = applyPlayerDamage(mockPlayer({ hp: 5, downCount: 2 }), 100);
+    const r = applyPlayerDamage(mockPlayer({ hp: 5, downCount: 2 }), 100, 0);
     expect(r.ok).toBe(true);
     if (r.ok) expect(r.value.player.downCount).toBe(3);
   });
 
   it('returns error if player is already down', () => {
-    const r = applyPlayerDamage(mockPlayer({ isDown: true, hp: 0 }), 10);
+    const r = applyPlayerDamage(mockPlayer({ isDown: true, hp: 0 }), 10, 0);
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error.code).toBe('PLAYER_NOT_DAMAGEABLE');
   });
 
   it('returns error for negative damage', () => {
-    const r = applyPlayerDamage(mockPlayer(), -5);
+    const r = applyPlayerDamage(mockPlayer(), -5, 0);
     expect(r.ok).toBe(false);
   });
 
   it('does not mutate the original player object', () => {
     const p = mockPlayer();
-    applyPlayerDamage(p, 10);
+    applyPlayerDamage(p, 10, 0);
     expect(p.hp).toBe(100);
   });
 });

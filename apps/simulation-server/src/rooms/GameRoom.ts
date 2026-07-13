@@ -12,11 +12,11 @@ import {
   CAT_BOSS,
 } from '../physics/world.js';
 import type { PoiBeginContactEvent, PoiEndContactEvent, EssenceBeginContactEvent, PhysicsBodyData } from '../physics/world.js';
-import { createRng, tickEnemy, dispatchAbility, getEnemyCount, applyDamage, isInHitZone, ABILITY_HIT_RANGE_PX, ABILITY_HIT_RADIUS_PX, applyPlayerDamage, getReviveWindowMs, ENEMY_MELEE_DAMAGE, ENEMY_MELEE_RANGE_PX, ENEMY_ATTACK_COOLDOWN_MS, REVIVE_RADIUS_PX, REVIVE_HP, SPIRIT_ABILITY_COOLDOWN_MS, generateFloorLayout, GRASSLAND_ROOM_POOL, WAVE_COUNTS, WAVE_PAUSE_MS, WAVE_ENEMY_SCALE, bondKey, getProximityBuffedPlayers, getFateBuffedPlayers, getFateBondWipeTargets, getProximityDrainTargets, BOND_PROXIMITY_RANGE_PX, BOND_DRAIN_THRESHOLD_S, BOND_DRAIN_HP_PER_TICK, BOND_DAMAGE_MULT, BOND_SPEED_MULT, assignBond, BOND_DESCRIPTIONS, BOND_MECHANICS, createBossState, tickBoss, BOSS_ADD_HP, BOSS_STOMP_DAMAGE, evaluateGrasslandAchievements, JOYSTICK_DEADBAND, createEasyLayers, createNormalLayers, createHardLayers } from 'game-rules';
+import { createRng, tickEnemy, dispatchAbility, getEnemyCount, applyDamage, isInHitZone, ABILITY_HIT_RANGE_PX, ABILITY_HIT_RADIUS_PX, applyPlayerDamage, getReviveWindowMs, ENEMY_MELEE_DAMAGE, ENEMY_MELEE_RANGE_PX, ENEMY_ATTACK_COOLDOWN_MS, REVIVE_RADIUS_PX, REVIVE_HP, SPIRIT_ABILITY_COOLDOWN_MS, generateFloorLayout, GRASSLAND_ROOM_POOL, WAVE_COUNTS, WAVE_PAUSE_MS, WAVE_ENEMY_SCALE, bondKey, getProximityBuffedPlayers, getFateBuffedPlayers, getFateBondWipeTargets, getProximityDrainTargets, BOND_PROXIMITY_RANGE_PX, BOND_DRAIN_THRESHOLD_S, BOND_DRAIN_HP_PER_TICK, BOND_DAMAGE_MULT, BOND_SPEED_MULT, assignBond, BOND_DESCRIPTIONS, BOND_MECHANICS, createBossState, tickBoss, BOSS_ADD_HP, BOSS_STOMP_DAMAGE, evaluateGrasslandAchievements, JOYSTICK_DEADBAND, createEasyLayers, createNormalLayers, createHardLayers, tickStatusEffects, getStatusEffectMagnitude, applyStatusEffect } from 'game-rules';
 import type { BehaviorLayer, EnemyContext, EnemyAIEvent, BossEvent, BossStompedEvent } from 'game-rules';
 import { BOSS_ARENA_SPAWN_POINTS, loadBossArena } from '../levels/boss-arena.js';
 import { CLASS_DEFINITIONS } from 'shared-types';
-import type { EnemyState } from 'shared-types';
+import type { EnemyState, StatusEffect } from 'shared-types';
 import { EnemyType, DifficultyTier, EnemyFSMState, OFFSET_ENEMY_SPAWN, OFFSET_FLOOR_LAYOUT, OFFSET_ROOM_POOL, OFFSET_SPIRIT_BOND } from 'shared-types';
 import { createEnemyBody } from '../physics/world.js';
 import { createBondSensor, extractBondSensorContact } from '../physics/sensors.js';
@@ -92,6 +92,7 @@ function createPlayer(id: string, displayName: string, slotIndex: number): Playe
     nearPoiId: null,
     essenceTotal: 0,
     reviveTimerExpiresAt: 0,
+    statusEffects: [],
   };
 }
 
@@ -613,6 +614,7 @@ export class GameRoom extends Room {
         isAlive: true,
         fsmState: EnemyFSMState.IDLE,
         attackCooldownTicks: 0,
+        statusEffects: [],
       };
       this.gameState.enemies.push(enemy);
       const body = createEnemyBody(this.physicsWorld, id, x, y);
@@ -657,6 +659,7 @@ export class GameRoom extends Room {
         id, type: EnemyType.GRUNT, x, y,
         hp: 60, maxHp: 60, difficultyTier: difficulty,
         isAlive: true, fsmState: EnemyFSMState.IDLE, attackCooldownTicks: 0,
+        statusEffects: [],
       };
       this.gameState.enemies.push(enemy);
       const body = createEnemyBody(this.physicsWorld, id, x, y);
@@ -968,13 +971,13 @@ export class GameRoom extends Room {
     }
   }
 
-  private buildEnemyContext(enemy: EnemyState): EnemyContext {
+  private buildEnemyContext(enemy: EnemyState, nowMs: number): EnemyContext {
     const dt = 1 / TICK_RATE_HZ;
     const targetable = this.gameState.players.filter(
       p => !p.isFrozen && !p.isDown && !p.isSpirit,
     );
     if (targetable.length === 0) {
-      return { nearestPlayerPos: null, nearestPlayerDistance: Infinity, dt };
+      return { nearestPlayerPos: null, nearestPlayerDistance: Infinity, dt, nowMs };
     }
     let minDist = Infinity;
     let nearest = targetable[0]!;
@@ -987,12 +990,35 @@ export class GameRoom extends Room {
         nearest = p;
       }
     }
-    return { nearestPlayerPos: { x: nearest.x, y: nearest.y }, nearestPlayerDistance: minDist, dt };
+    return { nearestPlayerPos: { x: nearest.x, y: nearest.y }, nearestPlayerDistance: minDist, dt, nowMs };
+  }
+
+  // Ready-to-use for 3.16-3.20's kit-rework stories — no ability calls this yet in 3.12,
+  // so there is no caller here. Applies the effect and broadcasts status:applied; returns
+  // the target unchanged if applyStatusEffect rejects it (e.g. already-expired effect).
+  private applyStatusEffectToTarget<T extends PlayerState | EnemyState>(
+    target: T,
+    effect: StatusEffect,
+    nowMs: number,
+  ): T {
+    const result = applyStatusEffect(target, effect, nowMs);
+    if (!result.ok) return target;
+
+    this.broadcast(EventNames.DELTA, {
+      type: 'status:applied' as const,
+      targetId: target.id,
+      effectType: effect.type,
+      magnitude: effect.magnitude,
+      expiresAtMs: effect.expiresAtMs,
+    } satisfies DeltaEventMsg);
+
+    return result.value.target as T;
   }
 
   private tick(): void {
     this.tickCount++;
     this.gameState.tick = this.tickCount;
+    const tickNowMs = Date.now();
 
     // Pre-compute bond buff sets for this tick (empty unless activeBonds is populated by 5.4)
     const spiritPlayerIds = this.gameState.activeBonds.length > 0
@@ -1032,7 +1058,9 @@ export class GameRoom extends Room {
       const jy = joystick?.y ?? 0;
       const inDeadzone = Math.abs(jx) < JOYSTICK_DEADBAND && Math.abs(jy) < JOYSTICK_DEADBAND;
 
-      const speed = (fateBuffed.has(player.id) && !player.isSpirit) ? SPEED * BOND_SPEED_MULT : SPEED;
+      const bondSpeed = (fateBuffed.has(player.id) && !player.isSpirit) ? SPEED * BOND_SPEED_MULT : SPEED;
+      const slowMagnitude = getStatusEffectMagnitude(player, 'slow', tickNowMs);
+      const speed = bondSpeed * (1 - slowMagnitude);
       body.setLinearVelocity(inDeadzone
         ? Vec2(0, 0)
         : Vec2(toMeters(jx * speed), toMeters(jy * speed))
@@ -1182,7 +1210,7 @@ export class GameRoom extends Room {
     for (const enemy of this.gameState.enemies) {
       if (!enemy.isAlive) continue;
 
-      const ctx = this.buildEnemyContext(enemy);
+      const ctx = this.buildEnemyContext(enemy, tickNowMs);
       const layers = this.enemyLayers.get(enemy.id) ?? [];
       const result = tickEnemy(enemy, ctx, layers);
 
@@ -1215,6 +1243,7 @@ export class GameRoom extends Room {
         this.gameState,
         this.gameState.session.difficulty!,
         BOSS_ARENA_SPAWN_POINTS,
+        tickNowMs,
       );
 
       if (bossResult.ok) {
@@ -1254,6 +1283,7 @@ export class GameRoom extends Room {
                 difficultyTier: this.gameState.session.difficulty ?? DifficultyTier.EASY,
                 isAlive: true, fsmState: EnemyFSMState.IDLE,
                 attackCooldownTicks: 0,
+                statusEffects: [],
               };
               this.gameState.enemies.push(addEnemy);
               const addBody = createEnemyBody(this.physicsWorld, evt.enemyId, evt.x, evt.y);
@@ -1377,7 +1407,7 @@ export class GameRoom extends Room {
           if (!isInHitZone(player.x, player.y, normDirX, normDirY, enemy.x, enemy.y, hitRadius, hitRange, isDirectional)) continue;
 
           const dropId = `drop-${this.tickCount}-${enemy.id}`;
-          const dmgResult = applyDamage(enemy, damage, dropId);
+          const dmgResult = applyDamage(enemy, damage, dropId, nowAbility);
           if (!dmgResult.ok) continue;
 
           this.gameState.enemies[ei] = dmgResult.value.enemy;
@@ -1481,7 +1511,7 @@ export class GameRoom extends Room {
         }
         if (!targetPlayer) continue;
 
-        const dmgResult = applyPlayerDamage(targetPlayer, ENEMY_MELEE_DAMAGE);
+        const dmgResult = applyPlayerDamage(targetPlayer, ENEMY_MELEE_DAMAGE, nowMelee);
         if (!dmgResult.ok) continue;
 
         const pi = this.gameState.players.findIndex(p => p.id === targetPlayer!.id);
@@ -1531,7 +1561,7 @@ export class GameRoom extends Room {
                 const partnerIdx = this.gameState.players.findIndex(p => p.id === partnerId);
                 const partner = this.gameState.players[partnerIdx];
                 if (!partner) continue;
-                const wipeResult = applyPlayerDamage(partner, partner.hp);
+                const wipeResult = applyPlayerDamage(partner, partner.hp, nowMelee);
                 if (!wipeResult.ok) continue; // already down/spirit/frozen
                 this.gameState.players[partnerIdx] = wipeResult.value.player;
                 const wipeWindowMs = wipeResult.value.reviveWindowMs!;
@@ -1762,6 +1792,38 @@ export class GameRoom extends Room {
             remainingMs: 0,
           } satisfies CooldownUpdateMsg);
         }
+      }
+    }
+
+    // Tick status effects for players/enemies, broadcasting status:expired for any removed effect.
+    for (let pi = 0; pi < this.gameState.players.length; pi++) {
+      const player = this.gameState.players[pi]!;
+      if (player.statusEffects.length === 0) continue;
+      const ticked = tickStatusEffects(player, tickNowMs);
+      if (ticked === player) continue;
+      this.gameState.players[pi] = ticked;
+      for (const effect of player.statusEffects) {
+        if (ticked.statusEffects.includes(effect)) continue;
+        this.broadcast(EventNames.DELTA, {
+          type: 'status:expired' as const,
+          targetId: player.id,
+          effectType: effect.type,
+        } satisfies DeltaEventMsg);
+      }
+    }
+    for (let ei = 0; ei < this.gameState.enemies.length; ei++) {
+      const enemy = this.gameState.enemies[ei]!;
+      if (enemy.statusEffects.length === 0) continue;
+      const ticked = tickStatusEffects(enemy, tickNowMs);
+      if (ticked === enemy) continue;
+      this.gameState.enemies[ei] = ticked;
+      for (const effect of enemy.statusEffects) {
+        if (ticked.statusEffects.includes(effect)) continue;
+        this.broadcast(EventNames.DELTA, {
+          type: 'status:expired' as const,
+          targetId: enemy.id,
+          effectType: effect.type,
+        } satisfies DeltaEventMsg);
       }
     }
 

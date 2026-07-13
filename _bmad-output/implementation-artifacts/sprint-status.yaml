@@ -43,6 +43,11 @@
 
 generated: 2026-06-22
 last_updated: 2026-07-13
+# 2026-07-13: completed 3.12 — code review found 3 patch findings (magnitude
+# validation, status:applied wire payload missing magnitude, redundant
+# Date.now() calls), all fixed; 2 minor findings deferred to deferred-work.md
+# (D-3.12-A, D-3.12-B).
+# 2026-07-13: started work on 3.12.
 # 2026-07-11: created 3.12-3.20 in one batch, completing the "Ability
 # Mechanics Rework" extension started by 3.11 (epics.md Stories 3.11-3.20).
 # Dependency order: 3.11 -> {3.12,3.13,3.14,3.15 in any order, all shared
@@ -130,7 +135,7 @@ development_status:
   # capabilities, 3.16-3.20 apply them per class. Sequenced so no story
   # depends on a later one.
   3-11-ability-input-taxonomy-expansion-and-type-corrections: done
-  3-12-status-effect-engine-buffs-debuffs-with-duration: ready-for-dev
+  3-12-status-effect-engine-buffs-debuffs-with-duration: done
   3-13-projectile-physics-and-zone-field-entities: ready-for-dev
   3-14-displacement-pull-physics-primitive: ready-for-dev
   3-15-self-cost-resource-and-mixed-faction-target-resolution: ready-for-dev

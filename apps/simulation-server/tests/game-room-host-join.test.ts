@@ -80,6 +80,7 @@ function simulateOnJoin(
     nearPoiId: null,
     essenceTotal: 0,
     reviveTimerExpiresAt: 0,
+    statusEffects: [],
   });
   gameState.session.playerCount = gameState.players.length;
   const snapshot: SnapshotMsg = { type: 'snapshot', state: gameState };
@@ -224,6 +225,7 @@ function makePlayer(id: string): PlayerState {
     nearPoiId: null,
     essenceTotal: 0,
     reviveTimerExpiresAt: 0,
+    statusEffects: [],
   };
 }
 

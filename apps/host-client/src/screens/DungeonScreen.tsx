@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Application, Graphics, Assets } from 'pixi.js';
-import type { GameState, PlayerState } from 'shared-types';
+import type { GameState, PlayerState, StatusEffectType } from 'shared-types';
 import { SessionColor, CLASS_DEFINITIONS, PlayerClass, BossPhase, PURIFICATION_PULSE_DURATION_MS, REWARD_REVEAL_DURATION_MS } from 'shared-types';
 import type { HostSession } from '../session/host-session';
 import type { DeltaEventMsg } from 'net-protocol';
@@ -30,6 +30,15 @@ const ABILITY_FLASH_MS = 300;
 const SPIRIT_ABILITY_FLASH_MS = 200;
 const KILL_FADE_MS = 300;
 const ESSENCE_FLASH_MS = 400;
+const STATUS_BADGE_RADIUS = 6;
+
+// One generic badge shape for all status effects — differentiated by color only.
+const STATUS_EFFECT_COLORS: Record<StatusEffectType, number> = {
+  damageReduction: 0x3498db,
+  slow: 0x9b59b6,
+  damageBuff: 0xe67e22,
+  shield: 0xf1c40f,
+};
 
 interface PlayerEntry {
   circle: Graphics;
@@ -70,6 +79,7 @@ function renderFrame(
   essenceFlashes: Map<string, EssenceFlash>,
   tetherGraphics: Map<string, Graphics>,
   isPurified: boolean,
+  statusBadgeGraphics: Map<string, Graphics>,
 ): void {
   app.stage.scale.set(app.screen.width / VIRTUAL_W, app.screen.height / VIRTUAL_H);
 
@@ -195,6 +205,38 @@ function renderFrame(
     }
   }
 
+  // ── Status effect badges ─────────────────────────────────────────────────────
+  // Reuses the create-on-first-seen / cleanup-on-missing pattern from playerGraphics/
+  // enemyGraphics above — one generic badge per entity, differentiated by color only.
+  const badgeTargets = [
+    ...state.players.map(p => ({ id: p.id, x: p.x, y: p.y, radius: PLAYER_RADIUS, effects: p.statusEffects })),
+    ...state.enemies.filter(e => e.isAlive).map(e => ({ id: e.id, x: e.x, y: e.y, radius: ENEMY_RADIUS, effects: e.statusEffects })),
+  ];
+  const activeBadgeIds = new Set(badgeTargets.filter(t => t.effects.length > 0).map(t => t.id));
+  for (const [id, g] of statusBadgeGraphics) {
+    if (!activeBadgeIds.has(id)) {
+      app.stage.removeChild(g);
+      g.destroy();
+      statusBadgeGraphics.delete(id);
+    }
+  }
+  for (const target of badgeTargets) {
+    if (target.effects.length === 0) continue;
+    let g = statusBadgeGraphics.get(target.id);
+    if (!g) {
+      g = new Graphics();
+      app.stage.addChild(g);
+      statusBadgeGraphics.set(target.id, g);
+    }
+    g.position.set(target.x, target.y);
+    g.clear();
+    const badgeY = -(target.radius + 14);
+    target.effects.forEach((effect, i) => {
+      const offsetX = (i - (target.effects.length - 1) / 2) * 14;
+      g!.circle(offsetX, badgeY, STATUS_BADGE_RADIUS).fill({ color: STATUS_EFFECT_COLORS[effect.type] ?? 0xffffff });
+    });
+  }
+
   // ── Essence flashes ───────────────────────────────────────────────────────────
   for (const [dropId, flash] of essenceFlashes) {
     const remaining = flash.deadline - now;
@@ -224,6 +266,7 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
   const enemyGraphicsRef = useRef<Map<string, EnemyEntry>>(new Map());
   const essenceFlashesRef = useRef<Map<string, EssenceFlash>>(new Map());
   const tetherGraphicsRef = useRef<Map<string, Graphics>>(new Map());
+  const statusBadgeGraphicsRef = useRef<Map<string, Graphics>>(new Map());
   const latestGameStateRef = useRef<GameState | null>(null);
   latestGameStateRef.current = gameState;
   const reviveDeadlinesRef = useRef<Map<string, ReviveDeadline>>(new Map());
@@ -273,6 +316,7 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
           essenceFlashesRef.current,
           tetherGraphicsRef.current,
           isPurifiedRef.current,
+          statusBadgeGraphicsRef.current,
         );
 
         // Boss sprite — managed in ticker to keep renderFrame signature stable
@@ -363,6 +407,7 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
       enemyGraphicsRef.current.clear();
       essenceFlashesRef.current.clear();
       tetherGraphicsRef.current.clear();
+      statusBadgeGraphicsRef.current.clear();
     };
   }, []);
 

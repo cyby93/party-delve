@@ -871,3 +871,13 @@ The new unit test (`game-room-level-clear-guard.test.ts`) covers only AC1's boss
 
 **D-4.11-B — `resetToHub()` never destroys `this.bossBody`/`this.arenaWallBodies`** [`apps/simulation-server/src/rooms/GameRoom.ts`, `resetToHub`]
 Only `loadLevel` (on the next level load) and the boss-defeat handler destroy these physics bodies — `resetToHub()` does not. A boss-branch construction failure would leave any partially-created bodies alive until the next `loadLevel` call runs (not cleaned up by an intervening `resetToHub()`). Pre-existing gap, unrelated to 4.11's diff, and arguably less reachable post-4.11 than pre-4.11 (pre-fix, a failed boss build permanently deadlocked the room in `'dungeon'` phase before `resetToHub` could ever be reached in that state). Fix if this path is ever suspected of leaking bodies in practice: have `resetToHub()` also destroy `bossBody`/`arenaWallBodies` if set.
+
+---
+
+## Deferred from: code review of 3-12-status-effect-engine-buffs-debuffs-with-duration (2026-07-13)
+
+**D-3.12-A — Status badge visual can overlap/extend off-canvas with many simultaneous effects** [`apps/host-client/src/screens/DungeonScreen.tsx`, badge rendering block]
+`offsetX = (i - (n-1)/2) * 14` spaces badges evenly with no width cap. With today's 4 possible `StatusEffectType` values and replace-not-stack semantics (max one effect per type per entity), an entity can show at most 4 badges spanning ~42px — not a real overlap today, but nothing bounds this if a future story adds more effect types. Deliberately minimal per this story's Non-goals ("one generic badge/aura... no per-ability art"). Revisit with a max-badge-count cap or compact layout if `StatusEffectType` grows beyond 4-5 values.
+
+**D-3.12-B — `tickStatusEffects` expiry-broadcast diff relies on effect-object reference equality, undocumented fragility for future changes** [`apps/simulation-server/src/rooms/GameRoom.ts`, tick loop's "Tick status effects" block]
+The loop detects which effects expired via `ticked.statusEffects.includes(effect)` (identity comparison against the pre-tick array). This is correct today because `tickStatusEffects` only filters (never clones/mutates individual effect objects) and `applyStatusEffect` replaces-by-reference rather than mutating in place. If a future change makes either function transform individual effect objects in place (e.g., decaying `magnitude` over time), `includes` would break silently and misreport every effect as expired every tick. No test guards this invariant. Revisit when/if per-tick magnitude decay or in-place effect mutation is introduced (e.g., a "stacks that decay" mechanic).

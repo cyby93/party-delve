@@ -19,6 +19,7 @@ function makeEnemy(overrides: Partial<EnemyState> = {}): EnemyState {
     isAlive: true,
     fsmState: EnemyFSMState.IDLE,
     attackCooldownTicks: 0,
+    statusEffects: [],
     ...overrides,
   };
 }
@@ -28,11 +29,12 @@ function ctxAt(distance: number): EnemyContext {
     nearestPlayerPos: { x: 960 + distance, y: 540 },
     nearestPlayerDistance: distance,
     dt: DT,
+    nowMs: 0,
   };
 }
 
 function ctxNoPlayer(): EnemyContext {
-  return { nearestPlayerPos: null, nearestPlayerDistance: Infinity, dt: DT };
+  return { nearestPlayerPos: null, nearestPlayerDistance: Infinity, dt: DT, nowMs: 0 };
 }
 
 // ─── Easy: base FSM ──────────────────────────────────────────────────────────

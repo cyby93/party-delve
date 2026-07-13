@@ -28,6 +28,7 @@ function makeGameState(playerCount: number, downCount = 0, spiritCount = 0): Gam
     nearPoiId: null,
     essenceTotal: 0,
     reviveTimerExpiresAt: 0,
+    statusEffects: [],
   }));
   return {
     session: {
@@ -61,7 +62,7 @@ describe('tickBoss — zero alive players', () => {
   it('returns empty events without crash when all players are down', () => {
     const boss = makeBossState({ hp: 1000 });
     const state = makeGameState(4, 4);
-    const result = tickBoss(boss, state, DifficultyTier.NORMAL, SPAWN_POINTS);
+    const result = tickBoss(boss, state, DifficultyTier.NORMAL, SPAWN_POINTS, 0);
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.value).toEqual([]);
   });
@@ -69,7 +70,7 @@ describe('tickBoss — zero alive players', () => {
   it('returns empty events without crash when all players are in spirit form', () => {
     const boss = makeBossState({ hp: 1000 });
     const state = makeGameState(4, 0, 4);
-    const result = tickBoss(boss, state, DifficultyTier.NORMAL, SPAWN_POINTS);
+    const result = tickBoss(boss, state, DifficultyTier.NORMAL, SPAWN_POINTS, 0);
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.value).toEqual([]);
   });
@@ -80,7 +81,7 @@ describe('tickBoss — phase transitions', () => {
     const thresholdHp = Math.floor(BOSS_PHASE2_HP_RATIO * BOSS_GRASSLAND_MAX_HP);
     const boss = makeBossState({ hp: thresholdHp });
     const state = makeGameState(2);
-    const result = tickBoss(boss, state, DifficultyTier.EASY, SPAWN_POINTS);
+    const result = tickBoss(boss, state, DifficultyTier.EASY, SPAWN_POINTS, 0);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     const phaseEvt = result.value.find(e => e.type === 'boss:phaseChanged');
@@ -93,7 +94,7 @@ describe('tickBoss — phase transitions', () => {
     const thresholdHp = Math.floor(BOSS_PHASE2_HP_RATIO * BOSS_GRASSLAND_MAX_HP);
     const boss = makeBossState({ hp: thresholdHp });
     const state = makeGameState(2);
-    const result = tickBoss(boss, state, DifficultyTier.NORMAL, SPAWN_POINTS);
+    const result = tickBoss(boss, state, DifficultyTier.NORMAL, SPAWN_POINTS, 0);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.some(e => e.type === 'boss:phaseChanged')).toBe(true);
@@ -104,7 +105,7 @@ describe('tickBoss — phase transitions', () => {
     const thresholdHp = Math.floor(BOSS_PHASE2_HP_RATIO * BOSS_GRASSLAND_MAX_HP);
     const boss = makeBossState({ hp: thresholdHp });
     const state = makeGameState(2);
-    const result = tickBoss(boss, state, DifficultyTier.HARD, SPAWN_POINTS);
+    const result = tickBoss(boss, state, DifficultyTier.HARD, SPAWN_POINTS, 0);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.some(e => e.type === 'boss:phaseChanged')).toBe(true);
@@ -115,7 +116,7 @@ describe('tickBoss — phase transitions', () => {
     const thresholdHp = Math.floor(BOSS_PHASE3_HP_RATIO * BOSS_GRASSLAND_MAX_HP);
     const boss = makeBossState({ hp: thresholdHp, phase: BossPhase.Phase2 });
     const state = makeGameState(2);
-    const result = tickBoss(boss, state, DifficultyTier.HARD, SPAWN_POINTS);
+    const result = tickBoss(boss, state, DifficultyTier.HARD, SPAWN_POINTS, 0);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     const phaseEvt = result.value.find(e => e.type === 'boss:phaseChanged');
@@ -128,7 +129,7 @@ describe('tickBoss — phase transitions', () => {
     const thresholdHp = Math.floor(BOSS_PHASE3_HP_RATIO * BOSS_GRASSLAND_MAX_HP);
     const boss = makeBossState({ hp: thresholdHp, phase: BossPhase.Phase2 });
     const state = makeGameState(2);
-    const result = tickBoss(boss, state, DifficultyTier.EASY, SPAWN_POINTS);
+    const result = tickBoss(boss, state, DifficultyTier.EASY, SPAWN_POINTS, 0);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.some(e => e.type === 'boss:phaseChanged')).toBe(false);
@@ -139,7 +140,7 @@ describe('tickBoss — phase transitions', () => {
     const thresholdHp = Math.floor(BOSS_PHASE3_HP_RATIO * BOSS_GRASSLAND_MAX_HP);
     const boss = makeBossState({ hp: thresholdHp, phase: BossPhase.Phase2 });
     const state = makeGameState(2);
-    const result = tickBoss(boss, state, DifficultyTier.NORMAL, SPAWN_POINTS);
+    const result = tickBoss(boss, state, DifficultyTier.NORMAL, SPAWN_POINTS, 0);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.some(e => e.type === 'boss:phaseChanged')).toBe(false);
@@ -150,10 +151,10 @@ describe('tickBoss — phase transitions', () => {
     const thresholdHp = Math.floor(BOSS_PHASE2_HP_RATIO * BOSS_GRASSLAND_MAX_HP);
     const boss = makeBossState({ hp: thresholdHp });
     const state = makeGameState(2);
-    tickBoss(boss, state, DifficultyTier.NORMAL, SPAWN_POINTS);
+    tickBoss(boss, state, DifficultyTier.NORMAL, SPAWN_POINTS, 0);
     expect(boss.phase).toBe(BossPhase.Phase2);
     // second tick at same HP — guard prevents another phase event
-    const result2 = tickBoss(boss, state, DifficultyTier.NORMAL, SPAWN_POINTS);
+    const result2 = tickBoss(boss, state, DifficultyTier.NORMAL, SPAWN_POINTS, 0);
     expect(result2.ok).toBe(true);
     if (!result2.ok) return;
     expect(result2.value.filter(e => e.type === 'boss:phaseChanged').length).toBe(0);
@@ -165,7 +166,7 @@ describe('tickBoss — GrasslandAdd spawning on Phase 3 (Hard)', () => {
     const thresholdHp = Math.floor(BOSS_PHASE3_HP_RATIO * BOSS_GRASSLAND_MAX_HP);
     const boss = makeBossState({ hp: thresholdHp, phase: BossPhase.Phase2 });
     const state = makeGameState(2);
-    const result = tickBoss(boss, state, DifficultyTier.HARD, SPAWN_POINTS);
+    const result = tickBoss(boss, state, DifficultyTier.HARD, SPAWN_POINTS, 0);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     const addEvts = result.value.filter(e => e.type === 'add:spawned');
@@ -177,7 +178,7 @@ describe('tickBoss — GrasslandAdd spawning on Phase 3 (Hard)', () => {
     const boss = makeBossState({ hp: thresholdHp, phase: BossPhase.Phase2 });
     const state = makeGameState(2);
     const pts = [{ x: 10, y: 20 }, { x: 30, y: 40 }];
-    const result = tickBoss(boss, state, DifficultyTier.HARD, pts);
+    const result = tickBoss(boss, state, DifficultyTier.HARD, pts, 0);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     const addEvts = result.value.filter(e => e.type === 'add:spawned') as Array<{ x: number; y: number }>;
@@ -190,7 +191,7 @@ describe('tickBoss — GrasslandAdd spawning on Phase 3 (Hard)', () => {
     const thresholdHp = Math.floor(BOSS_PHASE3_HP_RATIO * BOSS_GRASSLAND_MAX_HP);
     const boss = makeBossState({ hp: thresholdHp, phase: BossPhase.Phase2 });
     const state = makeGameState(2);
-    const result = tickBoss(boss, state, DifficultyTier.HARD, []);
+    const result = tickBoss(boss, state, DifficultyTier.HARD, [], 0);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     const addEvts = result.value.filter(e => e.type === 'add:spawned') as Array<{ x: number; y: number }>;
@@ -206,7 +207,7 @@ describe('tickBoss — phase transition capped at one per tick (DN1)', () => {
     const boss = makeBossState({ hp });
     expect(boss.phase).toBe(BossPhase.Phase1);
     const state = makeGameState(2);
-    const result = tickBoss(boss, state, DifficultyTier.HARD, SPAWN_POINTS);
+    const result = tickBoss(boss, state, DifficultyTier.HARD, SPAWN_POINTS, 0);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     // Only Phase 1→2 should fire; Phase 2→3 is deferred to the next tick
@@ -225,13 +226,13 @@ describe('tickBoss — layer cooldowns persist (P1)', () => {
     const boss = makeBossState({ hp: 1800, phase: BossPhase.Phase2 });
     boss.position = { x: 200, y: 300 }; // distance = 100 <= BOSS_STOMP_ACTIVATION_RANGE=250
     const state = makeGameState(2);
-    const r1 = tickBoss(boss, state, DifficultyTier.NORMAL, SPAWN_POINTS);
+    const r1 = tickBoss(boss, state, DifficultyTier.NORMAL, SPAWN_POINTS, 0);
     expect(r1.ok).toBe(true);
     if (!r1.ok) return;
     expect(r1.value.some(e => e.type === 'boss:stomped')).toBe(true);
     expect(boss.stompCooldownTicks).toBe(BOSS_PHASE2_STOMP_COOLDOWN_TICKS);
     // Tick 2: stomp must NOT fire (on cooldown)
-    const r2 = tickBoss(boss, state, DifficultyTier.NORMAL, SPAWN_POINTS);
+    const r2 = tickBoss(boss, state, DifficultyTier.NORMAL, SPAWN_POINTS, 0);
     expect(r2.ok).toBe(true);
     if (!r2.ok) return;
     expect(r2.value.some(e => e.type === 'boss:stomped')).toBe(false);
@@ -245,8 +246,8 @@ describe('tickBoss — deterministic add IDs (DN2)', () => {
     const boss1 = makeBossState({ hp: thresholdHp, phase: BossPhase.Phase2 });
     const boss2 = makeBossState({ hp: thresholdHp, phase: BossPhase.Phase2 });
     const state = makeGameState(2); // tick: 0, runSeed: 0
-    const r1 = tickBoss(boss1, state, DifficultyTier.HARD, SPAWN_POINTS);
-    const r2 = tickBoss(boss2, state, DifficultyTier.HARD, SPAWN_POINTS);
+    const r1 = tickBoss(boss1, state, DifficultyTier.HARD, SPAWN_POINTS, 0);
+    const r2 = tickBoss(boss2, state, DifficultyTier.HARD, SPAWN_POINTS, 0);
     if (!r1.ok || !r2.ok) return;
     const ids1 = r1.value.filter(e => e.type === 'add:spawned').map(e => (e as BossAddSpawnedEvent).enemyId);
     const ids2 = r2.value.filter(e => e.type === 'add:spawned').map(e => (e as BossAddSpawnedEvent).enemyId);
@@ -259,7 +260,7 @@ describe('tickBoss — defeat', () => {
   it('sets isDefeated and emits BossDefeatedEvt', () => {
     const boss = makeBossState({ hp: 0 });
     const state = makeGameState(4);
-    const result = tickBoss(boss, state, DifficultyTier.NORMAL, SPAWN_POINTS);
+    const result = tickBoss(boss, state, DifficultyTier.NORMAL, SPAWN_POINTS, 0);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(boss.isDefeated).toBe(true);
@@ -270,7 +271,7 @@ describe('tickBoss — defeat', () => {
   it('already-defeated boss returns empty events', () => {
     const boss = makeBossState({ hp: 0, isDefeated: true });
     const state = makeGameState(4);
-    const result = tickBoss(boss, state, DifficultyTier.NORMAL, SPAWN_POINTS);
+    const result = tickBoss(boss, state, DifficultyTier.NORMAL, SPAWN_POINTS, 0);
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.value).toEqual([]);
   });
@@ -279,7 +280,7 @@ describe('tickBoss — defeat', () => {
     const boss = makeBossState({ hp: 0 });
     // 2 alive, 2 spirit (isSpirit=true means not alive)
     const state = makeGameState(4, 0, 2);
-    const result = tickBoss(boss, state, DifficultyTier.NORMAL, SPAWN_POINTS);
+    const result = tickBoss(boss, state, DifficultyTier.NORMAL, SPAWN_POINTS, 0);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     const defeatEvt = result.value.find(e => e.type === 'boss:defeated') as { reward: { essenceTotal: number; perPlayer: Array<{ essence: number }> } } | undefined;
