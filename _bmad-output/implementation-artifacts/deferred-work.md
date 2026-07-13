@@ -903,3 +903,13 @@ Pre-existing pattern shared by every other per-entity Graphics ref in this file 
 
 **D-3.13-F — Essence-drop id naming is inconsistent between the projectile-hit path and the zone-tick-kill path** [`packages/game-rules/src/systems/projectiles.ts` `resolveProjectileHit`, `apps/simulation-server/src/rooms/GameRoom.ts` zone-tick kill branch]
 `resolveProjectileHit` builds its drop id as `` `drop-${projectile.id}` ``; the zone-tick-kill branch (and the pre-existing ability hit-scan flow) both use `` `drop-${this.tickCount}-${enemyId}` ``. Both schemes produce unique ids in their own context (no bug), just two different naming conventions for the same concept. Cosmetic; unify if a shared drop-id helper is ever introduced.
+
+---
+
+## Deferred from: code review of 3-14-displacement-pull-physics-primitive (2026-07-13)
+
+**D-3.14-A — Neither displacement helper checks target liveness/downed/spirit-form state** [`apps/simulation-server/src/rooms/GameRoom.ts` `applyDisplacementToEnemy`/`applyDisplacementToPlayer`]
+Both helpers have no caller yet — Stone Wall's dispatch (3.16) and Void Pulse's zone-tick wiring (3.19) are the intended callers. Whether a downed/spirit-form player, or a dead enemy, should be immune to a pull/vacuum effect is a game-design decision, not something this pure mechanism story can resolve. Revisit when 3.16/3.19 actually wire a caller — add an `isAlive`/`isDown`/`isSpirit` guard at that point if the design calls for it.
+
+**D-3.14-B — No accumulation for concurrent pull sources targeting the same entity in one tick** [`apps/simulation-server/src/rooms/GameRoom.ts` `applyDisplacementToEnemy`/`applyDisplacementToPlayer`]
+Each call directly mutates `x`/`y` — if two pull sources (e.g. two simultaneous Stone Wall casts, or a Stone Wall cast inside a Void Pulse zone) both target the same entity in the same tick, the second call's displacement simply overwrites the position the first call set, silently dropping the first pull's effect rather than summing the two displacement vectors. Not reachable today (no caller exists). Revisit when 3.16/3.19 land — if simultaneous multi-source pulls turn out to matter for those abilities, vector-sum the `{dx,dy}` results from multiple `applyDisplacement` calls before applying, rather than calling the helper once per source.

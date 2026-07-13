@@ -4,7 +4,7 @@ baseline_commit: f6083d8
 
 # Story 3.14: Displacement/Pull Physics Primitive
 
-Status: ready-for-dev
+Status: done
 
 ## CLAUDE.md Required Task Header
 
@@ -184,7 +184,7 @@ so that Stone Wall's drag and Void Pulse's vacuum zone use one mechanism instead
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1** (AC: #1, #5) — `packages/game-rules/src/systems/displacement.ts`:
+- [x] **Task 1** (AC: #1, #5) — `packages/game-rules/src/systems/displacement.ts`:
   ```ts
   export function applyDisplacement(
     targetX: number, targetY: number,
@@ -203,7 +203,7 @@ so that Stone Wall's drag and Void Pulse's vacuum zone use one mechanism instead
   keep it pure and planck-import-free.) Export from `packages/game-rules/
   src/index.ts`.
 
-- [ ] **Task 2** (AC: #2, #3) — In `GameRoom.ts`, add (but do not yet call
+- [x] **Task 2** (AC: #2, #3) — In `GameRoom.ts`, add (but do not yet call
   from any ability dispatch — no ability fires displacement until 3.16/3.19)
   a small private helper method demonstrating/documenting the correct
   application pattern for both entity types, e.g.
@@ -217,10 +217,20 @@ so that Stone Wall's drag and Void Pulse's vacuum zone use one mechanism instead
   pointing to which future story (3.16/3.19) will call them — don't fabricate
   a test-only call site.
 
-- [ ] Write `tests/unit/displacement.test.ts` per AC5 — cover: source
+- [x] Write `tests/unit/displacement.test.ts` per AC5 — cover: source
   directly right of target, source directly above, diagonal, and
   target-equals-source (must return `{dx:0, dy:0}`, not `NaN`).
-- [ ] `npm run typecheck` + `npx vitest run` — 0 errors, no regressions.
+- [x] `npm run typecheck` + `npx vitest run` — 0 errors, no regressions.
+
+### Review Findings
+
+- [x] [Review][Patch] Zero-vector guard used exact `len === 0` equality instead of an epsilon [`packages/game-rules/src/systems/displacement.ts:12`] — fixed: near-coincident (not exactly equal) source/target positions divide by a tiny `len`; direction becomes numerically unstable even though magnitude stays bounded by `strength` (confirmed algebraically: `|dx|,|dy| ≤ len` always, so this is not an unbounded blow-up as first reported, only direction jitter). Changed guard to `len < 1e-6`.
+- [x] [Review][Patch] `applyDisplacementToEnemy`'s comment overclaimed automatic same-tick physics-body sync [`apps/simulation-server/src/rooms/GameRoom.ts:1098`] — fixed: reworded to state the sync only happens the next time this enemy's own AI tick emits an `enemy:moved` event (e.g., its next chase tick), not unconditionally every tick, per Acceptance Auditor's confirmed trace of `tickChase`/Enemy AI phase.
+- [x] [Review][Patch] `applyDisplacementToPlayer` broadcast unconditionally, even for a zero displacement [`apps/simulation-server/src/rooms/GameRoom.ts:1110`] — fixed: added an early return for `dx === 0 && dy === 0`, matching the file's existing convention (Planck phase 3's position-readback loop) of only broadcasting on an actual change.
+- [x] [Review][Defer] Neither helper checks target liveness/downed/spirit-form state [`apps/simulation-server/src/rooms/GameRoom.ts:1105-1125`] — deferred, this story's helpers have no caller yet; whether a downed/spirit-form player or a dead enemy should be immune to pull is a game-design call for whichever of 3.16/3.19 wires the actual dispatch.
+- [x] [Review][Defer] No accumulation for concurrent pull sources on the same entity in one tick [`apps/simulation-server/src/rooms/GameRoom.ts:1105-1125`] — deferred, last-write-wins if two pull sources (e.g. two Stone Walls) target the same entity same-tick; belongs in whichever future zone-tick/ability-dispatch caller composes multiple `applyDisplacement` calls, not in this pure per-call helper.
+
+Dismissed as noise/spec-compliant (3): direct `body.setPosition` bypassing collision resolution (this is exactly AC4's spec-mandated behavior, matching the existing spawn-teleport pattern already in the codebase — not a defect); untested negative/zero `strength` (mathematically correct sign-flip behavior, no domain restriction in AC1); missing `Number.isFinite` guards on inputs (no other pure math function in this codebase — `isInHitZone`, `tickChase` — defends against non-finite internal state; consistent with project convention of trusting internal callers).
 
 ---
 
@@ -262,8 +272,31 @@ current codebase, and this story should not be the one to introduce a dead one.
 
 ### Agent Model Used
 
+Claude Sonnet 5 (claude-sonnet-5)
+
 ### Debug Log References
+
+- `npm run typecheck` — 0 errors (full monorepo, all 10 project references).
+- `npx vitest run` — 440 passed, 0 failed, 12 skipped (pre-existing skips, unrelated to this story). New `tests/unit/displacement.test.ts` (4 tests) included and passing.
+- Scoped `eslint` on every file this story touched (`displacement.ts`, `game-rules/index.ts`, `GameRoom.ts`, `displacement.test.ts`) — the only errors reported are pre-existing, unrelated to this story's edits: missing Node-globals ESLint env (`no-undef` on `process`/`setInterval`/`setTimeout`), two pre-existing unused type imports (`EnemyAIEvent`, `BossEvent`), and one pre-existing `no-restricted-syntax` (`Math.random()`) — none reference `applyDisplacement`/`applyDisplacementToEnemy`/`applyDisplacementToPlayer` or any line this story added.
 
 ### Completion Notes List
 
+- **Simulation-safety hook (TRIGGERED)** — `applyDisplacement` is a pure function of its five numeric arguments only (no wall-clock, no RNG, no planck import); deterministic-tick test coverage is `tests/unit/displacement.test.ts`. `GameRoom.ts`'s two new private helpers (`applyDisplacementToEnemy`/`applyDisplacementToPlayer`) are direct position mutations matching the codebase's existing spawn-teleport/enemy-AI-sync patterns — no new physics primitive (impulse) introduced.
+- **Ownership hook** — single area (Simulation Engineer only, per story header); all edits stayed within `Allowed paths`.
+- **Contract-change hook** — not triggered. No `packages/shared-types`/`packages/net-protocol` changes; displacement reuses the existing `player:moved` delta type as-is (Task 2's `applyDisplacementToPlayer` broadcasts it with the same shape other immediate-effect helpers already use).
+- **Key implementation decision (per story's Context correction)**: did NOT implement `body.applyLinearImpulse` anywhere. Traced `GameRoom.ts`'s tick phases as instructed — confirmed player velocity is unconditionally overwritten by Planck phase 1's `setLinearVelocity` every tick (wiping any impulse from a prior tick before `step()` can integrate it), and enemy position is force-synced from `enemy.x`/`enemy.y` every Enemy AI phase tick (discarding anything a physics impulse would have computed). Both helpers use direct position mutation instead, matching this codebase's existing spawn-teleport (`body.setPosition`) and `tickChase` (`enemy.x +=`) patterns.
+- Neither helper has a caller yet — per Task 2 and the story's Blocked paths, Stone Wall's dispatch wiring is Story 3.16 and Void Pulse's zone-tick wiring is Story 3.19. Both are documented with a comment pointing to those stories and to the reasoning above.
+- No bounds-clamping added (AC4/Non-goals) — relies on planck's own collision resolution on the following `physicsWorld.step()`, same as the existing spawn-teleport pattern already does.
+- Confidence: 92% — the pure-math function and its test coverage are unambiguous and directly verified. The 8% uncertainty is only in whether 3.16/3.19's eventual callers will need the helpers' exact signatures adjusted (e.g., broadcasting a different delta shape for the enemy case) — the story explicitly allows this ("dev agent may adjust names to match this file's eventual callers' argument order").
+
 ### File List
+
+- `packages/game-rules/src/systems/displacement.ts` (new)
+- `packages/game-rules/src/index.ts`
+- `apps/simulation-server/src/rooms/GameRoom.ts`
+- `tests/unit/displacement.test.ts` (new)
+
+## Change Log
+
+- 2026-07-13 — Implemented Story 3.14: pure `applyDisplacement` math function (packages/game-rules) plus two documented, not-yet-called `GameRoom.ts` private helpers (`applyDisplacementToEnemy`/`applyDisplacementToPlayer`) demonstrating the direct-position-mutation application pattern for both entity types. Per the story's Context correction, `body.applyLinearImpulse` was not used anywhere — verified inert for both player and enemy bodies in this codebase's current tick architecture. No ability wired to call these yet (Stone Wall is 3.16, Void Pulse is 3.19), per Non-goals.

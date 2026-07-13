@@ -47,3 +47,4 @@ export type { StatusEffectTarget, StatusEffectError } from './systems/status-eff
 export { resolveProjectileHit, isProjectileExpired } from './systems/projectiles.js';
 export type { ProjectileError } from './systems/projectiles.js';
 export { shouldZoneTick, isZoneExpired } from './systems/zones.js';
+export { applyDisplacement } from './systems/displacement.js';

@@ -1095,6 +1095,39 @@ export class GameRoom extends Room {
     this.zoneDamagePerTick.set(zoneId, damagePerTick);
   }
 
+  // Ready-to-use for 3.16's Stone Wall pull and 3.19's Void Pulse vacuum zone
+  // (the zone-tick handler built in 3.13 is the intended caller for the enemy
+  // variant) — no ability calls these yet, so there is no caller here. dx/dy
+  // come from game-rules' applyDisplacement. Direct position mutation, not
+  // body.applyLinearImpulse: see Story 3.14 for why impulses are inert for
+  // both entity types in this tick architecture (velocity gets overwritten
+  // every tick for players). For enemies, the mutated x/y reaches the physics
+  // body next time this enemy's own AI tick emits an 'enemy:moved' event (see
+  // the Enemy AI phase below) — not necessarily the same tick this runs in.
+  private applyDisplacementToEnemy(enemy: EnemyState, dx: number, dy: number): void {
+    enemy.x += dx;
+    enemy.y += dy;
+  }
+
+  private applyDisplacementToPlayer(playerId: string, dx: number, dy: number): void {
+    if (dx === 0 && dy === 0) return;
+
+    const player = this.gameState.players.find(p => p.id === playerId);
+    const body = this.playerBodies.get(playerId);
+    if (!player || !body) return;
+
+    player.x += dx;
+    player.y += dy;
+    body.setPosition(Vec2(toMeters(player.x), toMeters(player.y)));
+
+    this.broadcast(EventNames.DELTA, {
+      type: 'player:moved' as const,
+      playerId: player.id,
+      x: player.x,
+      y: player.y,
+    } satisfies DeltaEventMsg);
+  }
+
   private tick(): void {
     this.tickCount++;
     this.gameState.tick = this.tickCount;
