@@ -44,6 +44,30 @@ export const ABILITY_DAMAGE: Record<PlayerClass, readonly [number, number, numbe
   stormcaller:  [18, 40, 45,  0],  // Lightning Arc, Tempest Hurl, Thunder Clap AoE, Storm Eye(field)
 };
 
+// ── Self-cost / HP-scaled damage / lifesteal ─────────────────────────────────
+// All zero until Story 3.19 (Blood Spike self-cost/lifesteal, Crimson Lash
+// HP-scaled damage) sets Souldrinker's slots.
+export const ABILITY_SELF_COST_HP: Record<PlayerClass, readonly [number, number, number, number]> = {
+  stonehide:    [0, 0, 0, 0],
+  spiritcaller: [0, 0, 0, 0],
+  souldrinker:  [0, 0, 0, 0],
+  stormcaller:  [0, 0, 0, 0],
+};
+
+export const ABILITY_HP_SCALED_DAMAGE: Record<PlayerClass, readonly [number, number, number, number]> = {
+  stonehide:    [0, 0, 0, 0],
+  spiritcaller: [0, 0, 0, 0],
+  souldrinker:  [0, 0, 0, 0],
+  stormcaller:  [0, 0, 0, 0],
+};
+
+export const ABILITY_LIFESTEAL_PCT: Record<PlayerClass, readonly [number, number, number, number]> = {
+  stonehide:    [0, 0, 0, 0],
+  spiritcaller: [0, 0, 0, 0],
+  souldrinker:  [0, 0, 0, 0],
+  stormcaller:  [0, 0, 0, 0],
+};
+
 // ── Enemy AI ──────────────────────────────────────────────────────────────────
 export const ENEMY_CHASE_RANGE = 300;         // pixels — triggers IDLE→CHASE
 export const ENEMY_ATTACK_RANGE = 60;         // pixels — triggers CHASE→ATTACK

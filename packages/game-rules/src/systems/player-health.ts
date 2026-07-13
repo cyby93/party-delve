@@ -48,3 +48,11 @@ export function applyPlayerDamage(
 export function getReviveWindowMs(downCount: number): number {
   return REVIVE_WINDOWS_MS[Math.min(Math.max(downCount, 1), REVIVE_WINDOWS_MS.length) - 1] ?? 2000;
 }
+
+export function healPlayer(player: PlayerState, amount: number): PlayerState {
+  return { ...player, hp: Math.min(player.maxHp, player.hp + Math.max(amount, 0)) };
+}
+
+export function calculateLifesteal(damageDealt: number, pct: number): number {
+  return damageDealt * pct;
+}

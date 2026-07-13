@@ -15,6 +15,8 @@ describe('dispatchAbility', () => {
     nowMs: 1000,
     directionX: 0.7,
     directionY: 0.0,
+    casterHp: 100,
+    casterMaxHp: 100,
   };
 
   it('returns ok for each class at index 0 when not on cooldown', () => {
@@ -124,5 +126,21 @@ describe('dispatchAbility', () => {
     const r = dispatchAbility({ ...baseCtx, playerClass: PlayerClass.STONEHIDE, abilityIndex: 0 });
     expect(r.ok).toBe(true);
     if (r.ok) expect(r.value.cooldownMs).toBe(2000);
+  });
+
+  it('self-cost and HP-scaled damage are inert while every class/slot table entry is 0 (pre-3.19)', () => {
+    for (const cls of Object.values(PlayerClass)) {
+      for (let i = 0; i < 4; i++) {
+        const full = dispatchAbility({ ...baseCtx, playerClass: cls, abilityIndex: i, casterHp: 100, casterMaxHp: 100 });
+        const low = dispatchAbility({ ...baseCtx, playerClass: cls, abilityIndex: i, casterHp: 1, casterMaxHp: 100 });
+        expect(full.ok).toBe(true);
+        expect(low.ok).toBe(true);
+        if (full.ok && low.ok) {
+          expect(full.value.selfCostHpApplied).toBe(0);
+          expect(low.value.selfCostHpApplied).toBe(0);
+          expect(low.value.damage).toBe(full.value.damage);
+        }
+      }
+    }
   });
 });

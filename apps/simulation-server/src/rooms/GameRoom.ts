@@ -1644,6 +1644,8 @@ export class GameRoom extends Room {
         directionY,
         cooldownExpiresAt: playerCooldowns[abilityIndex] ?? 0,
         nowMs: nowAbility,
+        casterHp: player.hp,
+        casterMaxHp: player.maxHp,
       });
 
       if (!result.ok) continue;

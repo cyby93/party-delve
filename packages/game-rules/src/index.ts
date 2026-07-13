@@ -24,17 +24,22 @@ export {
   PROJECTILE_SPEED_PX_S,
   PROJECTILE_MAX_RANGE_PX,
   ABILITY_CHAINED_ZONE,
+  ABILITY_SELF_COST_HP,
+  ABILITY_HP_SCALED_DAMAGE,
+  ABILITY_LIFESTEAL_PCT,
 } from './balance.js';
 export type { ChainedZoneConfig } from './balance.js';
-export { applyPlayerDamage, getReviveWindowMs } from './systems/player-health.js';
+export { applyPlayerDamage, getReviveWindowMs, healPlayer, calculateLifesteal } from './systems/player-health.js';
 export type { PlayerDamageResult, HealthError } from './systems/player-health.js';
+export { resolveMixedFactionTargets } from './systems/targeting.js';
+export type { MixedFactionSplit } from './systems/targeting.js';
 export { applyDamage, isInHitZone } from './systems/combat.js';
 export type { DamageResult, CombatError } from './systems/combat.js';
 export { tickEnemy, tickBaseFSM, createEasyLayers, createNormalLayers, createHardLayers } from './systems/ai/fsm.js';
 export type { EnemyContext, BehaviorLayer, EnemyAIEvent } from './systems/ai/fsm.js';
 export { ChargeLayer } from './systems/ai/layers/charge.js';
 export { StompLayer } from './systems/ai/layers/stomp.js';
-export { dispatchAbility } from './systems/abilities.js';
+export { dispatchAbility, calculateSelfCostHp, calculateHpScaledDamage } from './systems/abilities.js';
 export type { AbilityDispatchContext, AbilityFiredEvent, AbilityGameError } from './systems/abilities.js';
 export { assignBond, selectBondPair, selectBondType, bondKey, getProximityBuffedPlayers, getFateBuffedPlayers, getFateBondWipeTargets, getProximityDrainTargets } from './systems/bonds.js';
 export type { BondAssignedEvt, BondError, ProximityDrainTarget } from './systems/bonds.js';

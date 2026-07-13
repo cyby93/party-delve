@@ -4,7 +4,7 @@ baseline_commit: f6083d8
 
 # Story 3.15: Self-Cost Resource & Mixed-Faction Target Resolution
 
-Status: ready-for-dev
+Status: done
 
 ## CLAUDE.md Required Task Header
 
@@ -181,7 +181,7 @@ so that Blood Spike, Crimson Lash, and Dark Pact share one cost mechanism, and A
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1a** (AC: #1, #4) — `balance.ts`: add
+- [x] **Task 1a** (AC: #1, #4) — `balance.ts`: add
   `ABILITY_SELF_COST_HP: Record<PlayerClass, readonly [number,number,number,number]>`
   (all zeros for now — Story 3.19 sets Blood Spike's slot to a nonzero
   value) and `ABILITY_HP_SCALED_DAMAGE: Record<PlayerClass, readonly
@@ -189,7 +189,7 @@ so that Blood Spike, Crimson Lash, and Dark Pact share one cost mechanism, and A
   zeros for now — 3.19 sets Crimson Lash's slot). Export both from
   `packages/game-rules/src/index.ts`.
 
-- [ ] **Task 1b** (AC: #1, #4) — `abilities.ts`: add `casterHp: number;
+- [x] **Task 1b** (AC: #1, #4) — `abilities.ts`: add `casterHp: number;
   casterMaxHp: number;` to `AbilityDispatchContext`. In `dispatchAbility`,
   after computing base `damage` from `ABILITY_DAMAGE`:
   1. If `ABILITY_HP_SCALED_DAMAGE[class][idx] > 0`: recompute
@@ -207,7 +207,7 @@ so that Blood Spike, Crimson Lash, and Dark Pact share one cost mechanism, and A
   cost, it doesn't mutate any player state itself (it never has, for any
   field — this is consistent with its existing purity).
 
-- [ ] **Task 2a** (AC: #2) — `player-health.ts`: add
+- [x] **Task 2a** (AC: #2) — `player-health.ts`: add
   ```ts
   export function healPlayer(player: PlayerState, amount: number): PlayerState {
     return { ...player, hp: Math.min(player.maxHp, player.hp + Math.max(amount, 0)) };
@@ -217,7 +217,7 @@ so that Blood Spike, Crimson Lash, and Dark Pact share one cost mechanism, and A
   `isInHitZone`'s plain-return style, not `applyPlayerDamage`'s
   `Result`-return style — healing has no error condition to report.)
 
-- [ ] **Task 2b** (AC: #2) — Lifesteal percentage helper — either a small
+- [x] **Task 2b** (AC: #2) — Lifesteal percentage helper — either a small
   pure function `calculateLifesteal(damageDealt: number, pct: number):
   number` in `player-health.ts` (trivial enough it may not need its own
   file — dev agent's call; if it's just `damageDealt * pct` inline at the
@@ -235,7 +235,7 @@ so that Blood Spike, Crimson Lash, and Dark Pact share one cost mechanism, and A
   pattern of `ABILITY_SELF_COST_HP`/`ABILITY_HP_SCALED_DAMAGE` above, and
   let 3.19 set Blood Spike's actual 50% value alongside its other tuning).
 
-- [ ] **Task 3** (AC: #3) — `packages/game-rules/src/systems/targeting.ts`:
+- [x] **Task 3** (AC: #3) — `packages/game-rules/src/systems/targeting.ts`:
   ```ts
   import type { PlayerState, EnemyState } from 'shared-types';
 
@@ -272,13 +272,19 @@ so that Blood Spike, Crimson Lash, and Dark Pact share one cost mechanism, and A
   needs self-targeting for some future ability, this is the function to
   revisit, not to work around at the call site. Export from `index.ts`.
 
-- [ ] Update `tests/unit/abilities.test.ts`'s `baseCtx` fixture to include
+- [x] Update `tests/unit/abilities.test.ts`'s `baseCtx` fixture to include
   `casterHp`/`casterMaxHp` (e.g. `casterHp: 100, casterMaxHp: 100`) so the
   existing 8 tests still compile and pass unchanged (all
   `ABILITY_SELF_COST_HP`/`ABILITY_HP_SCALED_DAMAGE` entries are 0, so
   behavior is identical to before this story).
-- [ ] Write `tests/unit/self-cost.test.ts`, `tests/unit/targeting.test.ts` per AC5.
-- [ ] `npm run typecheck` + `npx vitest run` — 0 errors, no regressions.
+- [x] Write `tests/unit/self-cost.test.ts`, `tests/unit/targeting.test.ts` per AC5.
+- [x] `npm run typecheck` + `npx vitest run` — 0 errors, no regressions.
+
+### Review Findings
+
+- [x] [Review][Patch] Divide-by-zero/NaN risk in `calculateHpScaledDamage` when `casterMaxHp <= 0` [packages/game-rules/src/systems/abilities.ts:34] — fixed, guard added alongside the existing `scaleCoef <= 0` check.
+- [x] [Review][Defer] `healPlayer` doesn't guard/reset `isDown`/`isSpirit` state [packages/game-rules/src/systems/player-health.ts:52] — deferred, pre-existing story-scope gap (see deferred-work.md D-3.15-A).
+- [x] [Review][Defer] `resolveMixedFactionTargets` doesn't filter dead enemies or downed/spirit allies out of the split [packages/game-rules/src/systems/targeting.ts:14] — deferred, pre-existing story-scope gap (see deferred-work.md D-3.15-B).
 
 ---
 
@@ -328,8 +334,36 @@ hardcode.
 
 ### Agent Model Used
 
+Claude Sonnet 5 (claude-sonnet-5)
+
 ### Debug Log References
+
+None — no failures encountered; typecheck and full test suite passed on first run after the GameRoom.ts scope exception (see Completion Notes).
 
 ### Completion Notes List
 
+- Task 1a: Added `ABILITY_SELF_COST_HP`, `ABILITY_HP_SCALED_DAMAGE`, and `ABILITY_LIFESTEAL_PCT` tables to `balance.ts` (all-zero, matching the existing `Record<PlayerClass, [4-tuple]>` convention), exported from `index.ts`.
+- Task 1b: Added `casterHp`/`casterMaxHp` to `AbilityDispatchContext` and `selfCostHpApplied` to `AbilityFiredEvent`. Extracted the self-cost and HP-scaling math into two standalone pure functions, `calculateSelfCostHp` and `calculateHpScaledDamage` (exported from `index.ts`), rather than inlining the formulas directly in `dispatchAbility` — this let AC1/AC4/AC5's "independent of any specific ability" requirement be tested directly against the formulas without needing any real balance-table entry to be nonzero (every entry is 0 until Story 3.19). `dispatchAbility` calls both and stays pure — it reports `selfCostHpApplied`, it does not mutate any player state.
+- Task 2a/2b: Added `healPlayer` (capped at `maxHp`, no `Result` — matches `isInHitZone`'s plain-return convention since healing can't fail) and `calculateLifesteal` (pure percentage-of-damage helper) to `player-health.ts`.
+- Task 3: Created `packages/game-rules/src/systems/targeting.ts` with `resolveMixedFactionTargets`, using the `'class' in t` structural check to distinguish `PlayerState` from `EnemyState` (verified against both interfaces — `PlayerState` has `class`, `EnemyState` does not, no collision risk). Caster is excluded from their own AoE ally list per the story's explicit judgment-call flag.
+- **Scope exception (flagged to user, approved):** the additive `AbilityDispatchContext` fields broke an existing `dispatchAbility` call site in `apps/simulation-server/src/rooms/GameRoom.ts` (line ~1640) that predates this story — the story's Blocked-paths note assumed "no ability calls any of this yet," which was true for the self-cost/HP-scaling *mechanism* but not for the base `dispatchAbility` call itself. Asked the user; approved a minimal 2-line addition (`casterHp: player.hp, casterMaxHp: player.maxHp`) to keep the build green. No new behavior wired — `selfCostHpApplied` is still not consumed by any caller (that remains Story 3.19's job).
+- Updated `tests/unit/abilities.test.ts`'s `baseCtx` fixture with `casterHp`/`casterMaxHp: 100` and added a regression test proving self-cost/HP-scaling are inert (zero cost, unchanged damage) across every class/slot while all balance tables are zero.
+- Wrote `tests/unit/self-cost.test.ts` (1-HP floor edge case, zero-HP-already case, HP-scaled damage monotonicity, `healPlayer` cap, `calculateLifesteal` math) and `tests/unit/targeting.test.ts` (mixed-faction split, caster self-exclusion, empty list, all-enemy list) per AC5.
+- Full suite: `npm run typecheck` — 0 errors. `npx vitest run` — 462 passed, 0 failed, 7 skipped (pre-existing skips, unrelated to this story).
+- Confidence: 95% — mechanism-level implementation matches the story's explicit formulas and Dev Notes exactly; the only judgment calls (GameRoom.ts touch, extracting pure functions instead of inlining) were either user-approved or directly serve an AC's explicit testability requirement.
+
 ### File List
+
+- `packages/game-rules/src/balance.ts` (modified)
+- `packages/game-rules/src/systems/abilities.ts` (modified)
+- `packages/game-rules/src/systems/player-health.ts` (modified)
+- `packages/game-rules/src/systems/targeting.ts` (new)
+- `packages/game-rules/src/index.ts` (modified)
+- `apps/simulation-server/src/rooms/GameRoom.ts` (modified — minimal scope exception, see Completion Notes)
+- `tests/unit/abilities.test.ts` (modified)
+- `tests/unit/self-cost.test.ts` (new)
+- `tests/unit/targeting.test.ts` (new)
+
+### Change Log
+
+- 2026-07-13: Implemented Story 3.15 — self-cost HP mechanism, inverse-HP damage scaling, lifesteal helpers, and mixed-faction target resolution. All tasks complete, all ACs satisfied, 0 regressions.
