@@ -251,6 +251,16 @@ export type ZoneExpiredDelta = {
   zoneId: string;
 };
 
+// Storm Eye's periodic bonus lightning strike (Story 3.20) — visual-only, distinct
+// from the steady zone:tick. The actual HP change is broadcast separately via
+// enemy:damaged/enemy:killed for the struck target.
+export type ZoneStrikeDelta = {
+  type: 'zone:strike';
+  zoneId: string;
+  targetId: string;
+  damage: number;
+};
+
 export type CastStartedDelta = {
   type: 'cast:started';
   casterId: string;
@@ -311,6 +321,7 @@ export type DeltaEventMsg =
   | ProjectileExpiredDelta
   | ZoneTickDelta
   | ZoneExpiredDelta
+  | ZoneStrikeDelta
   | CastStartedDelta
   | CastCancelledDelta
   | CastCompletedDelta;

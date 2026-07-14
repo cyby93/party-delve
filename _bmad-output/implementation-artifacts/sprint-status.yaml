@@ -259,7 +259,7 @@ development_status:
   3-17-spiritcaller-kit-rework-ancestors-voice-spirit-nova-warding-cry: done
   3-18-soul-mend-ranged-spirit-targeting-revive: done
   3-19-souldrinker-kit-rework-blood-spike-crimson-lash-dark-pact-void-pulse: done
-  3-20-stormcaller-storm-eye-rework: ready-for-dev
+  3-20-stormcaller-storm-eye-rework: done
   # Epic 3 Correction: Downed Player Body/Spirit Entity Split (correct-course,
   # 2026-07-14, sprint-change-proposal-2026-07-14.md) — sequenced a->b->c
   3-21a-body-spirit-position-schema-and-protocol-contract: backlog

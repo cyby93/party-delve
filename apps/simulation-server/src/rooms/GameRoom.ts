@@ -12,7 +12,7 @@ import {
   CAT_BOSS, createZoneBody, createProjectileBody,
 } from '../physics/world.js';
 import type { PoiBeginContactEvent, PoiEndContactEvent, EssenceBeginContactEvent, PhysicsBodyData } from '../physics/world.js';
-import { createRng, tickEnemy, dispatchAbility, getEnemyCount, applyDamage, isInHitZone, ABILITY_HIT_RANGE_PX, ABILITY_HIT_RADIUS_PX, ABILITY_DAMAGE, applyPlayerDamage, getReviveWindowMs, ENEMY_MELEE_DAMAGE, ENEMY_MELEE_RANGE_PX, ENEMY_ATTACK_COOLDOWN_MS, REVIVE_RADIUS_PX, REVIVE_HP, SPIRIT_ABILITY_COOLDOWN_MS, generateFloorLayout, GRASSLAND_ROOM_POOL, WAVE_COUNTS, WAVE_PAUSE_MS, WAVE_ENEMY_SCALE, bondKey, getProximityBuffedPlayers, getFateBuffedPlayers, getFateBondWipeTargets, getProximityDrainTargets, BOND_PROXIMITY_RANGE_PX, BOND_DRAIN_THRESHOLD_S, BOND_DRAIN_HP_PER_TICK, BOND_DAMAGE_MULT, BOND_SPEED_MULT, assignBond, BOND_DESCRIPTIONS, BOND_MECHANICS, createBossState, tickBoss, BOSS_ADD_HP, BOSS_STOMP_DAMAGE, evaluateGrasslandAchievements, JOYSTICK_DEADBAND, createEasyLayers, createNormalLayers, createHardLayers, tickStatusEffects, getStatusEffectMagnitude, applyStatusEffect, resolveProjectileHit, isProjectileExpired, shouldZoneTick, isZoneExpired, PROJECTILE_MAX_RANGE_PX, PROJECTILE_SPEED_PX_S, ABILITY_CHAINED_ZONE, ABILITY_STATUS_EFFECT, ABILITY_DISPLACEMENT_STRENGTH, applyDisplacement, resolveMixedFactionTargets, healPlayer, calculateLifesteal, resolveExpandingRadius, ABILITY_HEAL_AMOUNT, SPIRIT_NOVA_DURATION_MS, SPIRIT_NOVA_MAX_RADIUS_PX, findSoulMendTarget, shouldCancelSoulMendChannel, reviveBySoulMend, SOUL_MEND_CHANNEL_DURATION_MS, SOUL_MEND_LIVENESS_MS, ABILITY_COOLDOWNS_MS, ABILITY_DELIVERY, ABILITY_LIFESTEAL_PCT, VOID_PULSE_PULL_STRENGTH_PX, DARK_PACT_DRAIN_PCT } from 'game-rules';
+import { createRng, tickEnemy, dispatchAbility, getEnemyCount, applyDamage, isInHitZone, ABILITY_HIT_RANGE_PX, ABILITY_HIT_RADIUS_PX, ABILITY_DAMAGE, applyPlayerDamage, getReviveWindowMs, ENEMY_MELEE_DAMAGE, ENEMY_MELEE_RANGE_PX, ENEMY_ATTACK_COOLDOWN_MS, REVIVE_RADIUS_PX, REVIVE_HP, SPIRIT_ABILITY_COOLDOWN_MS, generateFloorLayout, GRASSLAND_ROOM_POOL, WAVE_COUNTS, WAVE_PAUSE_MS, WAVE_ENEMY_SCALE, bondKey, getProximityBuffedPlayers, getFateBuffedPlayers, getFateBondWipeTargets, getProximityDrainTargets, BOND_PROXIMITY_RANGE_PX, BOND_DRAIN_THRESHOLD_S, BOND_DRAIN_HP_PER_TICK, BOND_DAMAGE_MULT, BOND_SPEED_MULT, assignBond, BOND_DESCRIPTIONS, BOND_MECHANICS, createBossState, tickBoss, BOSS_ADD_HP, BOSS_STOMP_DAMAGE, evaluateGrasslandAchievements, JOYSTICK_DEADBAND, createEasyLayers, createNormalLayers, createHardLayers, tickStatusEffects, getStatusEffectMagnitude, applyStatusEffect, resolveProjectileHit, isProjectileExpired, shouldZoneTick, isZoneExpired, PROJECTILE_MAX_RANGE_PX, PROJECTILE_SPEED_PX_S, ABILITY_CHAINED_ZONE, ABILITY_STATUS_EFFECT, ABILITY_DISPLACEMENT_STRENGTH, applyDisplacement, resolveMixedFactionTargets, healPlayer, calculateLifesteal, resolveExpandingRadius, ABILITY_HEAL_AMOUNT, SPIRIT_NOVA_DURATION_MS, SPIRIT_NOVA_MAX_RADIUS_PX, findSoulMendTarget, shouldCancelSoulMendChannel, reviveBySoulMend, SOUL_MEND_CHANNEL_DURATION_MS, SOUL_MEND_LIVENESS_MS, ABILITY_COOLDOWNS_MS, ABILITY_DELIVERY, ABILITY_LIFESTEAL_PCT, VOID_PULSE_PULL_STRENGTH_PX, DARK_PACT_DRAIN_PCT, STORM_EYE_ZONE_RADIUS_PX, STORM_EYE_TICK_MS, STORM_EYE_TICK_DAMAGE, STORM_EYE_DURATION_MS, STORM_EYE_STRIKE_INTERVAL_MS, STORM_EYE_STRIKE_DAMAGE, pickRandomIndex } from 'game-rules';
 import type { BehaviorLayer, EnemyContext, EnemyAIEvent, BossEvent, BossStompedEvent, ChainedZoneConfig } from 'game-rules';
 import { BOSS_ARENA_SPAWN_POINTS, loadBossArena } from '../levels/boss-arena.js';
 import { CLASS_DEFINITIONS } from 'shared-types';
@@ -165,6 +165,11 @@ export class GameRoom extends Room {
   private pendingZoneContactBegin: Array<ZoneContactEvent> = [];
   private pendingZoneContactEnd: Array<ZoneContactEvent> = [];
   private nextZoneSeq = 0; // disambiguates zone ids when one owner chains 2+ zones in the same tick
+  // Storm Eye's bonus-strike cadence (Story 3.20) — zoneId → lastStrikeAtMs. GameRoom-local,
+  // not on wire-visible ZoneState (would be premature generalization for the one ability that
+  // uses it). Presence of a zoneId in this map marks it strike-eligible — set only when Storm
+  // Eye creates the zone, so the generic zone-tick loop never needs a class/index check.
+  private zoneStrikeTimers = new Map<string, number>();
   // ── Spirit Nova expanding-radius sweep (Story 3.17) ─────────────────────────
   // GameRoom-local only — no persistent GameState entity per the story's Non-goals;
   // resolves within its short duration via ordinary enemy:damaged/player:hp-updated deltas.
@@ -835,6 +840,7 @@ export class GameRoom extends Room {
     this.zoneLastTickAtMs.clear();
     this.zoneOverlapping.clear();
     this.zoneDamagePerTick.clear();
+    this.zoneStrikeTimers.clear();
     this.pendingZoneContactBegin.length = 0;
     this.pendingZoneContactEnd.length = 0;
     this.gameState.zones = [];
@@ -952,6 +958,7 @@ export class GameRoom extends Room {
     this.zoneLastTickAtMs.clear();
     this.zoneOverlapping.clear();
     this.zoneDamagePerTick.clear();
+    this.zoneStrikeTimers.clear();
     this.pendingZoneContactBegin.length = 0;
     this.pendingZoneContactEnd.length = 0;
     this.gameState.zones = [];
@@ -1445,6 +1452,7 @@ export class GameRoom extends Room {
         this.zoneLastTickAtMs.delete(zone.id);
         this.zoneOverlapping.delete(zone.id);
         this.zoneDamagePerTick.delete(zone.id);
+        this.zoneStrikeTimers.delete(zone.id);
         this.broadcast(EventNames.DELTA, { type: 'zone:expired' as const, zoneId: zone.id } satisfies DeltaEventMsg);
         continue;
       }
@@ -1517,6 +1525,70 @@ export class GameRoom extends Room {
                 damage,
                 remainingHp: dmgResult.value.enemy.hp,
               } satisfies DeltaEventMsg);
+            }
+          }
+        }
+      }
+
+      // Storm Eye bonus lightning strike (Story 3.20): a second, longer-period
+      // cadence than the steady tick above. Presence in zoneStrikeTimers (set
+      // only when Storm Eye creates the zone) is what scopes this to Storm Eye
+      // specifically — every other zone's id is simply absent from the map, so
+      // this block is a no-op for them without a class/index check.
+      const lastStrikeAt = this.zoneStrikeTimers.get(zone.id);
+      if (lastStrikeAt !== undefined && tickNowMs - lastStrikeAt >= STORM_EYE_STRIKE_INTERVAL_MS) {
+        this.zoneStrikeTimers.set(zone.id, tickNowMs);
+        // zoneOverlapping tracks both factions (the zone sensor's filterMaskBits
+        // includes CAT_PLAYER, not just CAT_ENEMY — allies can stand in the zone
+        // too), but Storm Eye's 'damage' effectType only ever targets enemies
+        // (same scoping as the steady tick above). Filter to alive enemies before
+        // picking, or a stray ally/corpse id silently wastes the whole interval.
+        const overlapping = this.zoneOverlapping.get(zone.id);
+        const aliveEnemyIds = overlapping
+          ? Array.from(overlapping).filter(id => this.gameState.enemies.some(e => e.id === id && e.isAlive))
+          : [];
+        if (aliveEnemyIds.length > 0) {
+          const targetId = aliveEnemyIds[pickRandomIndex(this.prng(), aliveEnemyIds.length)]!;
+          const ei = this.gameState.enemies.findIndex(e => e.id === targetId);
+          if (ei !== -1) {
+            const dropId = `drop-${this.tickCount}-${targetId}-strike`;
+            const dmgResult = applyDamage(this.gameState.enemies[ei]!, STORM_EYE_STRIKE_DAMAGE, dropId, tickNowMs);
+            if (dmgResult.ok) {
+              this.gameState.enemies[ei] = dmgResult.value.enemy;
+
+              this.broadcast(EventNames.DELTA, {
+                type: 'zone:strike' as const,
+                zoneId: zone.id,
+                targetId,
+                damage: STORM_EYE_STRIKE_DAMAGE,
+              } satisfies DeltaEventMsg);
+
+              if (dmgResult.value.killed) {
+                this.broadcast(EventNames.DELTA, {
+                  type: 'enemy:killed' as const,
+                  enemyId: targetId,
+                  byPlayerId: zone.ownerId,
+                } satisfies DeltaEventMsg);
+                const enemyBody = this.enemyBodies.get(targetId);
+                if (enemyBody) {
+                  this.physicsWorld.destroyBody(enemyBody);
+                  this.enemyBodies.delete(targetId);
+                }
+                this.enemyAttackCooldowns.delete(targetId);
+
+                const drop = dmgResult.value.essenceDrop!;
+                this.gameState.essenceDrops.push(drop);
+                this.broadcast(EventNames.DELTA, { type: 'essence:dropped' as const, drop } satisfies DeltaEventMsg);
+                const sensor = createEssenceSensorBody(this.physicsWorld, drop.id, drop.x, drop.y);
+                this.essenceSensorBodies.set(drop.id, sensor);
+              } else {
+                this.broadcast(EventNames.DELTA, {
+                  type: 'enemy:damaged' as const,
+                  enemyId: targetId,
+                  damage: STORM_EYE_STRIKE_DAMAGE,
+                  remainingHp: dmgResult.value.enemy.hp,
+                } satisfies DeltaEventMsg);
+              }
             }
           }
         }
@@ -1920,6 +1992,40 @@ export class GameRoom extends Room {
           // blocked path this story) — same situation as 'add:spawned' above: a new
           // entity needs full-state sync, so broadcast a SNAPSHOT, matching that
           // existing precedent instead of inventing a new wire type.
+          this.broadcast(EventNames.SNAPSHOT, { type: 'snapshot', state: this.gameState } satisfies SnapshotMsg);
+          continue;
+        }
+
+        // Zone delivery (Storm Eye — Story 3.20): places a ZoneState directly at the
+        // aimed position, unlike the chained-from-projectile zones spawnChainedZone
+        // creates (Void Pulse). Branches before any hit-scan/status-effect logic, same
+        // as the projectile branch above — the zone's own tick phase (below) resolves
+        // damage later, not this dispatch.
+        if (ABILITY_DELIVERY[player.class][abilityIndex as 0 | 1 | 2 | 3] === 'zone') {
+          const mag = Math.hypot(dirX, dirY);
+          if (mag === 0) continue; // no direction = no placement, same rule as every other directional ability
+          const normDirX = dirX / mag;
+          const normDirY = dirY / mag;
+          const hitRange = ABILITY_HIT_RANGE_PX[player.class][abilityIndex] ?? 0;
+          const zoneX = player.x + normDirX * hitRange;
+          const zoneY = player.y + normDirY * hitRange;
+          const zoneId = `zone-${this.tickCount}-${clientId}-${this.nextZoneSeq++}`;
+          const zone: ZoneState = {
+            id: zoneId,
+            ownerId: clientId,
+            x: zoneX, y: zoneY,
+            radius: STORM_EYE_ZONE_RADIUS_PX,
+            effectType: 'damage',
+            tickIntervalMs: STORM_EYE_TICK_MS,
+            expiresAtMs: nowAbility + STORM_EYE_DURATION_MS,
+          };
+          this.gameState.zones.push(zone);
+          const zoneBody = createZoneBody(this.physicsWorld, zoneId, zoneX, zoneY, STORM_EYE_ZONE_RADIUS_PX);
+          this.zoneBodies.set(zoneId, zoneBody);
+          this.zoneLastTickAtMs.set(zoneId, nowAbility);
+          this.zoneOverlapping.set(zoneId, new Set());
+          this.zoneDamagePerTick.set(zoneId, STORM_EYE_TICK_DAMAGE);
+          this.zoneStrikeTimers.set(zoneId, nowAbility); // marks this zone strike-eligible — Storm Eye's only
           this.broadcast(EventNames.SNAPSHOT, { type: 'snapshot', state: this.gameState } satisfies SnapshotMsg);
           continue;
         }

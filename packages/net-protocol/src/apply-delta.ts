@@ -244,6 +244,8 @@ export function applyDelta(state: GameState, evt: DeltaEventMsg): GameState {
     case 'zone:expired': {
       return { ...state, zones: state.zones.filter(z => z.id !== evt.zoneId) };
     }
+    case 'zone:strike':
+      return state;  // ponytail: visual-only, HP change comes via a separate enemy:damaged/enemy:killed delta
     case 'cast:started': {
       if (!state.players.some(p => p.id === evt.casterId)) return state;
       return {

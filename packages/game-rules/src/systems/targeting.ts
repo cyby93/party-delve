@@ -34,3 +34,11 @@ export function resolveExpandingRadius(
 ): number {
   return maxRadiusPx * Math.min(1, Math.max(0, elapsedMs / durationMs));
 }
+
+// Pure index-selection math for Storm Eye's random bonus-strike target (Story
+// 3.20) — extracted so it's testable for determinism without a live GameRoom.
+// rngValue must come from the seeded xoshiro128++ stream (this.prng()), never
+// Math.random() (project-context.md's PRNG rule).
+export function pickRandomIndex(rngValue: number, count: number): number {
+  return Math.floor(rngValue * count);
+}

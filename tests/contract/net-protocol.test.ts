@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { serialize, deserialize, applyDelta, EventNames } from 'net-protocol';
-import type { SnapshotMsg, DeltaEventMsg, InputEventMsg, PlayerPoiEnteredDelta, PlayerPoiExitedDelta, AbilityFiredDelta, EnemyDamagedDelta, PlayerDownedDelta, BondNotificationMsg, ContinueMsg, BossDamagedDelta, BossPhaseChangedDelta, BossDefeatedDelta, RunVictoryMsg, StatusAppliedDelta, StatusExpiredDelta, ProjectileHitDelta, ProjectileExpiredDelta, ZoneTickDelta, ZoneExpiredDelta } from 'net-protocol';
+import type { SnapshotMsg, DeltaEventMsg, InputEventMsg, PlayerPoiEnteredDelta, PlayerPoiExitedDelta, AbilityFiredDelta, EnemyDamagedDelta, PlayerDownedDelta, BondNotificationMsg, ContinueMsg, BossDamagedDelta, BossPhaseChangedDelta, BossDefeatedDelta, RunVictoryMsg, StatusAppliedDelta, StatusExpiredDelta, ProjectileHitDelta, ProjectileExpiredDelta, ZoneTickDelta, ZoneExpiredDelta, ZoneStrikeDelta } from 'net-protocol';
 import type { GameState, PlayerState, RunReward, ProjectileState, ZoneState } from 'shared-types';
 import { PlayerClass, SessionColor, EnemyType, DifficultyTier, EnemyFSMState, BondType, BossPhase, GrasslandAchievement } from 'shared-types';
 
@@ -866,6 +866,17 @@ describe('net-protocol contract tests', () => {
     it('applyDelta zone:tick is a no-op on state', () => {
       const state: GameState = { ...mockGameState(), zones: [mockZone()] };
       const delta: DeltaEventMsg = { type: 'zone:tick', zoneId: 'zone-1' };
+      expect(applyDelta(state, delta)).toBe(state);
+    });
+
+    it('ZoneStrikeDelta survives serialize → deserialize', () => {
+      const delta: ZoneStrikeDelta = { type: 'zone:strike', zoneId: 'zone-1', targetId: 'enemy-1', damage: 30 };
+      expect(deserialize<DeltaEventMsg>(serialize(delta))).toEqual(delta);
+    });
+
+    it('applyDelta zone:strike is a no-op on state (visual-only; HP change is a separate delta)', () => {
+      const state: GameState = { ...mockGameState(), zones: [mockZone()] };
+      const delta: DeltaEventMsg = { type: 'zone:strike', zoneId: 'zone-1', targetId: 'enemy-1', damage: 30 };
       expect(applyDelta(state, delta)).toBe(state);
     });
   });

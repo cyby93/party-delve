@@ -116,13 +116,16 @@ export const ABILITY_HIT_RADIUS_PX: Record<PlayerClass, readonly [number, number
 // Story 3.19: the first abilities to resolve via a spawned ProjectileState
 // (Story 3.13) instead of the default same-tick hit-scan. Declarative so
 // GameRoom branches on this table instead of special-casing any one ability.
-export type AbilityDeliveryType = 'hitscan' | 'projectile';
+// Story 3.20: extended with 'zone' — Storm Eye places a ZoneState directly
+// (via createZoneBody in GameRoom's dispatch block) rather than through a
+// spawned ProjectileState like the 'projectile' abilities above.
+export type AbilityDeliveryType = 'hitscan' | 'projectile' | 'zone';
 
 export const ABILITY_DELIVERY: Record<PlayerClass, readonly [AbilityDeliveryType, AbilityDeliveryType, AbilityDeliveryType, AbilityDeliveryType]> = {
   stonehide:    ['hitscan', 'hitscan', 'hitscan', 'hitscan'],
   spiritcaller: ['hitscan', 'hitscan', 'hitscan', 'hitscan'],
   souldrinker:  ['projectile', 'hitscan', 'hitscan', 'projectile'], // Blood Spike, Void Pulse
-  stormcaller:  ['hitscan', 'hitscan', 'hitscan', 'hitscan'],
+  stormcaller:  ['hitscan', 'hitscan', 'hitscan', 'zone'], // Storm Eye
 };
 
 // ── Projectiles ───────────────────────────────────────────────────────────────
@@ -175,6 +178,19 @@ export const SOUL_MEND_CHANNEL_DURATION_MS = 2500;
 // Fire-attempts arrive every 33ms (mobile's AUTO-style continuous-send interval)
 // while held; a few missed beats tolerates jitter without feeling laggy on release.
 export const SOUL_MEND_LIVENESS_MS = 150;
+
+// ── Storm Eye persistent zone + bonus strike (Story 3.20) ───────────────────
+// Plain named constants, not per-class tables — Storm Eye is the only 'zone'-
+// delivery ability in the full spec, same rationale as Spirit Nova/Soul Mend above.
+// STORM_EYE_TICK_DAMAGE is separate from ABILITY_DAMAGE's stormcaller[3]=0 entry:
+// that table is read by the hit-scan path only, which this ability's 'zone'
+// delivery never reaches (see GameRoom.ts's ABILITY_DELIVERY branch).
+export const STORM_EYE_ZONE_RADIUS_PX = 150;
+export const STORM_EYE_TICK_MS = 500;
+export const STORM_EYE_TICK_DAMAGE = 10;
+export const STORM_EYE_DURATION_MS = 5000;
+export const STORM_EYE_STRIKE_INTERVAL_MS = 1500; // longer than the steady STORM_EYE_TICK_MS cadence, per AC2
+export const STORM_EYE_STRIKE_DAMAGE = 30;
 
 export interface AbilityStatusEffectConfig {
   effectType: StatusEffectType;

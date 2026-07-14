@@ -37,11 +37,17 @@ export {
   SPIRIT_NOVA_MAX_RADIUS_PX,
   SOUL_MEND_CHANNEL_DURATION_MS,
   SOUL_MEND_LIVENESS_MS,
+  STORM_EYE_ZONE_RADIUS_PX,
+  STORM_EYE_TICK_MS,
+  STORM_EYE_TICK_DAMAGE,
+  STORM_EYE_DURATION_MS,
+  STORM_EYE_STRIKE_INTERVAL_MS,
+  STORM_EYE_STRIKE_DAMAGE,
 } from './balance.js';
 export type { ChainedZoneConfig, AbilityStatusEffectConfig, StatusEffectScope, AbilityDeliveryType } from './balance.js';
 export { applyPlayerDamage, getReviveWindowMs, healPlayer, calculateLifesteal } from './systems/player-health.js';
 export type { PlayerDamageResult, HealthError } from './systems/player-health.js';
-export { resolveMixedFactionTargets, resolveExpandingRadius } from './systems/targeting.js';
+export { resolveMixedFactionTargets, resolveExpandingRadius, pickRandomIndex } from './systems/targeting.js';
 export type { MixedFactionSplit } from './systems/targeting.js';
 export { applyDamage, isInHitZone } from './systems/combat.js';
 export type { DamageResult, CombatError } from './systems/combat.js';
