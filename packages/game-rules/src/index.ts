@@ -32,6 +32,8 @@ export {
   ABILITY_HEAL_AMOUNT,
   SPIRIT_NOVA_DURATION_MS,
   SPIRIT_NOVA_MAX_RADIUS_PX,
+  SOUL_MEND_CHANNEL_DURATION_MS,
+  SOUL_MEND_LIVENESS_MS,
 } from './balance.js';
 export type { ChainedZoneConfig, AbilityStatusEffectConfig, StatusEffectScope } from './balance.js';
 export { applyPlayerDamage, getReviveWindowMs, healPlayer, calculateLifesteal } from './systems/player-health.js';
@@ -58,3 +60,4 @@ export { resolveProjectileHit, isProjectileExpired } from './systems/projectiles
 export type { ProjectileError } from './systems/projectiles.js';
 export { shouldZoneTick, isZoneExpired } from './systems/zones.js';
 export { applyDisplacement } from './systems/displacement.js';
+export { findSoulMendTarget, shouldCancelSoulMendChannel, reviveBySoulMend } from './systems/soul-mend.js';

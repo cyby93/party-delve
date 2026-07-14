@@ -146,6 +146,14 @@ export type StatusEffectScope = 'self' | 'enemies-in-zone' | 'allies-in-zone';
 export const SPIRIT_NOVA_DURATION_MS = 600;
 export const SPIRIT_NOVA_MAX_RADIUS_PX = 220;
 
+// ── Soul Mend hold-to-channel revive (Story 3.18) ────────────────────────────
+// Plain named constants, not a per-class table — Soul Mend is the only AIM_CAST
+// ability in the full spec, same rationale as Spirit Nova's constants above.
+export const SOUL_MEND_CHANNEL_DURATION_MS = 2500;
+// Fire-attempts arrive every 33ms (mobile's AUTO-style continuous-send interval)
+// while held; a few missed beats tolerates jitter without feeling laggy on release.
+export const SOUL_MEND_LIVENESS_MS = 150;
+
 export interface AbilityStatusEffectConfig {
   effectType: StatusEffectType;
   magnitude: number;

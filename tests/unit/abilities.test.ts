@@ -163,6 +163,7 @@ describe('Stonehide kit rework (Story 3.16)', () => {
       isFrozen: false, isDown: false, isSpirit: false,
       sessionColor: SessionColor.RED, downCount: 0, nearPoiId: null,
       essenceTotal: 0, reviveTimerExpiresAt: 0, statusEffects: [],
+      channelingAbility: null,
       ...overrides,
     };
   }
@@ -272,6 +273,7 @@ describe('Spiritcaller kit rework (Story 3.17)', () => {
       isFrozen: false, isDown: false, isSpirit: false,
       sessionColor: SessionColor.RED, downCount: 0, nearPoiId: null,
       essenceTotal: 0, reviveTimerExpiresAt: 0, statusEffects: [],
+      channelingAbility: null,
       ...overrides,
     };
   }

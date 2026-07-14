@@ -83,6 +83,7 @@ function simulateOnJoin(
     essenceTotal: 0,
     reviveTimerExpiresAt: 0,
     statusEffects: [],
+    channelingAbility: null,
   });
   gameState.session.playerCount = gameState.players.length;
   const snapshot: SnapshotMsg = { type: 'snapshot', state: gameState };
@@ -228,6 +229,7 @@ function makePlayer(id: string): PlayerState {
     essenceTotal: 0,
     reviveTimerExpiresAt: 0,
     statusEffects: [],
+    channelingAbility: null,
   };
 }
 

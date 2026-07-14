@@ -251,6 +251,25 @@ export type ZoneExpiredDelta = {
   zoneId: string;
 };
 
+export type CastStartedDelta = {
+  type: 'cast:started';
+  casterId: string;
+  targetPlayerId: string;
+  abilityIndex: number;
+  startedAt: number; // server-epoch ms — clients must not substitute their own clock
+  durationMs: number;
+};
+
+export type CastCancelledDelta = {
+  type: 'cast:cancelled';
+  casterId: string;
+};
+
+export type CastCompletedDelta = {
+  type: 'cast:completed';
+  casterId: string;
+};
+
 export type DeltaEventMsg =
   | PlayerMovedDelta
   | PlayerDownedDelta
@@ -291,4 +310,7 @@ export type DeltaEventMsg =
   | ProjectileHitDelta
   | ProjectileExpiredDelta
   | ZoneTickDelta
-  | ZoneExpiredDelta;
+  | ZoneExpiredDelta
+  | CastStartedDelta
+  | CastCancelledDelta
+  | CastCompletedDelta;

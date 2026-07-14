@@ -61,6 +61,7 @@ describe('net-protocol contract tests', () => {
         essenceTotal: 0,
         reviveTimerExpiresAt: 0,
         statusEffects: [],
+        channelingAbility: null,
       });
       const msg: SnapshotMsg = { type: 'snapshot', state };
       expect(deserialize<SnapshotMsg>(serialize(msg))).toEqual(msg);
@@ -117,6 +118,28 @@ describe('net-protocol contract tests', () => {
       const delta = { type: 'player:reconnected' as const, playerId: 'p1' } satisfies DeltaEventMsg;
       expect(deserialize<DeltaEventMsg>(serialize(delta))).toEqual(delta);
     });
+
+    it('cast:started survives serialize → deserialize (Story 3.18)', () => {
+      const delta = {
+        type: 'cast:started' as const,
+        casterId: 'p1',
+        targetPlayerId: 'p2',
+        abilityIndex: 2,
+        startedAt: 12345,
+        durationMs: 2500,
+      } satisfies DeltaEventMsg;
+      expect(deserialize<DeltaEventMsg>(serialize(delta))).toEqual(delta);
+    });
+
+    it('cast:cancelled survives serialize → deserialize (Story 3.18)', () => {
+      const delta = { type: 'cast:cancelled' as const, casterId: 'p1' } satisfies DeltaEventMsg;
+      expect(deserialize<DeltaEventMsg>(serialize(delta))).toEqual(delta);
+    });
+
+    it('cast:completed survives serialize → deserialize (Story 3.18 review fix)', () => {
+      const delta = { type: 'cast:completed' as const, casterId: 'p1' } satisfies DeltaEventMsg;
+      expect(deserialize<DeltaEventMsg>(serialize(delta))).toEqual(delta);
+    });
   });
 
   describe('applyDelta behavior', () => {
@@ -138,6 +161,7 @@ describe('net-protocol contract tests', () => {
         essenceTotal: 0,
         reviveTimerExpiresAt: 0,
         statusEffects: [],
+        channelingAbility: null,
         ...overrides,
       };
     }
@@ -179,6 +203,58 @@ describe('net-protocol contract tests', () => {
       const next = applyDelta(state, { type: 'player:reconnected', playerId: 'ghost' });
       expect(next).toBe(state);
     });
+
+    it('cast:started sets channelingAbility (including server startedAt) on the matching caster (Story 3.18)', () => {
+      const state: GameState = { ...mockGameState(), players: [mockPlayer()] };
+      const next = applyDelta(state, {
+        type: 'cast:started', casterId: 'p1', targetPlayerId: 'p2', abilityIndex: 2, startedAt: 5000, durationMs: 2500,
+      });
+      expect(next.players[0]?.channelingAbility).toMatchObject({ abilityIndex: 2, targetPlayerId: 'p2', startedAt: 5000, durationMs: 2500 });
+      expect(state.players[0]?.channelingAbility).toBeNull(); // original state must not be mutated
+    });
+
+    it('cast:cancelled clears channelingAbility on the matching caster (Story 3.18)', () => {
+      const state: GameState = {
+        ...mockGameState(),
+        players: [mockPlayer({ channelingAbility: { abilityIndex: 2, targetPlayerId: 'p2', startedAt: 0, durationMs: 2500 } })],
+      };
+      const next = applyDelta(state, { type: 'cast:cancelled', casterId: 'p1' });
+      expect(next.players[0]?.channelingAbility).toBeNull();
+    });
+
+    it('cast:completed clears channelingAbility on the matching caster (Story 3.18 review fix)', () => {
+      const state: GameState = {
+        ...mockGameState(),
+        players: [mockPlayer({ channelingAbility: { abilityIndex: 2, targetPlayerId: 'p2', startedAt: 0, durationMs: 2500 } })],
+      };
+      const next = applyDelta(state, { type: 'cast:completed', casterId: 'p1' });
+      expect(next.players[0]?.channelingAbility).toBeNull();
+    });
+
+    it('cast:started returns same reference for unknown casterId', () => {
+      const state: GameState = { ...mockGameState(), players: [] };
+      const next = applyDelta(state, { type: 'cast:started', casterId: 'ghost', targetPlayerId: 'p2', abilityIndex: 2, startedAt: 5000, durationMs: 2500 });
+      expect(next).toBe(state);
+    });
+
+    it('cast:cancelled returns same reference for unknown casterId', () => {
+      const state: GameState = { ...mockGameState(), players: [] };
+      const next = applyDelta(state, { type: 'cast:cancelled', casterId: 'ghost' });
+      expect(next).toBe(state);
+    });
+
+    it('cast:completed returns same reference for unknown casterId', () => {
+      const state: GameState = { ...mockGameState(), players: [] };
+      const next = applyDelta(state, { type: 'cast:completed', casterId: 'ghost' });
+      expect(next).toBe(state);
+    });
+
+    it('player:revived clears channelingAbility unconditionally (no-op when never set)', () => {
+      const state: GameState = { ...mockGameState(), players: [mockPlayer({ isDown: true, reviveTimerExpiresAt: 5000 })] };
+      const next = applyDelta(state, { type: 'player:revived', playerId: 'p1' });
+      expect(next.players[0]?.channelingAbility).toBeNull();
+      expect(next.players[0]?.isDown).toBe(false);
+    });
   });
 
   describe('PlayerPoiEnteredDelta round-trip', () => {
@@ -219,6 +295,7 @@ describe('net-protocol contract tests', () => {
         essenceTotal: 0,
         reviveTimerExpiresAt: 0,
         statusEffects: [],
+        channelingAbility: null,
         ...overrides,
       };
     }
@@ -281,6 +358,7 @@ describe('net-protocol contract tests', () => {
         essenceTotal: 25,
         reviveTimerExpiresAt: 0,
         statusEffects: [],
+        channelingAbility: null,
       });
       const msg: SnapshotMsg = { type: 'snapshot', state };
       expect(deserialize<SnapshotMsg>(serialize(msg))).toEqual(msg);
@@ -631,6 +709,7 @@ describe('net-protocol contract tests', () => {
         essenceTotal: 0,
         reviveTimerExpiresAt: 0,
         statusEffects: [],
+        channelingAbility: null,
         ...overrides,
       };
     }

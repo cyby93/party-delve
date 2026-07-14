@@ -25,6 +25,7 @@ function makePlayer(overrides: Partial<PlayerState> = {}): PlayerState {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     sessionColor: 'red' as any, downCount: 0,
     nearPoiId: null, essenceTotal: 0, reviveTimerExpiresAt: 0, statusEffects: [],
+    channelingAbility: null,
     ...overrides,
   };
 }

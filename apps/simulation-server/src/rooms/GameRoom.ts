@@ -12,7 +12,7 @@ import {
   CAT_BOSS, createZoneBody,
 } from '../physics/world.js';
 import type { PoiBeginContactEvent, PoiEndContactEvent, EssenceBeginContactEvent, PhysicsBodyData } from '../physics/world.js';
-import { createRng, tickEnemy, dispatchAbility, getEnemyCount, applyDamage, isInHitZone, ABILITY_HIT_RANGE_PX, ABILITY_HIT_RADIUS_PX, ABILITY_DAMAGE, applyPlayerDamage, getReviveWindowMs, ENEMY_MELEE_DAMAGE, ENEMY_MELEE_RANGE_PX, ENEMY_ATTACK_COOLDOWN_MS, REVIVE_RADIUS_PX, REVIVE_HP, SPIRIT_ABILITY_COOLDOWN_MS, generateFloorLayout, GRASSLAND_ROOM_POOL, WAVE_COUNTS, WAVE_PAUSE_MS, WAVE_ENEMY_SCALE, bondKey, getProximityBuffedPlayers, getFateBuffedPlayers, getFateBondWipeTargets, getProximityDrainTargets, BOND_PROXIMITY_RANGE_PX, BOND_DRAIN_THRESHOLD_S, BOND_DRAIN_HP_PER_TICK, BOND_DAMAGE_MULT, BOND_SPEED_MULT, assignBond, BOND_DESCRIPTIONS, BOND_MECHANICS, createBossState, tickBoss, BOSS_ADD_HP, BOSS_STOMP_DAMAGE, evaluateGrasslandAchievements, JOYSTICK_DEADBAND, createEasyLayers, createNormalLayers, createHardLayers, tickStatusEffects, getStatusEffectMagnitude, applyStatusEffect, resolveProjectileHit, isProjectileExpired, shouldZoneTick, isZoneExpired, PROJECTILE_MAX_RANGE_PX, ABILITY_CHAINED_ZONE, ABILITY_STATUS_EFFECT, ABILITY_DISPLACEMENT_STRENGTH, applyDisplacement, resolveMixedFactionTargets, healPlayer, resolveExpandingRadius, ABILITY_HEAL_AMOUNT, SPIRIT_NOVA_DURATION_MS, SPIRIT_NOVA_MAX_RADIUS_PX } from 'game-rules';
+import { createRng, tickEnemy, dispatchAbility, getEnemyCount, applyDamage, isInHitZone, ABILITY_HIT_RANGE_PX, ABILITY_HIT_RADIUS_PX, ABILITY_DAMAGE, applyPlayerDamage, getReviveWindowMs, ENEMY_MELEE_DAMAGE, ENEMY_MELEE_RANGE_PX, ENEMY_ATTACK_COOLDOWN_MS, REVIVE_RADIUS_PX, REVIVE_HP, SPIRIT_ABILITY_COOLDOWN_MS, generateFloorLayout, GRASSLAND_ROOM_POOL, WAVE_COUNTS, WAVE_PAUSE_MS, WAVE_ENEMY_SCALE, bondKey, getProximityBuffedPlayers, getFateBuffedPlayers, getFateBondWipeTargets, getProximityDrainTargets, BOND_PROXIMITY_RANGE_PX, BOND_DRAIN_THRESHOLD_S, BOND_DRAIN_HP_PER_TICK, BOND_DAMAGE_MULT, BOND_SPEED_MULT, assignBond, BOND_DESCRIPTIONS, BOND_MECHANICS, createBossState, tickBoss, BOSS_ADD_HP, BOSS_STOMP_DAMAGE, evaluateGrasslandAchievements, JOYSTICK_DEADBAND, createEasyLayers, createNormalLayers, createHardLayers, tickStatusEffects, getStatusEffectMagnitude, applyStatusEffect, resolveProjectileHit, isProjectileExpired, shouldZoneTick, isZoneExpired, PROJECTILE_MAX_RANGE_PX, ABILITY_CHAINED_ZONE, ABILITY_STATUS_EFFECT, ABILITY_DISPLACEMENT_STRENGTH, applyDisplacement, resolveMixedFactionTargets, healPlayer, resolveExpandingRadius, ABILITY_HEAL_AMOUNT, SPIRIT_NOVA_DURATION_MS, SPIRIT_NOVA_MAX_RADIUS_PX, findSoulMendTarget, shouldCancelSoulMendChannel, reviveBySoulMend, SOUL_MEND_CHANNEL_DURATION_MS, SOUL_MEND_LIVENESS_MS, ABILITY_COOLDOWNS_MS } from 'game-rules';
 import type { BehaviorLayer, EnemyContext, EnemyAIEvent, BossEvent, BossStompedEvent, ChainedZoneConfig } from 'game-rules';
 import { BOSS_ARENA_SPAWN_POINTS, loadBossArena } from '../levels/boss-arena.js';
 import { CLASS_DEFINITIONS } from 'shared-types';
@@ -95,6 +95,7 @@ function createPlayer(id: string, displayName: string, slotIndex: number): Playe
     essenceTotal: 0,
     reviveTimerExpiresAt: 0,
     statusEffects: [],
+    channelingAbility: null,
   };
 }
 
@@ -172,6 +173,11 @@ export class GameRoom extends Room {
     startedAtMs: number; durationMs: number; maxRadiusPx: number;
     hitIds: Set<string>;
   }> = [];
+  // ── Soul Mend hold-to-channel (Story 3.18) ──────────────────────────────────
+  // GameRoom-local — not on the wire; caster id → epoch ms of the last AIM_CAST
+  // fire-attempt received. Drives liveness-timeout cancellation (no explicit
+  // "stop" message exists — see Dev Notes on the story for why).
+  private lastSoulMendInputAt = new Map<string, number>();
 
   async onCreate(_options: unknown): Promise<void> {
     this.roomId = generateRoomCode();
@@ -263,6 +269,13 @@ export class GameRoom extends Room {
         }
         if (player.isFrozen) {
           logger.warn({ clientId: client.sessionId, roomId: this.roomId }, 'CLASS_SELECT from frozen player — discarded');
+          return;
+        }
+        // Soul Mend's channel re-reads `caster.class` fresh every tick for its range/
+        // cooldown lookups (Story 3.18) — switching class mid-channel would corrupt
+        // those lookups, so block class changes while actively channeling.
+        if (player.channelingAbility !== null) {
+          logger.warn({ clientId: client.sessionId, roomId: this.roomId }, 'CLASS_SELECT from mid-channel player — discarded');
           return;
         }
         player.class = classId;
@@ -434,6 +447,7 @@ export class GameRoom extends Room {
       this.spiritCooldownMap.delete(client.sessionId);
       this.lastKnownJoystick.delete(client.sessionId);
       this.classSelectLastAccepted.delete(client.sessionId);
+      this.lastSoulMendInputAt.delete(client.sessionId);
       const leaveBody = this.playerBodies.get(client.sessionId);
       if (leaveBody) {
         this.physicsWorld.destroyBody(leaveBody);
@@ -506,6 +520,7 @@ export class GameRoom extends Room {
       this.spiritCooldownMap.delete(client.sessionId);
       this.lastKnownJoystick.delete(client.sessionId);
       this.classSelectLastAccepted.delete(client.sessionId);
+      this.lastSoulMendInputAt.delete(client.sessionId);
       const expireBody = this.playerBodies.get(client.sessionId);
       if (expireBody) {
         this.physicsWorld.destroyBody(expireBody);
@@ -824,6 +839,13 @@ export class GameRoom extends Room {
     this.pendingZoneContactEnd.length = 0;
     this.gameState.zones = [];
     this.activeSpiritNovas.length = 0;
+    this.lastSoulMendInputAt.clear();
+    // A mid-channel caster's channelingAbility lives on their own PlayerState (part of
+    // GameState, unlike the GameRoom-local maps above) — must be explicitly cleared here
+    // too, or it leaks into the next run's snapshots (Story 3.18 review finding).
+    this.gameState.players = this.gameState.players.map(p =>
+      p.channelingAbility !== null ? { ...p, channelingAbility: null } : p
+    );
     this.waveIndex = 0;
     this.totalWaves = 0;
     this.wavePauseUntil = 0;
@@ -1684,6 +1706,22 @@ export class GameRoom extends Room {
       if (!playerCooldowns) continue;
 
       const nowAbility = Date.now();
+
+      // Soul Mend (Spiritcaller slot 2): AIM_CAST hold-to-channel, not an instant-
+      // resolve ability — branch before dispatchAbility so it neither triggers the
+      // normal cooldown gate/instant hit-scan path nor enters cooldown until the
+      // channel actually completes (Story 3.18). The branch condition itself is
+      // checked by inputType, not class/index, so a future AIM_CAST ability would
+      // still get routed here instead of through the normal dispatch path — but
+      // handleSoulMendFireAttempt's actual target-finding/revive logic is Soul-Mend-
+      // specific, not generic; a future non-revive AIM_CAST ability would need its
+      // own handler, not just a new case here.
+      const abilityDefForInput = CLASS_DEFINITIONS[player.class].abilities[abilityIndex];
+      if (abilityDefForInput?.inputType === 'AIM_CAST') {
+        this.handleSoulMendFireAttempt(clientId, player, abilityIndex, directionX, directionY, playerCooldowns, nowAbility);
+        continue;
+      }
+
       const result = dispatchAbility({
         playerClass: player.class,
         abilityIndex,
@@ -2255,6 +2293,32 @@ export class GameRoom extends Room {
       }
     }
 
+    // ── Soul Mend hold-to-channel progression (Story 3.18) ───────────────────
+    // Runs after proximity revive above so a target already revived by proximity
+    // (or someone else's Soul Mend) this same tick is correctly seen as no-longer-
+    // isDown and cancels here rather than double-reviving.
+    if (this.gameState.session.phase === 'dungeon') {
+      for (const caster of this.gameState.players) {
+        const channel = caster.channelingAbility;
+        if (channel === null) continue;
+
+        const target = this.gameState.players.find(p => p.id === channel.targetPlayerId);
+        const hitRange = ABILITY_HIT_RANGE_PX[caster.class as PlayerClass][channel.abilityIndex as 0 | 1 | 2 | 3] ?? 0;
+        const hitRadius = ABILITY_HIT_RADIUS_PX[caster.class as PlayerClass][channel.abilityIndex as 0 | 1 | 2 | 3] ?? 0;
+        const lastInput = this.lastSoulMendInputAt.get(caster.id) ?? 0;
+        const casterIncapacitated = caster.isDown || caster.isFrozen || caster.isSpirit;
+
+        if (shouldCancelSoulMendChannel(target, caster.x, caster.y, casterIncapacitated, lastInput, tickNowMs, SOUL_MEND_LIVENESS_MS, hitRange + hitRadius)) {
+          this.cancelSoulMendChannel(caster.id);
+          continue;
+        }
+
+        if (tickNowMs >= channel.startedAt + channel.durationMs) {
+          this.completeSoulMendChannel(caster.id, target!.id, channel.abilityIndex);
+        }
+      }
+    }
+
     // ── Run failure: all players in spirit form → phase 'post-run' ───────────
     if (this.gameState.session.phase === 'dungeon') {
       const players = this.gameState.players;
@@ -2405,6 +2469,107 @@ export class GameRoom extends Room {
           abilityIndex: i,
           remainingMs: 0,
         } satisfies CooldownUpdateMsg);
+      }
+    }
+  }
+
+  // ── Soul Mend hold-to-channel (Story 3.18) ──────────────────────────────────
+  // Called once per AIM_CAST fire-attempt (mobile resends every 33ms while held —
+  // same continuous-send pattern AUTO abilities already use). First fire-attempt
+  // for a not-yet-channeling caster starts the channel; subsequent fire-attempts
+  // while already channeling just refresh the liveness timestamp.
+  private handleSoulMendFireAttempt(
+    casterId: string,
+    caster: PlayerState,
+    abilityIndex: number,
+    dirX: number,
+    dirY: number,
+    playerCooldowns: number[],
+    nowMs: number,
+  ): void {
+    if (caster.channelingAbility !== null) {
+      this.lastSoulMendInputAt.set(casterId, nowMs);
+      return;
+    }
+
+    if ((playerCooldowns[abilityIndex] ?? 0) > nowMs) return;
+
+    const hitRange = ABILITY_HIT_RANGE_PX[caster.class as PlayerClass][abilityIndex as 0 | 1 | 2 | 3] ?? 0;
+    const hitRadius = ABILITY_HIT_RADIUS_PX[caster.class as PlayerClass][abilityIndex as 0 | 1 | 2 | 3] ?? 0;
+    const mag = Math.hypot(dirX, dirY);
+    if (mag === 0 && hitRange > 0) return; // no aim direction = no target, same rule as every other directional ability
+    const normDirX = mag > 0 ? dirX / mag : dirX;
+    const normDirY = mag > 0 ? dirY / mag : dirY;
+
+    const downedAllies = this.gameState.players.filter(p => p.id !== casterId && p.isDown);
+    const target = findSoulMendTarget(caster.x, caster.y, normDirX, normDirY, downedAllies, hitRange, hitRadius);
+    if (!target) return;
+
+    const casterIdx = this.gameState.players.findIndex(p => p.id === casterId);
+    if (casterIdx === -1) return;
+    this.gameState.players[casterIdx] = {
+      ...this.gameState.players[casterIdx]!,
+      channelingAbility: { abilityIndex, targetPlayerId: target.id, startedAt: nowMs, durationMs: SOUL_MEND_CHANNEL_DURATION_MS },
+    };
+    this.lastSoulMendInputAt.set(casterId, nowMs);
+
+    this.broadcast(EventNames.DELTA, {
+      type: 'cast:started' as const,
+      casterId,
+      targetPlayerId: target.id,
+      abilityIndex,
+      startedAt: nowMs,
+      durationMs: SOUL_MEND_CHANNEL_DURATION_MS,
+    } satisfies DeltaEventMsg);
+  }
+
+  private cancelSoulMendChannel(casterId: string): void {
+    const casterIdx = this.gameState.players.findIndex(p => p.id === casterId);
+    if (casterIdx !== -1) {
+      this.gameState.players[casterIdx] = { ...this.gameState.players[casterIdx]!, channelingAbility: null };
+    }
+    this.lastSoulMendInputAt.delete(casterId);
+    this.broadcast(EventNames.DELTA, { type: 'cast:cancelled' as const, casterId } satisfies DeltaEventMsg);
+  }
+
+  // Copies the existing proximity-revive block's 4 actions exactly (state mutation,
+  // player:revived broadcast, player:hp-updated broadcast, SPIRIT_FORM message) —
+  // Soul Mend bypasses the walk-to-body proximity flow but produces the same result.
+  private completeSoulMendChannel(casterId: string, targetId: string, abilityIndex: number): void {
+    const targetIdx = this.gameState.players.findIndex(p => p.id === targetId);
+    if (targetIdx !== -1) {
+      this.gameState.players[targetIdx] = reviveBySoulMend(this.gameState.players[targetIdx]!, REVIVE_HP);
+
+      this.broadcast(EventNames.DELTA, { type: 'player:revived' as const, playerId: targetId } satisfies DeltaEventMsg);
+      this.broadcast(EventNames.DELTA, { type: 'player:hp-updated' as const, playerId: targetId, hp: REVIVE_HP } satisfies DeltaEventMsg);
+
+      const revivedClient = this.clients.find(c => c.sessionId === targetId);
+      if (revivedClient) {
+        revivedClient.send(EventNames.SPIRIT_FORM, { type: 'spirit:form', isActive: false } satisfies SpiritFormMsg);
+      }
+    }
+
+    const casterIdx = this.gameState.players.findIndex(p => p.id === casterId);
+    const caster = casterIdx !== -1 ? this.gameState.players[casterIdx] : undefined;
+    if (casterIdx !== -1 && caster) {
+      this.gameState.players[casterIdx] = { ...caster, channelingAbility: null };
+    }
+    this.lastSoulMendInputAt.delete(casterId);
+    this.broadcast(EventNames.DELTA, { type: 'cast:completed' as const, casterId } satisfies DeltaEventMsg);
+
+    if (caster?.class) {
+      const cooldowns = this.cooldownMap.get(casterId);
+      if (cooldowns) {
+        const cooldownMs = ABILITY_COOLDOWNS_MS[caster.class][abilityIndex as 0 | 1 | 2 | 3];
+        cooldowns[abilityIndex] = Date.now() + cooldownMs;
+        const casterClient = this.clients.find(c => c.sessionId === casterId);
+        if (casterClient) {
+          casterClient.send(EventNames.COOLDOWN_UPDATE, {
+            type: 'cooldown:update',
+            abilityIndex,
+            remainingMs: cooldownMs,
+          } satisfies CooldownUpdateMsg);
+        }
       }
     }
   }

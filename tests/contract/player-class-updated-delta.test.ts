@@ -53,6 +53,7 @@ function mockPlayer(overrides?: Partial<PlayerState>): PlayerState {
     essenceTotal: 0,
     reviveTimerExpiresAt: 0,
     statusEffects: [],
+    channelingAbility: null,
     ...overrides,
   };
 }

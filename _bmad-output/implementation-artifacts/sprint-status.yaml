@@ -43,6 +43,15 @@
 
 generated: 2026-06-22
 last_updated: 2026-07-14
+# 2026-07-14: completed 3.18 (done) — hold-to-channel Soul Mend, replaces
+# 3.11's temporary AIM_CAST bridge. New PlayerState.channelingAbility field +
+# cast:started/cast:cancelled/cast:completed deltas (contract-change hook
+# triggered). Code review found 6 patch findings (missing cast:completed
+# signal, channelingAbility leak through resetToHub, CLASS_SELECT mid-channel
+# corrupting range/cooldown lookups, no caster-incapacitation check, client-
+# clock startedAt skew, misleading comment) — all fixed. 1 finding deferred
+# (D-3.18-A: no tie-break when two casters target the same downed ally —
+# self-corrects, no invalid state, just an unfair join order).
 # 2026-07-14: completed 3.17 — code review found 2 patch findings (Spirit Nova
 # sweep missing the Bond proximity-damage buff Ancestor's Voice already has;
 # Spirit Nova sweep missing a dungeon-phase guard, unlike every sibling
@@ -209,7 +218,7 @@ development_status:
   3-15-self-cost-resource-and-mixed-faction-target-resolution: done
   3-16-stonehide-kit-rework: done
   3-17-spiritcaller-kit-rework-ancestors-voice-spirit-nova-warding-cry: done
-  3-18-soul-mend-ranged-spirit-targeting-revive: ready-for-dev
+  3-18-soul-mend-ranged-spirit-targeting-revive: done
   3-19-souldrinker-kit-rework-blood-spike-crimson-lash-dark-pact-void-pulse: ready-for-dev
   3-20-stormcaller-storm-eye-rework: ready-for-dev
   epic-3-retrospective: optional

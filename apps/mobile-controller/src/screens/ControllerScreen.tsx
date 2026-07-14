@@ -212,7 +212,7 @@ const ABILITY_BADGE_BORDER: Record<AbilityInputType, string> = {
   AUTO:     'var(--accent-spirit)',
   RELEASE:  'var(--accent-warm)',
   TAP:      'var(--border)',
-  AIM_CAST: 'var(--accent-warm)',  // shares RELEASE's fire-on-release behavior until Story 3.18
+  AIM_CAST: 'var(--accent-warm)',  // hold-to-channel (Story 3.18) — warm border still reads fine for a held ability
 };
 
 interface AbilityChipProps {
@@ -642,7 +642,7 @@ function SkillCell({ index, ability, cooldownState: cd, isInteractive, badgeBord
         lastDirY: 0,
         releaseFired: false,
       };
-      if (ability.inputType === 'AUTO') {
+      if (ability.inputType === 'AUTO' || ability.inputType === 'AIM_CAST') {
         autoIntervalRef.current = setInterval(() => {
           const t = activeTouchRef.current;
           if (t) onAbilityFire(index, t.lastDirX, t.lastDirY, true);
@@ -677,7 +677,7 @@ function SkillCell({ index, ability, cooldownState: cd, isInteractive, badgeBord
       if (t === null) return;
       for (let i = 0; i < e.changedTouches.length; i++) {
         if (e.changedTouches[i]!.identifier === t.id) {
-          if ((ability.inputType === 'RELEASE' || ability.inputType === 'AIM_CAST') && !t.releaseFired) {
+          if (ability.inputType === 'RELEASE' && !t.releaseFired) {
             t.releaseFired = true;
             onAbilityFire(index, t.lastDirX, t.lastDirY, false);
           }
@@ -696,7 +696,7 @@ function SkillCell({ index, ability, cooldownState: cd, isInteractive, badgeBord
       if (t === null) return;
       for (let i = 0; i < e.changedTouches.length; i++) {
         if (e.changedTouches[i]!.identifier === t.id) {
-          if ((ability.inputType === 'RELEASE' || ability.inputType === 'AIM_CAST') && !t.releaseFired) {
+          if (ability.inputType === 'RELEASE' && !t.releaseFired) {
             t.releaseFired = true;
             onAbilityFire(index, t.lastDirX, t.lastDirY, false);
           }

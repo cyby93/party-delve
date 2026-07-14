@@ -29,6 +29,7 @@ function makeGameState(playerCount: number, downCount = 0, spiritCount = 0): Gam
     essenceTotal: 0,
     reviveTimerExpiresAt: 0,
     statusEffects: [],
+    channelingAbility: null,
   }));
   return {
     session: {

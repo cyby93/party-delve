@@ -35,4 +35,5 @@ export interface PlayerState {
   essenceTotal: number;
   reviveTimerExpiresAt: number;  // server-epoch ms; 0 = not downed or expired
   statusEffects: StatusEffect[];
+  channelingAbility: { abilityIndex: number; targetPlayerId: string; startedAt: number; durationMs: number } | null;
 }

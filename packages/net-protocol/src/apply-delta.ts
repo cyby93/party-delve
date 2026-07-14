@@ -72,7 +72,7 @@ export function applyDelta(state: GameState, evt: DeltaEventMsg): GameState {
       return {
         ...state,
         players: state.players.map(p =>
-          p.id === evt.playerId ? { ...p, isDown: false, reviveTimerExpiresAt: 0 } : p
+          p.id === evt.playerId ? { ...p, isDown: false, reviveTimerExpiresAt: 0, channelingAbility: null } : p
         ),
       };
     }
@@ -243,6 +243,35 @@ export function applyDelta(state: GameState, evt: DeltaEventMsg): GameState {
       return state;  // ponytail: effect reapplication comes via separate player:hp-updated/enemy:damaged deltas
     case 'zone:expired': {
       return { ...state, zones: state.zones.filter(z => z.id !== evt.zoneId) };
+    }
+    case 'cast:started': {
+      if (!state.players.some(p => p.id === evt.casterId)) return state;
+      return {
+        ...state,
+        players: state.players.map(p =>
+          p.id === evt.casterId
+            ? { ...p, channelingAbility: { abilityIndex: evt.abilityIndex, targetPlayerId: evt.targetPlayerId, startedAt: evt.startedAt, durationMs: evt.durationMs } }
+            : p
+        ),
+      };
+    }
+    case 'cast:cancelled': {
+      if (!state.players.some(p => p.id === evt.casterId)) return state;
+      return {
+        ...state,
+        players: state.players.map(p =>
+          p.id === evt.casterId ? { ...p, channelingAbility: null } : p
+        ),
+      };
+    }
+    case 'cast:completed': {
+      if (!state.players.some(p => p.id === evt.casterId)) return state;
+      return {
+        ...state,
+        players: state.players.map(p =>
+          p.id === evt.casterId ? { ...p, channelingAbility: null } : p
+        ),
+      };
     }
     default: {
       // Exhaustiveness guard: adding a new DeltaEventMsg variant without a case here causes a TS error.
