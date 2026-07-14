@@ -4,7 +4,7 @@ baseline_commit: f6083d8
 
 # Story 3.16: Stonehide Kit Rework
 
-Status: ready-for-dev
+Status: done
 
 ## CLAUDE.md Required Task Header
 
@@ -179,7 +179,7 @@ so that Stonehide plays as a gather/mitigate/control/sustain tank instead of shi
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1** (AC: #1, #2, #3) — `balance.ts`: add `ABILITY_STATUS_EFFECT`
+- [x] **Task 1** (AC: #1, #2, #3) — `balance.ts`: add `ABILITY_STATUS_EFFECT`
   table (see Context for shape). Stonehide entries:
   - slot 0 (Stone Wall): `null` (Stone Wall's effect is displacement, not a
     status effect — handled by a separate table, Task 1b)
@@ -191,7 +191,7 @@ so that Stonehide plays as a gather/mitigate/control/sustain tank instead of shi
   (Stone Wall) gets a nonzero tunable value, all other slots (all classes)
   0 for now.
 
-- [ ] **Task 2a** (AC: #1) — `GameRoom.ts`, in the ability-dispatch block,
+- [x] **Task 2a** (AC: #1) — `GameRoom.ts`, in the ability-dispatch block,
   after a successful `dispatchAbility` result and BEFORE (or independent of)
   the existing damage hit-scan: look up
   `ABILITY_STATUS_EFFECT[player.class][abilityIndex]`; if non-null and
@@ -199,7 +199,7 @@ so that Stonehide plays as a gather/mitigate/control/sustain tank instead of shi
   magnitude, expiresAtMs: nowMs + durationMs }, nowMs)`, apply the returned
   target back into `this.gameState.players`, broadcast `status:applied`.
 
-- [ ] **Task 2b** (AC: #2) — In the existing enemy hit-scan `for` loop
+- [x] **Task 2b** (AC: #2) — In the existing enemy hit-scan `for` loop
   (iterates `this.gameState.enemies`, checks `isInHitZone`): after applying
   damage to a hit enemy, if `ABILITY_STATUS_EFFECT[...]?.scope ===
   'enemies-in-zone'`, also call `applyStatusEffect` on that enemy with the
@@ -210,7 +210,7 @@ so that Stonehide plays as a gather/mitigate/control/sustain tank instead of shi
   loop today — this task ADDS the status-effect call alongside the existing
   damage call, it doesn't change the loop's entry condition.
 
-- [ ] **Task 2c** (AC: #3) — In the same hit-scan loop, if
+- [x] **Task 2c** (AC: #3) — In the same hit-scan loop, if
   `ABILITY_DISPLACEMENT_STRENGTH[player.class][abilityIndex] > 0`
   (Stone Wall), after applying damage to a hit enemy, call
   `applyDisplacement(enemy.x, enemy.y, player.x, player.y, strength)` (using
@@ -223,15 +223,21 @@ so that Stonehide plays as a gather/mitigate/control/sustain tank instead of shi
   `body.setPosition` call needed here for enemies, only for players per
   3.14's docs, and Stone Wall never displaces a player).
 
-- [ ] **Task 3** — No code change for Avalanche. Confirm its existing
+- [x] **Task 3** — No code change for Avalanche. Confirm its existing
   `tests/unit/abilities.test.ts` coverage (from Stories 3.3/3.11) still
   passes.
 
-- [ ] Add Iron Skin/Tremor Stomp/Stone Wall test cases to
+- [x] Add Iron Skin/Tremor Stomp/Stone Wall test cases to
   `tests/unit/abilities.test.ts` per AC5, following this file's existing
   per-ability test style (see Story 3.11's rewrite of this file for the
   current baseline structure).
-- [ ] `npm run typecheck` + `npx vitest run` — 0 errors, no regressions.
+- [x] `npm run typecheck` + `npx vitest run` — 0 errors, no regressions.
+
+### Review Findings
+
+- [x] [Review][Patch] Displaced enemy position never broadcast to clients, surfacing as a teleport [apps/simulation-server/src/rooms/GameRoom.ts:1107] — fixed, `applyDisplacementToEnemy` now repositions the physics body and broadcasts `enemy:moved` immediately, mirroring `applyDisplacementToPlayer`.
+- [x] [Review][Patch] Test hardcoded `durationMs` as `expiresAtMs`, obscuring the real `nowAbility + durationMs` contract [tests/unit/abilities.test.ts:176] — fixed, tests now name an explicit `nowMs` local.
+- [x] [Review][Defer] `GameRoom.ts`'s ability-dispatch/hit-scan block has no direct integration test coverage [apps/simulation-server/src/rooms/GameRoom.ts:1675] — deferred, batch-wide gap across all 3.12-3.15 kit-rework stories, not unique to this one (see deferred-work.md D-3.16-A).
 
 ---
 
@@ -283,8 +289,51 @@ during implementation.
 
 ### Agent Model Used
 
+claude-sonnet-5
+
 ### Debug Log References
+
+None — no failures during implementation; typecheck and full test suite passed on first run.
 
 ### Completion Notes List
 
+- Task 1: Added `ABILITY_STATUS_EFFECT` (`AbilityStatusEffectConfig | null` per slot) and `ABILITY_DISPLACEMENT_STRENGTH` (`number` per slot) tables to `balance.ts`, exported from `packages/game-rules/src/index.ts`. Stonehide: slot 0 (Stone Wall) `null`/40 displacement; slot 1 (Tremor Stomp) `{slow, 0.4, 2000ms, enemies-in-zone}`/0; slot 2 (Iron Skin) `{damageReduction, 0.3, 3000ms, self}`/0; slot 3 (Avalanche) `null`/0. All other classes all-null/all-zero (Story 3.17 adds Spiritcaller's Warding Cry entry next).
+- Task 2a: Wired self-scope status application in `GameRoom.ts`'s ability-dispatch block, placed BEFORE the `rawDamage <= 0 continue` guard so Iron Skin (damage=0) still applies its buff — this was the exact bug the Context section described. Reuses the pre-existing `applyStatusEffectToTarget` helper (built ready-to-use by 3.12, previously uncalled).
+- Task 2b/2c: Extended the existing enemy hit-scan loop to also apply `enemies-in-zone` status effects (Tremor Stomp) and displacement (Stone Wall, via the pre-existing `applyDisplacementToEnemy` helper built ready-to-use by 3.14) alongside the existing damage call. Both gated on `!dmgResult.value.killed` — no point statusing/displacing an enemy about to be destroyed. Displacement direct-mutates `enemy.x/y`. **Post-implementation code review (see below) found the original plan of relying on the Enemy AI phase's own `enemy:moved` emission to sync this was incomplete** — that emission only fires from `tickChase`, not `tickIdle`/`tickAttack`, so a pulled enemy not currently chasing would sit displaced server-side with no client ever told, until it happened to re-enter CHASE (surfacing as a sudden teleport). Fixed: `applyDisplacementToEnemy` now repositions the physics body and broadcasts `enemy:moved` immediately, mirroring `applyDisplacementToPlayer`'s existing pattern.
+- Task 3: No Avalanche code change. Its existing dispatch/damage coverage (unchanged codepath) still passes.
+- Verified per Dev Notes: `status:applied`'s existing shape (`targetId`, `effectType`, `magnitude`, `expiresAtMs`) already covers both player and enemy targets — confirmed via `packages/net-protocol/src/apply-delta.ts`'s existing `status:applied` case, which already switches on `targetId` matching either a player or an enemy. **No `packages/net-protocol/**` change was needed**, so this story's actual footprint is narrower than the header's "Multi-context" caveat allowed for: Simulation Engineer only (`packages/game-rules/**`, `apps/simulation-server/**`, `tests/unit/abilities.test.ts`) — no Protocol Architect review triggered.
+- Tests: added 6 cases to `tests/unit/abilities.test.ts` (Iron Skin self-damageReduction via `applyStatusEffect`+`applyPlayerDamage`; Tremor Stomp AoE damage + slow via `applyDamage`+`applyStatusEffect`; Stone Wall damage + pull-toward-caster via `applyDamage`+`applyDisplacement`; a killed-enemy negative case for the `!killed` status-effect guard added during code review; Avalanche config-absence check; other-classes-still-all-null/zero check), exercising the exact game-rules primitives `GameRoom.ts` calls. Full suite (excluding pre-existing e2e tests that require live Docker/Redis infra unavailable in this environment): 462 passed, 0 failed. `npm run typecheck`: 0 errors across all 10 project references.
+- Confidence: 95% (pre-review) — straightforward declarative wiring following an established pattern (3.13's `ABILITY_CHAINED_ZONE`), all consumption sites (`applyDamage`, `applyPlayerDamage`, `fsm.ts`'s chase speed) were already reading `damageReduction`/`slow` from `statusEffects` before this story, so no additional wiring was needed on the read side. The 5% risk materialized exactly where expected — see code review below.
+
+### Senior Developer Review (AI)
+
+**Reviewed:** 2026-07-13 · **Outcome:** Approved (1 finding patched, rest dismissed/deferred)
+
+Three parallel adversarial layers (Blind Hunter, Edge Case Hunter, Acceptance Auditor) ran against the diff vs `HEAD` (CRLF-normalized), scoped to this story's 4 changed files, with the story's own AC1-AC5 as the Acceptance Auditor's spec.
+
+**Patched:**
+- **[High, confirmed] Displaced enemy position never broadcast to clients** (Edge Case Hunter) — `applyDisplacementToEnemy` only mutated `gameState` locally; the physics body and clients only learned of the new position via the enemy's own AI tick, which only emits `enemy:moved` from `tickChase` — not `tickIdle`/`tickAttack`. A Stone Wall pull on an enemy mid-`ATTACK` (its most natural target) would be invisible to players until the enemy later re-entered `CHASE`, then appear as a sudden teleport by the full accumulated pull distance. Re-verified by reading `fsm.ts` directly before fixing (confirmed real, not a Blind-Hunter guess). Fix: `applyDisplacementToEnemy` now repositions the physics body and broadcasts `enemy:moved` immediately, mirroring the existing `applyDisplacementToPlayer` pattern. Added a regression-relevant negative test (killed enemy doesn't get status/displacement) while in the file.
+- **[Low] Test hardcoded `durationMs` as `expiresAtMs`** (Blind Hunter) — obscured the real `nowAbility + durationMs` production contract by only working because the test's `nowMs` was `0`. Fixed: tests now name an explicit `nowMs` local and compute `nowMs + durationMs`.
+
+**Dismissed (with reason):**
+- "Inconsistent state-mutation pattern" (replace-array-element for status effects vs. direct-mutate for displacement) — Blind Hunter's severity claim rested on `gameState.players`/`enemies` being Colyseus schema arrays; per this project's explicit architecture rule (CLAUDE.md/project-context.md), Colyseus state sync (`@Schema`/`MapSchema`/`ArraySchema`) is forbidden — these are plain arrays. Both patterns were independently established by 3.12 and 3.14, not introduced here.
+- "No invariant stops self-scope status stacking on a damaging ability" — speculative future-misuse scenario; no ability in this story's data combines `scope: 'self'` with nonzero damage.
+- "Redundant O(n) findIndex per ability dispatch" — `n` is capped at `MAX_PLAYERS = 8`; negligible against the 33ms tick budget, consistent with existing `.find()` usage elsewhere in the same file.
+- "Non-null assertions" — consistent with this file's established style throughout.
+- "Planning commentary in shipped balance.ts table" — matches existing precedent (`ABILITY_CHAINED_ZONE`, `ABILITY_SELF_COST_HP` already carry similar future-story notes).
+- Acceptance Auditor's two observations (the `!killed` guard as an "unstated addition," Dev Notes prose being slightly stale re: `StatusAppliedDelta`'s shape) — both explicitly flagged by the Auditor itself as non-defects; no action needed.
+- "GameRoom.ts wiring has zero direct integration test coverage" (Blind Hunter) — real, but not unique to this story: every kit-rework story in this batch (3.12-3.15) only unit-tests the game-rules primitives, not a live Colyseus room, and this story's own Allowed-paths/AC5 scoped tests to `tests/unit/abilities.test.ts`. Deferred — worth a dedicated GameRoom-integration-test story rather than a one-off addition here.
+
+After the patch: full suite re-run, 462 passed / 0 failed (same pre-existing e2e/Docker-dependent tests skipped as before); typecheck clean.
+
 ### File List
+
+- `packages/game-rules/src/balance.ts` — added `ABILITY_STATUS_EFFECT`, `ABILITY_DISPLACEMENT_STRENGTH` tables, `StatusEffectScope`/`AbilityStatusEffectConfig` types
+- `packages/game-rules/src/index.ts` — exported the two new tables and two new types
+- `apps/simulation-server/src/rooms/GameRoom.ts` — wired self-scope status application, enemies-in-zone status application, and Stone Wall displacement into the ability-dispatch/hit-scan block
+- `tests/unit/abilities.test.ts` — added Stonehide kit rework test cases (AC5)
+
+### Change Log
+
+- 2026-07-13: Implemented Story 3.16 — Stonehide's full kit (Iron Skin self-damageReduction, Tremor Stomp AoE damage+slow, Stone Wall damage+pull, Avalanche unchanged). All tasks complete, all ACs satisfied, 0 regressions.
+- 2026-07-13: Code review (1 patch fixed — Stone Wall's enemy displacement wasn't broadcast to clients, causing a delayed teleport instead of a visible pull; 1 minor test-clarity patch; rest dismissed as false-premise/speculative/pre-existing-style or deferred as a batch-wide test-coverage gap, not unique to this story). Outcome: Approved.

@@ -12,7 +12,7 @@ import {
   CAT_BOSS, createZoneBody,
 } from '../physics/world.js';
 import type { PoiBeginContactEvent, PoiEndContactEvent, EssenceBeginContactEvent, PhysicsBodyData } from '../physics/world.js';
-import { createRng, tickEnemy, dispatchAbility, getEnemyCount, applyDamage, isInHitZone, ABILITY_HIT_RANGE_PX, ABILITY_HIT_RADIUS_PX, ABILITY_DAMAGE, applyPlayerDamage, getReviveWindowMs, ENEMY_MELEE_DAMAGE, ENEMY_MELEE_RANGE_PX, ENEMY_ATTACK_COOLDOWN_MS, REVIVE_RADIUS_PX, REVIVE_HP, SPIRIT_ABILITY_COOLDOWN_MS, generateFloorLayout, GRASSLAND_ROOM_POOL, WAVE_COUNTS, WAVE_PAUSE_MS, WAVE_ENEMY_SCALE, bondKey, getProximityBuffedPlayers, getFateBuffedPlayers, getFateBondWipeTargets, getProximityDrainTargets, BOND_PROXIMITY_RANGE_PX, BOND_DRAIN_THRESHOLD_S, BOND_DRAIN_HP_PER_TICK, BOND_DAMAGE_MULT, BOND_SPEED_MULT, assignBond, BOND_DESCRIPTIONS, BOND_MECHANICS, createBossState, tickBoss, BOSS_ADD_HP, BOSS_STOMP_DAMAGE, evaluateGrasslandAchievements, JOYSTICK_DEADBAND, createEasyLayers, createNormalLayers, createHardLayers, tickStatusEffects, getStatusEffectMagnitude, applyStatusEffect, resolveProjectileHit, isProjectileExpired, shouldZoneTick, isZoneExpired, PROJECTILE_MAX_RANGE_PX, ABILITY_CHAINED_ZONE } from 'game-rules';
+import { createRng, tickEnemy, dispatchAbility, getEnemyCount, applyDamage, isInHitZone, ABILITY_HIT_RANGE_PX, ABILITY_HIT_RADIUS_PX, ABILITY_DAMAGE, applyPlayerDamage, getReviveWindowMs, ENEMY_MELEE_DAMAGE, ENEMY_MELEE_RANGE_PX, ENEMY_ATTACK_COOLDOWN_MS, REVIVE_RADIUS_PX, REVIVE_HP, SPIRIT_ABILITY_COOLDOWN_MS, generateFloorLayout, GRASSLAND_ROOM_POOL, WAVE_COUNTS, WAVE_PAUSE_MS, WAVE_ENEMY_SCALE, bondKey, getProximityBuffedPlayers, getFateBuffedPlayers, getFateBondWipeTargets, getProximityDrainTargets, BOND_PROXIMITY_RANGE_PX, BOND_DRAIN_THRESHOLD_S, BOND_DRAIN_HP_PER_TICK, BOND_DAMAGE_MULT, BOND_SPEED_MULT, assignBond, BOND_DESCRIPTIONS, BOND_MECHANICS, createBossState, tickBoss, BOSS_ADD_HP, BOSS_STOMP_DAMAGE, evaluateGrasslandAchievements, JOYSTICK_DEADBAND, createEasyLayers, createNormalLayers, createHardLayers, tickStatusEffects, getStatusEffectMagnitude, applyStatusEffect, resolveProjectileHit, isProjectileExpired, shouldZoneTick, isZoneExpired, PROJECTILE_MAX_RANGE_PX, ABILITY_CHAINED_ZONE, ABILITY_STATUS_EFFECT, ABILITY_DISPLACEMENT_STRENGTH, applyDisplacement } from 'game-rules';
 import type { BehaviorLayer, EnemyContext, EnemyAIEvent, BossEvent, BossStompedEvent, ChainedZoneConfig } from 'game-rules';
 import { BOSS_ARENA_SPAWN_POINTS, loadBossArena } from '../levels/boss-arena.js';
 import { CLASS_DEFINITIONS } from 'shared-types';
@@ -1095,18 +1095,29 @@ export class GameRoom extends Room {
     this.zoneDamagePerTick.set(zoneId, damagePerTick);
   }
 
-  // Ready-to-use for 3.16's Stone Wall pull and 3.19's Void Pulse vacuum zone
-  // (the zone-tick handler built in 3.13 is the intended caller for the enemy
-  // variant) — no ability calls these yet, so there is no caller here. dx/dy
-  // come from game-rules' applyDisplacement. Direct position mutation, not
-  // body.applyLinearImpulse: see Story 3.14 for why impulses are inert for
-  // both entity types in this tick architecture (velocity gets overwritten
-  // every tick for players). For enemies, the mutated x/y reaches the physics
-  // body next time this enemy's own AI tick emits an 'enemy:moved' event (see
-  // the Enemy AI phase below) — not necessarily the same tick this runs in.
+  // dx/dy come from game-rules' applyDisplacement. Direct position mutation,
+  // not body.applyLinearImpulse: see Story 3.14 for why impulses are inert
+  // for both entity types in this tick architecture (velocity gets
+  // overwritten every tick for players). Repositions the physics body and
+  // broadcasts immediately (mirrors applyDisplacementToPlayer below) — the
+  // enemy's own AI tick only emits 'enemy:moved' from tickChase, so an
+  // IDLE/ATTACK-state enemy would otherwise sit displaced server-side with
+  // no client ever told, surfacing as a teleport whenever it next chases.
   private applyDisplacementToEnemy(enemy: EnemyState, dx: number, dy: number): void {
+    if (dx === 0 && dy === 0) return;
+
     enemy.x += dx;
     enemy.y += dy;
+
+    const body = this.enemyBodies.get(enemy.id);
+    if (body) body.setPosition(Vec2(toMeters(enemy.x), toMeters(enemy.y)));
+
+    this.broadcast(EventNames.DELTA, {
+      type: 'enemy:moved' as const,
+      enemyId: enemy.id,
+      x: enemy.x,
+      y: enemy.y,
+    } satisfies DeltaEventMsg);
   }
 
   private applyDisplacementToPlayer(playerId: string, dx: number, dy: number): void {
@@ -1675,9 +1686,28 @@ export class GameRoom extends Room {
         // Hit-scan: check all living enemies against this ability's hit zone
         const abilityDef = CLASS_DEFINITIONS[player.class].abilities[abilityIndex];
         if (!abilityDef) continue;
+
+        // Self-scope status effect (e.g. Iron Skin) applies independently of
+        // the damage hit-scan below — must run before the damage=0 guard,
+        // since buff abilities carry no damage.
+        const statusConfig = ABILITY_STATUS_EFFECT[player.class][abilityIndex];
+        if (statusConfig?.scope === 'self') {
+          const casterIdx = this.gameState.players.findIndex(p => p.id === clientId);
+          if (casterIdx !== -1) {
+            this.gameState.players[casterIdx] = this.applyStatusEffectToTarget(
+              this.gameState.players[casterIdx]!,
+              { type: statusConfig.effectType, magnitude: statusConfig.magnitude, expiresAtMs: nowAbility + statusConfig.durationMs },
+              nowAbility,
+            );
+          }
+        }
+
         const isDirectional = abilityDef.inputType !== 'TAP';
         const hitRange  = ABILITY_HIT_RANGE_PX[player.class][abilityIndex] ?? 0;
         const hitRadius = ABILITY_HIT_RADIUS_PX[player.class][abilityIndex] ?? 60;
+        const displacementStrength = ABILITY_DISPLACEMENT_STRENGTH[player.class][abilityIndex] ?? 0;
+        const casterX = player.x;
+        const casterY = player.y;
         const rawDamage = result.value.damage;
         if (rawDamage <= 0) continue;  // ponytail: skip hit-scan for buff/heal abilities (damage=0 in balance table)
         const damage = proximityBuffed.has(clientId)
@@ -1711,6 +1741,19 @@ export class GameRoom extends Room {
             damage,
             remainingHp: dmgResult.value.enemy.hp,
           } satisfies DeltaEventMsg);
+
+          if (!dmgResult.value.killed && statusConfig?.scope === 'enemies-in-zone') {
+            this.gameState.enemies[ei] = this.applyStatusEffectToTarget(
+              this.gameState.enemies[ei]!,
+              { type: statusConfig.effectType, magnitude: statusConfig.magnitude, expiresAtMs: nowAbility + statusConfig.durationMs },
+              nowAbility,
+            );
+          }
+
+          if (!dmgResult.value.killed && displacementStrength > 0) {
+            const { dx, dy } = applyDisplacement(enemy.x, enemy.y, casterX, casterY, displacementStrength);
+            this.applyDisplacementToEnemy(this.gameState.enemies[ei]!, dx, dy);
+          }
 
           if (dmgResult.value.killed) {
             this.broadcast(EventNames.DELTA, {

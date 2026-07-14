@@ -1,4 +1,4 @@
-import type { PlayerClass, BondType, ZoneEffectType } from 'shared-types';
+import type { PlayerClass, BondType, ZoneEffectType, StatusEffectType } from 'shared-types';
 
 // ── Movement ──────────────────────────────────────────────────────────────────
 export const JOYSTICK_DEADBAND = 0.05;
@@ -120,6 +120,40 @@ export const ABILITY_CHAINED_ZONE: Record<PlayerClass, readonly [ChainedZoneConf
   spiritcaller: [null, null, null, null],
   souldrinker:  [null, null, null, null],
   stormcaller:  [null, null, null, null],
+};
+
+// ── Declarative per-ability status-effect application ───────────────────────
+// Populated per-ability by each kit-rework story (3.16 sets Stonehide; 3.17
+// adds Spiritcaller's Warding Cry). GameRoom reads this table instead of
+// special-casing any one ability by class/index.
+export type StatusEffectScope = 'self' | 'enemies-in-zone' | 'allies-in-zone';
+
+export interface AbilityStatusEffectConfig {
+  effectType: StatusEffectType;
+  magnitude: number;
+  durationMs: number;
+  scope: StatusEffectScope;
+}
+
+export const ABILITY_STATUS_EFFECT: Record<PlayerClass, readonly [AbilityStatusEffectConfig | null, AbilityStatusEffectConfig | null, AbilityStatusEffectConfig | null, AbilityStatusEffectConfig | null]> = {
+  stonehide: [
+    null, // Stone Wall — displacement, not a status effect (see ABILITY_DISPLACEMENT_STRENGTH)
+    { effectType: 'slow', magnitude: 0.4, durationMs: 2000, scope: 'enemies-in-zone' }, // Tremor Stomp
+    { effectType: 'damageReduction', magnitude: 0.3, durationMs: 3000, scope: 'self' }, // Iron Skin
+    null, // Avalanche
+  ],
+  spiritcaller: [null, null, null, null],
+  souldrinker:  [null, null, null, null],
+  stormcaller:  [null, null, null, null],
+};
+
+// ── Declarative per-ability displacement strength ────────────────────────────
+// 0 = no displacement. Populated per-ability by each kit-rework story.
+export const ABILITY_DISPLACEMENT_STRENGTH: Record<PlayerClass, readonly [number, number, number, number]> = {
+  stonehide:    [40, 0, 0, 0], // Stone Wall pulls hit enemies toward the caster
+  spiritcaller: [0, 0, 0, 0],
+  souldrinker:  [0, 0, 0, 0],
+  stormcaller:  [0, 0, 0, 0],
 };
 
 // ── Spirit Essence ────────────────────────────────────────────────────────────

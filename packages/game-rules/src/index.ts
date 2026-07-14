@@ -27,8 +27,10 @@ export {
   ABILITY_SELF_COST_HP,
   ABILITY_HP_SCALED_DAMAGE,
   ABILITY_LIFESTEAL_PCT,
+  ABILITY_STATUS_EFFECT,
+  ABILITY_DISPLACEMENT_STRENGTH,
 } from './balance.js';
-export type { ChainedZoneConfig } from './balance.js';
+export type { ChainedZoneConfig, AbilityStatusEffectConfig, StatusEffectScope } from './balance.js';
 export { applyPlayerDamage, getReviveWindowMs, healPlayer, calculateLifesteal } from './systems/player-health.js';
 export type { PlayerDamageResult, HealthError } from './systems/player-health.js';
 export { resolveMixedFactionTargets } from './systems/targeting.js';

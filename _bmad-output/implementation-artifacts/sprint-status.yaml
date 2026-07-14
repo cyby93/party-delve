@@ -43,6 +43,21 @@
 
 generated: 2026-06-22
 last_updated: 2026-07-13
+# 2026-07-13: completed 3.16 — Stonehide's full kit (Iron Skin self-scope
+# damageReduction, Tremor Stomp AoE damage+slow, Stone Wall damage+pull via
+# ABILITY_STATUS_EFFECT/ABILITY_DISPLACEMENT_STRENGTH declarative tables in
+# balance.ts; Avalanche unchanged). Verified during implementation that
+# status:applied's existing shape covers both player/enemy targets, so no
+# packages/net-protocol/** change was needed — narrower footprint than the
+# story header's "Multi-context" caveat allowed for (Simulation Engineer
+# only). Code review: 1 patch fixed (Stone Wall's enemy displacement wasn't
+# broadcast to clients — applyDisplacementToEnemy now mirrors
+# applyDisplacementToPlayer's body-reposition + broadcast), 1 minor test
+# patch, 1 finding deferred (deferred-work.md D-3.16-A, GameRoom.ts
+# integration test coverage — batch-wide gap, not unique to this story),
+# rest dismissed. 6 tests total added to tests/unit/abilities.test.ts; full
+# suite (excl. pre-existing e2e tests needing live Docker/Redis) 462
+# passed, 0 regressions.
 # 2026-07-13: completed 3.15 — self-cost HP mechanism, inverse-HP damage
 # scaling, lifesteal helpers, mixed-faction target resolution. All zero-value
 # until 3.19 (self-cost/HP-scaling/lifesteal) and 3.17 (mixed-faction) wire
@@ -159,7 +174,7 @@ development_status:
   3-13-projectile-physics-and-zone-field-entities: done
   3-14-displacement-pull-physics-primitive: done
   3-15-self-cost-resource-and-mixed-faction-target-resolution: done
-  3-16-stonehide-kit-rework: ready-for-dev
+  3-16-stonehide-kit-rework: done
   3-17-spiritcaller-kit-rework-ancestors-voice-spirit-nova-warding-cry: ready-for-dev
   3-18-soul-mend-ranged-spirit-targeting-revive: ready-for-dev
   3-19-souldrinker-kit-rework-blood-spike-crimson-lash-dark-pact-void-pulse: ready-for-dev
