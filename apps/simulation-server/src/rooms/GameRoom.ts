@@ -9,14 +9,14 @@ import type { World } from 'planck';
 import {
   createPhysicsWorld, createPlayerBody, createPoiSensorBody, createEssenceSensorBody,
   extractPoiBeginContact, extractPoiEndContact, extractEssenceBeginContact, toMeters, toPixels,
-  CAT_BOSS, createZoneBody,
+  CAT_BOSS, createZoneBody, createProjectileBody,
 } from '../physics/world.js';
 import type { PoiBeginContactEvent, PoiEndContactEvent, EssenceBeginContactEvent, PhysicsBodyData } from '../physics/world.js';
-import { createRng, tickEnemy, dispatchAbility, getEnemyCount, applyDamage, isInHitZone, ABILITY_HIT_RANGE_PX, ABILITY_HIT_RADIUS_PX, ABILITY_DAMAGE, applyPlayerDamage, getReviveWindowMs, ENEMY_MELEE_DAMAGE, ENEMY_MELEE_RANGE_PX, ENEMY_ATTACK_COOLDOWN_MS, REVIVE_RADIUS_PX, REVIVE_HP, SPIRIT_ABILITY_COOLDOWN_MS, generateFloorLayout, GRASSLAND_ROOM_POOL, WAVE_COUNTS, WAVE_PAUSE_MS, WAVE_ENEMY_SCALE, bondKey, getProximityBuffedPlayers, getFateBuffedPlayers, getFateBondWipeTargets, getProximityDrainTargets, BOND_PROXIMITY_RANGE_PX, BOND_DRAIN_THRESHOLD_S, BOND_DRAIN_HP_PER_TICK, BOND_DAMAGE_MULT, BOND_SPEED_MULT, assignBond, BOND_DESCRIPTIONS, BOND_MECHANICS, createBossState, tickBoss, BOSS_ADD_HP, BOSS_STOMP_DAMAGE, evaluateGrasslandAchievements, JOYSTICK_DEADBAND, createEasyLayers, createNormalLayers, createHardLayers, tickStatusEffects, getStatusEffectMagnitude, applyStatusEffect, resolveProjectileHit, isProjectileExpired, shouldZoneTick, isZoneExpired, PROJECTILE_MAX_RANGE_PX, ABILITY_CHAINED_ZONE, ABILITY_STATUS_EFFECT, ABILITY_DISPLACEMENT_STRENGTH, applyDisplacement, resolveMixedFactionTargets, healPlayer, resolveExpandingRadius, ABILITY_HEAL_AMOUNT, SPIRIT_NOVA_DURATION_MS, SPIRIT_NOVA_MAX_RADIUS_PX, findSoulMendTarget, shouldCancelSoulMendChannel, reviveBySoulMend, SOUL_MEND_CHANNEL_DURATION_MS, SOUL_MEND_LIVENESS_MS, ABILITY_COOLDOWNS_MS } from 'game-rules';
+import { createRng, tickEnemy, dispatchAbility, getEnemyCount, applyDamage, isInHitZone, ABILITY_HIT_RANGE_PX, ABILITY_HIT_RADIUS_PX, ABILITY_DAMAGE, applyPlayerDamage, getReviveWindowMs, ENEMY_MELEE_DAMAGE, ENEMY_MELEE_RANGE_PX, ENEMY_ATTACK_COOLDOWN_MS, REVIVE_RADIUS_PX, REVIVE_HP, SPIRIT_ABILITY_COOLDOWN_MS, generateFloorLayout, GRASSLAND_ROOM_POOL, WAVE_COUNTS, WAVE_PAUSE_MS, WAVE_ENEMY_SCALE, bondKey, getProximityBuffedPlayers, getFateBuffedPlayers, getFateBondWipeTargets, getProximityDrainTargets, BOND_PROXIMITY_RANGE_PX, BOND_DRAIN_THRESHOLD_S, BOND_DRAIN_HP_PER_TICK, BOND_DAMAGE_MULT, BOND_SPEED_MULT, assignBond, BOND_DESCRIPTIONS, BOND_MECHANICS, createBossState, tickBoss, BOSS_ADD_HP, BOSS_STOMP_DAMAGE, evaluateGrasslandAchievements, JOYSTICK_DEADBAND, createEasyLayers, createNormalLayers, createHardLayers, tickStatusEffects, getStatusEffectMagnitude, applyStatusEffect, resolveProjectileHit, isProjectileExpired, shouldZoneTick, isZoneExpired, PROJECTILE_MAX_RANGE_PX, PROJECTILE_SPEED_PX_S, ABILITY_CHAINED_ZONE, ABILITY_STATUS_EFFECT, ABILITY_DISPLACEMENT_STRENGTH, applyDisplacement, resolveMixedFactionTargets, healPlayer, calculateLifesteal, resolveExpandingRadius, ABILITY_HEAL_AMOUNT, SPIRIT_NOVA_DURATION_MS, SPIRIT_NOVA_MAX_RADIUS_PX, findSoulMendTarget, shouldCancelSoulMendChannel, reviveBySoulMend, SOUL_MEND_CHANNEL_DURATION_MS, SOUL_MEND_LIVENESS_MS, ABILITY_COOLDOWNS_MS, ABILITY_DELIVERY, ABILITY_LIFESTEAL_PCT, VOID_PULSE_PULL_STRENGTH_PX, DARK_PACT_DRAIN_PCT } from 'game-rules';
 import type { BehaviorLayer, EnemyContext, EnemyAIEvent, BossEvent, BossStompedEvent, ChainedZoneConfig } from 'game-rules';
 import { BOSS_ARENA_SPAWN_POINTS, loadBossArena } from '../levels/boss-arena.js';
 import { CLASS_DEFINITIONS } from 'shared-types';
-import type { EnemyState, StatusEffect, ZoneState } from 'shared-types';
+import type { EnemyState, StatusEffect, ZoneState, ProjectileState } from 'shared-types';
 import { EnemyType, DifficultyTier, EnemyFSMState, OFFSET_ENEMY_SPAWN, OFFSET_FLOOR_LAYOUT, OFFSET_ROOM_POOL, OFFSET_SPIRIT_BOND } from 'shared-types';
 import { createEnemyBody } from '../physics/world.js';
 import { createBondSensor, extractBondSensorContact, extractProjectileEnemyContact, extractZoneContact } from '../physics/sensors.js';
@@ -1197,6 +1197,82 @@ export class GameRoom extends Room {
     } satisfies DeltaEventMsg);
   }
 
+  // Dark Pact (Souldrinker slot 2, Story 3.19): single-target ally drain + self
+  // damageBuff. Its own dispatch branch — not a hit-scan (no enemy involved), not a
+  // mixed-faction AoE (single nearest ally, not everyone in the zone), and not a
+  // channel (instant RELEASE, unlike Soul Mend). Reuses gatherPlayersInHitZone's
+  // "aim a cone, filter to valid living allies, exclude caster" query shape.
+  // The damageBuff status effect is gated on a target actually being found — no
+  // drain means no buff, per the ability's single linked drain-transfer effect.
+  private handleDarkPact(casterId: string, caster: PlayerState, dirX: number, dirY: number, nowMs: number): void {
+    const abilityIndex = 2;
+    const hitRange = ABILITY_HIT_RANGE_PX[PlayerClass.SOULDRINKER][abilityIndex];
+    const hitRadius = ABILITY_HIT_RADIUS_PX[PlayerClass.SOULDRINKER][abilityIndex];
+    const mag = Math.hypot(dirX, dirY);
+    if (mag === 0) return; // no direction = no target, same rule as every other directional ability
+    const normDirX = dirX / mag;
+    const normDirY = dirY / mag;
+
+    const candidates = this.gatherPlayersInHitZone(caster.x, caster.y, normDirX, normDirY, hitRadius, hitRange, true, casterId);
+    if (candidates.length === 0) return; // aimed at nothing — cooldown still applies (handled by the caller), no drain/buff
+
+    let nearest = candidates[0]!;
+    let nearestDistSq = Infinity;
+    for (const c of candidates) {
+      const dx = c.x - caster.x;
+      const dy = c.y - caster.y;
+      const distSq = dx * dx + dy * dy;
+      if (distSq < nearestDistSq) {
+        nearestDistSq = distSq;
+        nearest = c;
+      }
+    }
+
+    const targetIdx = this.gameState.players.findIndex(p => p.id === nearest.id);
+    if (targetIdx === -1) return;
+    const drainAmount = this.gameState.players[targetIdx]!.hp * DARK_PACT_DRAIN_PCT;
+    const dmgResult = applyPlayerDamage(this.gameState.players[targetIdx]!, drainAmount, nowMs);
+    if (!dmgResult.ok) return; // target became invalid this tick (e.g. concurrently downed) — no drain, no buff
+
+    this.gameState.players[targetIdx] = dmgResult.value.player;
+    this.broadcast(EventNames.DELTA, {
+      type: 'player:hp-updated' as const,
+      playerId: nearest.id,
+      hp: dmgResult.value.player.hp,
+    } satisfies DeltaEventMsg);
+
+    if (dmgResult.value.downed) {
+      this.broadcast(EventNames.DELTA, {
+        type: 'player:downed' as const,
+        playerId: nearest.id,
+        downCount: dmgResult.value.player.downCount,
+        reviveWindowMs: dmgResult.value.reviveWindowMs!,
+      } satisfies DeltaEventMsg);
+      const downedClient = this.clients.find(c => c.sessionId === nearest.id);
+      if (downedClient) {
+        downedClient.send(EventNames.SPIRIT_FORM, { type: 'spirit:form', isActive: false } satisfies SpiritFormMsg);
+      }
+    }
+
+    const casterIdx = this.gameState.players.findIndex(p => p.id === casterId);
+    if (casterIdx === -1) return;
+    this.gameState.players[casterIdx] = healPlayer(this.gameState.players[casterIdx]!, drainAmount);
+    this.broadcast(EventNames.DELTA, {
+      type: 'player:hp-updated' as const,
+      playerId: casterId,
+      hp: this.gameState.players[casterIdx]!.hp,
+    } satisfies DeltaEventMsg);
+
+    const buffConfig = ABILITY_STATUS_EFFECT[PlayerClass.SOULDRINKER][abilityIndex];
+    if (buffConfig) {
+      this.gameState.players[casterIdx] = this.applyStatusEffectToTarget(
+        this.gameState.players[casterIdx]!,
+        { type: buffConfig.effectType, magnitude: buffConfig.magnitude, expiresAtMs: nowMs + buffConfig.durationMs },
+        nowMs,
+      );
+    }
+  }
+
   private tick(): void {
     this.tickCount++;
     this.gameState.tick = this.tickCount;
@@ -1377,8 +1453,31 @@ export class GameRoom extends Room {
       if (!shouldZoneTick(zone, tickNowMs, lastTick)) continue;
       this.zoneLastTickAtMs.set(zone.id, tickNowMs);
 
-      // 'pull' is a physics-impulse placeholder implemented by Story 3.14 — nothing to apply here yet.
-      if (zone.effectType === 'damage') {
+      if (zone.effectType === 'pull') {
+        // Void Pulse (Story 3.19): pulls both allies and enemies toward the zone
+        // center using Story 3.14's displacement primitive. Excludes isDown/
+        // isSpirit/isFrozen players from being pulled — resolves D-3.14-A's
+        // still-open player-side liveness gap, mirroring gatherPlayersInHitZone's
+        // exact same three-flag exclusion. Dead enemies are skipped the same way
+        // Story 3.16's Stone Wall gates its own displacement call.
+        const overlapping = this.zoneOverlapping.get(zone.id);
+        if (overlapping) {
+          for (const targetId of overlapping) {
+            const enemyIdx = this.gameState.enemies.findIndex(e => e.id === targetId);
+            if (enemyIdx !== -1) {
+              const enemy = this.gameState.enemies[enemyIdx]!;
+              if (!enemy.isAlive) continue;
+              const { dx, dy } = applyDisplacement(enemy.x, enemy.y, zone.x, zone.y, VOID_PULSE_PULL_STRENGTH_PX);
+              this.applyDisplacementToEnemy(enemy, dx, dy);
+              continue;
+            }
+            const player = this.gameState.players.find(p => p.id === targetId);
+            if (!player || player.isDown || player.isSpirit || player.isFrozen) continue;
+            const { dx, dy } = applyDisplacement(player.x, player.y, zone.x, zone.y, VOID_PULSE_PULL_STRENGTH_PX);
+            this.applyDisplacementToPlayer(targetId, dx, dy);
+          }
+        }
+      } else if (zone.effectType === 'damage') {
         const damage = this.zoneDamagePerTick.get(zone.id) ?? 0;
         const overlapping = this.zoneOverlapping.get(zone.id);
         if (damage > 0 && overlapping) {
@@ -1491,6 +1590,26 @@ export class GameRoom extends Room {
           this.broadcast(EventNames.DELTA, { type: 'essence:dropped' as const, drop } satisfies DeltaEventMsg);
           const sensor = createEssenceSensorBody(this.physicsWorld, drop.id, drop.x, drop.y);
           this.essenceSensorBodies.set(drop.id, sensor);
+        }
+      }
+
+      // Lifesteal (Blood Spike, Story 3.19): declarative, fires for any projectile
+      // ability with a nonzero ABILITY_LIFESTEAL_PCT entry. Only on a hit — a miss
+      // (projectile expiry, handled elsewhere) already paid the self-cost with no
+      // compensating heal. Resolves D-3.15-A's still-open caster-only case: skips
+      // the heal if the caster went down/entered spirit form mid-flight (projectile
+      // travel time can outlast the caster's own survival), same isDown/isSpirit
+      // exclusion gatherPlayersInHitZone already applies to ally heal targets.
+      const lifestealPct = ABILITY_LIFESTEAL_PCT[projectile.class][projectile.abilityIndex as 0 | 1 | 2 | 3];
+      if (lifestealPct > 0) {
+        const casterIdx = this.gameState.players.findIndex(p => p.id === projectile.ownerId);
+        if (casterIdx !== -1 && !this.gameState.players[casterIdx]!.isDown && !this.gameState.players[casterIdx]!.isSpirit) {
+          this.gameState.players[casterIdx] = healPlayer(this.gameState.players[casterIdx]!, calculateLifesteal(damage, lifestealPct));
+          this.broadcast(EventNames.DELTA, {
+            type: 'player:hp-updated' as const,
+            playerId: projectile.ownerId,
+            hp: this.gameState.players[casterIdx]!.hp,
+          } satisfies DeltaEventMsg);
         }
       }
 
@@ -1747,6 +1866,20 @@ export class GameRoom extends Room {
         } satisfies CooldownUpdateMsg);
       }
 
+      // Self-cost (Blood Spike, Story 3.19): generic for any ability with a nonzero
+      // ABILITY_SELF_COST_HP entry — dispatchAbility already computed the 1-HP-floored
+      // amount, this just applies it. Runs regardless of dungeon/training-dummy phase,
+      // same as the cooldown update above, since it's a caster-resource cost, not a
+      // combat hit effect.
+      if (result.value.selfCostHpApplied > 0) {
+        player.hp -= result.value.selfCostHpApplied;
+        this.broadcast(EventNames.DELTA, {
+          type: 'player:hp-updated' as const,
+          playerId: clientId,
+          hp: player.hp,
+        } satisfies DeltaEventMsg);
+      }
+
       if (inDungeon) {
         const abilityDelta = {
           type: 'ability:fired' as const,
@@ -1760,6 +1893,45 @@ export class GameRoom extends Room {
         // Hit-scan: check all living enemies against this ability's hit zone
         const abilityDef = CLASS_DEFINITIONS[player.class].abilities[abilityIndex];
         if (!abilityDef) continue;
+
+        // Projectile delivery (Blood Spike, Void Pulse — Story 3.19): spawns a
+        // ProjectileState instead of resolving via the same-tick hit-scan below.
+        // Branches BEFORE any hit-scan/status-effect logic — the projectile's own
+        // hit resolution (Story 3.13's contact-listener path) handles damage later.
+        if (ABILITY_DELIVERY[player.class][abilityIndex as 0 | 1 | 2 | 3] === 'projectile') {
+          const mag = Math.hypot(dirX, dirY);
+          if (mag === 0) continue; // no direction = no shot, same rule as every other directional ability
+          const projDirX = dirX / mag;
+          const projDirY = dirY / mag;
+          const projectileId = `projectile-${this.tickCount}-${clientId}-${abilityIndex}`;
+          const projectile: ProjectileState = {
+            id: projectileId,
+            ownerId: clientId,
+            x: player.x,
+            y: player.y,
+            class: player.class,
+            abilityIndex,
+          };
+          this.gameState.projectiles.push(projectile);
+          const projectileBody = createProjectileBody(this.physicsWorld, projectileId, player.x, player.y, projDirX, projDirY, PROJECTILE_SPEED_PX_S);
+          this.projectileBodies.set(projectileId, projectileBody);
+          this.projectileSpawnPositions.set(projectileId, { x: player.x, y: player.y });
+          // No dedicated "projectile:spawned" delta type exists (net-protocol is a
+          // blocked path this story) — same situation as 'add:spawned' above: a new
+          // entity needs full-state sync, so broadcast a SNAPSHOT, matching that
+          // existing precedent instead of inventing a new wire type.
+          this.broadcast(EventNames.SNAPSHOT, { type: 'snapshot', state: this.gameState } satisfies SnapshotMsg);
+          continue;
+        }
+
+        // Dark Pact (Souldrinker slot 2, Story 3.19): single-target ally drain, not
+        // a hit-scan or a mixed-faction AoE — its own dispatch branch, before the
+        // generic self-scope status-effect block below (the damageBuff half of its
+        // effect is gated on a drain target actually being found).
+        if (player.class === PlayerClass.SOULDRINKER && abilityIndex === 2) {
+          this.handleDarkPact(clientId, player, dirX, dirY, nowAbility);
+          continue;
+        }
 
         // Self-scope status effect (e.g. Iron Skin) applies independently of
         // the damage hit-scan below — must run before the damage=0 guard,

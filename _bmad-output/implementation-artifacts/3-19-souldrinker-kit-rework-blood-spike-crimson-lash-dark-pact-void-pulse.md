@@ -4,7 +4,7 @@ baseline_commit: f6083d8
 
 # Story 3.19: Souldrinker Kit Rework (Blood Spike, Crimson Lash, Dark Pact, Void Pulse)
 
-Status: ready-for-dev
+Status: review
 
 ## CLAUDE.md Required Task Header
 
@@ -183,9 +183,9 @@ so that Souldrinker plays as a coherent risk/reward blood-magic class instead of
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1** (AC: #1) — `class-definitions.ts`: `name: 'Blood Draw'` → `name: 'Blood Spike'` (Souldrinker slot 0). No other field changes.
+- [x] **Task 1** (AC: #1) — `class-definitions.ts`: `name: 'Blood Draw'` → `name: 'Blood Spike'` (Souldrinker slot 0). No other field changes.
 
-- [ ] **Task 2** (AC: #1, #4) — `balance.ts`: add `ABILITY_DELIVERY:
+- [x] **Task 2** (AC: #1, #4) — `balance.ts`: add `ABILITY_DELIVERY:
   Record<PlayerClass, readonly ['hitscan'|'projectile', ...4]>` — all
   `'hitscan'` except Souldrinker slots 0 (Blood Spike) and 3 (Void Pulse) =
   `'projectile'`. `GameRoom.ts`: in the ability-dispatch block, branch on
@@ -195,7 +195,7 @@ so that Souldrinker plays as a coherent risk/reward blood-magic class instead of
   this fire entirely (the projectile's own hit resolution, built in 3.13,
   handles damage later via the contact-listener path).
 
-- [ ] **Task 3** (AC: #1) — `balance.ts`: `ABILITY_SELF_COST_HP[souldrinker][0]`
+- [x] **Task 3** (AC: #1) — `balance.ts`: `ABILITY_SELF_COST_HP[souldrinker][0]`
   = tunable nonzero value; `ABILITY_LIFESTEAL_PCT[souldrinker][0] = 0.5`.
   `GameRoom.ts`: self-cost already applies generically via `dispatchAbility`
   (Story 3.15's Task 1b) — confirm it fires for Blood Spike specifically (it
@@ -209,17 +209,17 @@ so that Souldrinker plays as a coherent risk/reward blood-magic class instead of
   lost with no compensating heal" is automatically true since lifesteal only
   triggers in the hit path, never the expiry path).
 
-- [ ] **Task 4** (AC: #2) — `balance.ts`: `ABILITY_HP_SCALED_DAMAGE[souldrinker][1]`
+- [x] **Task 4** (AC: #2) — `balance.ts`: `ABILITY_HP_SCALED_DAMAGE[souldrinker][1]`
   = tunable nonzero coefficient (Crimson Lash). No delivery/input/dispatch
   wiring change needed beyond this table entry — Story 3.15's Task 1b
   already made `dispatchAbility` apply this generically.
 
-- [ ] **Task 5a** (AC: #3) — `balance.ts`: `ABILITY_STATUS_EFFECT[souldrinker][2]`
+- [x] **Task 5a** (AC: #3) — `balance.ts`: `ABILITY_STATUS_EFFECT[souldrinker][2]`
   (Dark Pact) = `{ effectType: 'damageBuff', magnitude: 0.25, durationMs:
   <tunable>, scope: 'self' }` — reuses Story 3.16's existing `'self'`-scope
   handling verbatim, no new `GameRoom.ts` branch needed for the buff half.
 
-- [ ] **Task 5b** (AC: #3) — `GameRoom.ts`: Dark Pact needs its own small
+- [x] **Task 5b** (AC: #3) — `GameRoom.ts`: Dark Pact needs its own small
   dispatch branch (it's single-target `RELEASE` aimed at a living ally, not
   the existing enemy hit-scan loop, and not a generic AoE — it doesn't fit
   the `'enemies-in-zone'`/`'allies-in-zone'` status-effect scopes from 3.16/
@@ -243,7 +243,7 @@ so that Souldrinker plays as a coherent risk/reward blood-magic class instead of
   by gating Task 5a's status-effect application on target-found, not
   applying it unconditionally on every Dark Pact cast.
 
-- [ ] **Task 6a** (AC: #4) — `balance.ts`: Void Pulse's `chainedZone` config
+- [x] **Task 6a** (AC: #4) — `balance.ts`: Void Pulse's `chainedZone` config
   (Story 3.13's Task 3d declarative table) = `{ effectType: 'pull', radius:
   <tunable>, tickIntervalMs: <tunable>, durationMs: <tunable> }`, keyed to
   Souldrinker slot 3. Void Pulse's projectile impact damage uses the normal
@@ -252,7 +252,7 @@ so that Souldrinker plays as a coherent risk/reward blood-magic class instead of
   needed, just confirm the chain fires after damage per 3.13's AC4 ordering
   ("impact damage is applied first, then a ZoneState is spawned").
 
-- [ ] **Task 6b** (AC: #4) — `GameRoom.ts`: extend the zone-tick handler's
+- [x] **Task 6b** (AC: #4) — `GameRoom.ts`: extend the zone-tick handler's
   `effectType` branch (built in Story 3.13's Task 3c, currently only
   implements `'damage'`) with a `'pull'` case: for every player/enemy
   overlapping the zone's tracked contact set, call `applyDisplacement`
@@ -263,9 +263,9 @@ so that Souldrinker plays as a coherent risk/reward blood-magic class instead of
   2 helpers — reuse those helpers if 3.14 left them in place, don't
   duplicate the logic).
 
-- [ ] Add Blood Spike/Crimson Lash/Dark Pact/Void Pulse test cases per AC5.
-- [ ] Extend `tests/unit/zones.test.ts` with a `'pull'` effectType case.
-- [ ] `npm run typecheck` + `npx vitest run` (FULL suite — this story
+- [x] Add Blood Spike/Crimson Lash/Dark Pact/Void Pulse test cases per AC5.
+- [x] Extend `tests/unit/zones.test.ts` with a `'pull'` effectType case.
+- [x] `npm run typecheck` + `npx vitest run` (FULL suite — this story
   touches the most shared code of any story in the batch) — 0 errors, no
   regressions.
 
@@ -302,8 +302,124 @@ every other story in this batch (see 3.12/3.15/3.16 for full text).
 
 ### Agent Model Used
 
+Claude Sonnet 5 (claude-sonnet-5)
+
 ### Debug Log References
+
+None — no failures encountered during implementation. Two pre-existing tests
+(from Stories 3.11/3.16) asserted "every class/slot table entry is 0" as a
+blanket condition and needed updating once Souldrinker's slots became
+nonzero — expected maintenance, not a bug, matching those tests' own
+"(pre-3.19)" naming.
 
 ### Completion Notes List
 
+- Task 1: Renamed `'Blood Draw'` → `'Blood Spike'` in `CLASS_DEFINITIONS`
+  (Souldrinker slot 0). Verified no other file references "Blood Draw"
+  (grepped the full repo) — mobile renders `ability.name` directly, so no
+  mobile-controller change was needed, confirming the Owner agent header's
+  expectation.
+- Task 2: Added `ABILITY_DELIVERY` table to `balance.ts` (all `'hitscan'`
+  except Souldrinker slots 0/3 = `'projectile'`). Wired the delivery-type
+  branch in `GameRoom.ts`'s ability-dispatch block, placed immediately after
+  the `abilityDef` null-check — before the self-scope status-effect block,
+  the Spirit Nova branch, and the hit-scan loop — so projectile abilities
+  skip all of that entirely. **No `'projectile:spawned'` wire type was
+  added** (net-protocol is a blocked path): a newly spawned projectile is
+  synced via a full `SNAPSHOT` broadcast instead, mirroring the exact
+  precedent the boss `'add:spawned'` case already established for "new
+  entity needs client sync, no dedicated delta type exists."
+- Task 3: `ABILITY_SELF_COST_HP.souldrinker[0] = 10`,
+  `ABILITY_LIFESTEAL_PCT.souldrinker[0] = 0.5`. **Corrected a wrong
+  assumption in the story's own Task 3 text**: it claimed self-cost "already
+  applies generically via `dispatchAbility`... no extra wiring needed
+  beyond the table entry" — checked, and this was false. `dispatchAbility`
+  (Story 3.15) computes `selfCostHpApplied` but no `GameRoom.ts` caller ever
+  read or applied it (confirmed via grep — zero references). Added the
+  actual application: a generic block right after the cooldown-update send,
+  applying `result.value.selfCostHpApplied` to `player.hp` and broadcasting
+  `player:hp-updated` for any ability with a nonzero self-cost, regardless
+  of dungeon/training-dummy phase (a caster-resource cost, not a combat hit
+  effect, so it isn't gated behind `if (inDungeon)` the way hit-scan is).
+  Wired lifesteal in the projectile-hit-resolution block via `healPlayer` +
+  `calculateLifesteal` (both from Story 3.15). Added a caster liveness guard
+  (`!isDown && !isSpirit`) before the lifesteal heal — resolves
+  deferred-work.md's D-3.15-A remaining "caster-only case," which that
+  entry explicitly left open for whichever story wired Blood Spike.
+- Task 4: `ABILITY_HP_SCALED_DAMAGE.souldrinker[1] = 1.0`. No `GameRoom.ts`
+  change — `dispatchAbility` already applies this generically (Story 3.15).
+- Task 5a/5b: Added `ABILITY_STATUS_EFFECT.souldrinker[2]` (damageBuff,
+  0.25, 4000ms, self-scope) and `DARK_PACT_DRAIN_PCT = 0.10`. Added a
+  dedicated `handleDarkPact` private method and a dispatch branch for it,
+  placed BEFORE the generic self-scope status-effect block — this is
+  required, not stylistic: the generic self-scope block applies
+  unconditionally on every fire, but Dark Pact's buff must be gated on a
+  drain target actually being found, so Dark Pact can't flow through the
+  generic path at all. Also bumped `ABILITY_HIT_RANGE_PX.souldrinker[2]`
+  from `0` to `180` — the pre-existing value would have centered Dark
+  Pact's target search on the caster's own position regardless of aim
+  direction (the codebase's own established "hitRange=0 = non-directional"
+  convention), which contradicts the ability's forward-aimed cone framing;
+  this mirrors Soul Mend's (3.18) nonzero forward-aim range for the same
+  "aim at a filtered player list" query shape.
+- Task 6a/6b: Set `ABILITY_CHAINED_ZONE.souldrinker[3]` to a `'pull'`
+  config and added `VOID_PULSE_PULL_STRENGTH_PX`. Implemented the zone-tick
+  handler's `'pull'` case (previously a stub comment only) — pulls both
+  enemies and non-incapacitated players toward the zone center via Story
+  3.14's `applyDisplacement` + the existing `applyDisplacementToEnemy`/
+  `applyDisplacementToPlayer` helpers. Added an `isDown`/`isSpirit`/
+  `isFrozen` exclusion for players — this resolves deferred-work.md's
+  D-3.14-A, which was explicitly left open pending "if/when 3.19's Void
+  Pulse ever displaces players." `D-3.14-B` (no vector-summing for
+  concurrent pull sources) remains open — noted, not addressed, since no
+  concrete case needs it yet.
+- Tests: added a "Souldrinker kit rework (Story 3.19)" describe block to
+  `tests/unit/abilities.test.ts` (7 new tests: Blood Spike delivery/self-
+  cost/lifesteal, Blood Spike's 1-HP floor, Crimson Lash's inverse-HP
+  scaling, Dark Pact's drain-transfer + buff composition, Void Pulse's
+  impact+chain config, and a "no other class touched" regression check).
+  Extended `tests/unit/zones.test.ts` with a `'pull' effectType` describe
+  block (2 tests) — `shouldZoneTick`/`isZoneExpired` are effectType-
+  agnostic, so these prove a `'pull'` zone times identically to a `'damage'`
+  zone; the actual `GameRoom.ts` pull-displacement wiring has no direct
+  integration-test coverage, the same known gap as every other kit-rework
+  story in this batch (deferred-work.md D-3.16-A).
+- Updated two pre-existing tests that asserted blanket "every class/slot
+  table entry is 0" conditions (from Stories 3.11/3.16) to exclude
+  Souldrinker, since 3.19 is the story that was always going to break that
+  assumption for Souldrinker specifically.
+- `npm run typecheck`: 0 errors across all 10 project configs. `npx vitest
+  run`: 459 passed, 12 skipped (pre-existing Docker/Redis-dependent e2e
+  skips), 0 failed at the individual-test level. 3 e2e test files errored
+  on `EADDRINUSE` (ports already bound) — confirmed unrelated to this
+  story's changes: the failures originate from `.claude/worktrees/agent-*`
+  paths, i.e. other concurrent agent sessions' e2e suites competing for the
+  same fixed ports on this machine, not from any Souldrinker/projectile/
+  zone logic.
+- Confidence: 90% — every mechanism reuses an already-built primitive from
+  3.12-3.18 exactly as the Dev Notes describe, and the two corrections I
+  made against the story's own text (self-cost wiring gap, Dark Pact's
+  hitRange=0 issue) were verified by reading the actual current code rather
+  than assumed. The 10% is the untested combinatorial surface (e.g., Void
+  Pulse's zone pulling a player who's simultaneously mid-Stone-Wall-pull) —
+  not required by any AC, flagged via D-3.14-B instead of speculatively
+  handled.
+
 ### File List
+
+- `packages/shared-types/src/class-definitions.ts` (modified — Task 1 rename)
+- `packages/game-rules/src/balance.ts` (modified)
+- `packages/game-rules/src/index.ts` (modified)
+- `apps/simulation-server/src/rooms/GameRoom.ts` (modified)
+- `tests/unit/abilities.test.ts` (modified)
+- `tests/unit/zones.test.ts` (modified)
+- `_bmad-output/implementation-artifacts/deferred-work.md` (modified — D-3.14-A and D-3.15-A resolution notes)
+
+### Change Log
+
+- 2026-07-14: Implemented Story 3.19 — Souldrinker's full kit rework (Blood
+  Spike projectile+self-cost+lifesteal, Crimson Lash inverse-HP damage,
+  Dark Pact ally-drain+self-buff, Void Pulse projectile+chained pull zone).
+  Wired the first projectile-delivery ability path and the first zone
+  `'pull'` effectType in the codebase. All tasks complete, all ACs
+  satisfied, 0 regressions.

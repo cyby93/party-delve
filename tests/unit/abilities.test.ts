@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { dispatchAbility, applyDamage, applyStatusEffect, applyDisplacement, applyPlayerDamage, healPlayer, resolveMixedFactionTargets, ABILITY_STATUS_EFFECT, ABILITY_DISPLACEMENT_STRENGTH, ABILITY_DAMAGE, ABILITY_HEAL_AMOUNT } from 'game-rules';
+import { dispatchAbility, applyDamage, applyStatusEffect, applyDisplacement, applyPlayerDamage, healPlayer, calculateLifesteal, resolveProjectileHit, resolveMixedFactionTargets, ABILITY_STATUS_EFFECT, ABILITY_DISPLACEMENT_STRENGTH, ABILITY_DAMAGE, ABILITY_HEAL_AMOUNT, ABILITY_DELIVERY, ABILITY_SELF_COST_HP, ABILITY_HP_SCALED_DAMAGE, ABILITY_LIFESTEAL_PCT, ABILITY_CHAINED_ZONE, DARK_PACT_DRAIN_PCT, VOID_PULSE_PULL_STRENGTH_PX } from 'game-rules';
 import { PlayerClass, CLASS_DEFINITIONS, EnemyType, DifficultyTier, EnemyFSMState, SessionColor } from 'shared-types';
-import type { EnemyState, PlayerState } from 'shared-types';
+import type { EnemyState, PlayerState, ProjectileState } from 'shared-types';
 
 const EXPECTED_INPUT_TYPES: Record<PlayerClass, [string, string, string, string]> = {
   [PlayerClass.STONEHIDE]:    ['RELEASE', 'TAP', 'TAP', 'AUTO'],
@@ -129,8 +129,8 @@ describe('dispatchAbility', () => {
     if (r.ok) expect(r.value.cooldownMs).toBe(2000);
   });
 
-  it('self-cost and HP-scaled damage are inert while every class/slot table entry is 0 (pre-3.19)', () => {
-    for (const cls of Object.values(PlayerClass)) {
+  it('self-cost and HP-scaled damage remain inert for every class/slot Story 3.19 didn\'t touch', () => {
+    for (const cls of [PlayerClass.STONEHIDE, PlayerClass.SPIRITCALLER, PlayerClass.STORMCALLER]) {
       for (let i = 0; i < 4; i++) {
         const full = dispatchAbility({ ...baseCtx, playerClass: cls, abilityIndex: i, casterHp: 100, casterMaxHp: 100 });
         const low = dispatchAbility({ ...baseCtx, playerClass: cls, abilityIndex: i, casterHp: 1, casterMaxHp: 100 });
@@ -246,13 +246,11 @@ describe('Stonehide kit rework (Story 3.16)', () => {
     expect(ABILITY_DAMAGE.stonehide[3]).toBeGreaterThan(0);
   });
 
-  it('no other class has a displacement config yet (Stonehide-only in this story); status-effect config is Stonehide-only except Spiritcaller\'s Warding Cry (Story 3.17)', () => {
+  it('no other class has a displacement config yet (Stonehide-only in this story); status-effect config is Stonehide-only except Spiritcaller\'s Warding Cry (Story 3.17) and Souldrinker\'s Dark Pact (Story 3.19)', () => {
     for (const cls of [PlayerClass.SPIRITCALLER, PlayerClass.SOULDRINKER, PlayerClass.STORMCALLER]) {
       expect(ABILITY_DISPLACEMENT_STRENGTH[cls]).toEqual([0, 0, 0, 0]);
     }
-    for (const cls of [PlayerClass.SOULDRINKER, PlayerClass.STORMCALLER]) {
-      expect(ABILITY_STATUS_EFFECT[cls]).toEqual([null, null, null, null]);
-    }
+    expect(ABILITY_STATUS_EFFECT[PlayerClass.STORMCALLER]).toEqual([null, null, null, null]);
   });
 });
 
@@ -333,6 +331,138 @@ describe('Spiritcaller kit rework (Story 3.17)', () => {
       for (const config of ABILITY_STATUS_EFFECT[cls]) {
         expect(config?.scope).not.toBe('allies-in-zone');
       }
+    }
+  });
+});
+
+describe('Souldrinker kit rework (Story 3.19)', () => {
+  function mockEnemy(overrides?: Partial<EnemyState>): EnemyState {
+    return {
+      id: 'e1', type: EnemyType.GRUNT, x: 100, y: 0, hp: 100, maxHp: 100,
+      difficultyTier: DifficultyTier.EASY, isAlive: true, fsmState: EnemyFSMState.IDLE,
+      attackCooldownTicks: 0, statusEffects: [],
+      ...overrides,
+    };
+  }
+
+  function mockPlayer(overrides?: Partial<PlayerState>): PlayerState {
+    return {
+      id: 'p1', displayName: 'Tester', class: PlayerClass.SOULDRINKER,
+      x: 0, y: 0, hp: 100, maxHp: 100,
+      isFrozen: false, isDown: false, isSpirit: false,
+      sessionColor: SessionColor.RED, downCount: 0, nearPoiId: null,
+      essenceTotal: 0, reviveTimerExpiresAt: 0, statusEffects: [],
+      channelingAbility: null,
+      ...overrides,
+    };
+  }
+
+  it('Blood Spike (slot 0, renamed from Blood Draw): projectile delivery, self-cost on cast, 50% lifesteal on hit', () => {
+    expect(CLASS_DEFINITIONS[PlayerClass.SOULDRINKER].abilities[0]!.name).toBe('Blood Spike');
+    expect(ABILITY_DELIVERY.souldrinker[0]).toBe('projectile');
+    expect(ABILITY_SELF_COST_HP.souldrinker[0]).toBeGreaterThan(0);
+    expect(ABILITY_LIFESTEAL_PCT.souldrinker[0]).toBe(0.5);
+
+    const result = dispatchAbility({
+      playerClass: PlayerClass.SOULDRINKER, abilityIndex: 0,
+      directionX: 1, directionY: 0, cooldownExpiresAt: 0, nowMs: 0,
+      casterHp: 50, casterMaxHp: 100,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.selfCostHpApplied).toBe(ABILITY_SELF_COST_HP.souldrinker[0]);
+
+    // Lifesteal composes healPlayer + calculateLifesteal — applied at projectile-hit
+    // time in GameRoom.ts, not inside dispatchAbility itself (matches Story 3.15's
+    // "no new drain primitive" design).
+    const damageDealt = ABILITY_DAMAGE.souldrinker[0];
+    const healed = healPlayer(mockPlayer({ hp: 50 }), calculateLifesteal(damageDealt, ABILITY_LIFESTEAL_PCT.souldrinker[0]));
+    expect(healed.hp).toBe(50 + damageDealt * 0.5);
+  });
+
+  it('Blood Spike (slot 0): 1-HP floor caps the self-cost rather than blocking the cast', () => {
+    const result = dispatchAbility({
+      playerClass: PlayerClass.SOULDRINKER, abilityIndex: 0,
+      directionX: 1, directionY: 0, cooldownExpiresAt: 0, nowMs: 0,
+      casterHp: 1, casterMaxHp: 100,
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value.selfCostHpApplied).toBe(0);
+  });
+
+  it('Crimson Lash (slot 1): damage scales inversely with caster HP, unchanged hitscan delivery', () => {
+    expect(ABILITY_DELIVERY.souldrinker[1]).toBe('hitscan');
+    expect(ABILITY_HP_SCALED_DAMAGE.souldrinker[1]).toBeGreaterThan(0);
+
+    const baseCtx = { playerClass: PlayerClass.SOULDRINKER, abilityIndex: 1, directionX: 1, directionY: 0, cooldownExpiresAt: 0, nowMs: 0 };
+    const fullHp = dispatchAbility({ ...baseCtx, casterHp: 100, casterMaxHp: 100 });
+    const lowHp = dispatchAbility({ ...baseCtx, casterHp: 20, casterMaxHp: 100 });
+    expect(fullHp.ok).toBe(true);
+    expect(lowHp.ok).toBe(true);
+    if (fullHp.ok && lowHp.ok) {
+      expect(lowHp.value.damage).toBeGreaterThan(fullHp.value.damage);
+      expect(lowHp.value.selfCostHpApplied).toBe(0); // only Blood Spike has a self-cost, not Crimson Lash
+    }
+  });
+
+  it('Dark Pact (slot 2): drains a percentage of the target ally\'s current HP to the caster and grants a self damageBuff', () => {
+    const config = ABILITY_STATUS_EFFECT.souldrinker[2];
+    expect(config).toEqual({ effectType: 'damageBuff', magnitude: 0.25, durationMs: 4000, scope: 'self' });
+
+    const target = mockPlayer({ id: 'ally', hp: 80 });
+    const caster = mockPlayer({ id: 'caster', hp: 40 });
+    const drainAmount = target.hp * DARK_PACT_DRAIN_PCT;
+    expect(drainAmount).toBe(8);
+
+    // Composes two EXISTING functions (Story 3.19's Non-goals — no new "drain" primitive).
+    // applyPlayerDamage has no down-safety floor (unlike calculateSelfCostHp's explicit
+    // 1-HP floor) — draining pushes the target's real HP down with no compensating clamp.
+    const dmgResult = applyPlayerDamage(target, drainAmount, 0);
+    expect(dmgResult.ok).toBe(true);
+    if (dmgResult.ok) expect(dmgResult.value.player.hp).toBe(72);
+
+    const healedCaster = healPlayer(caster, drainAmount);
+    expect(healedCaster.hp).toBe(48);
+
+    const applied = applyStatusEffect(
+      healedCaster,
+      { type: config!.effectType, magnitude: config!.magnitude, expiresAtMs: 0 + config!.durationMs },
+      0,
+    );
+    expect(applied.ok).toBe(true);
+    if (applied.ok) {
+      expect(applied.value.target.statusEffects).toEqual([{ type: 'damageBuff', magnitude: 0.25, expiresAtMs: 4000 }]);
+    }
+  });
+
+  it('Void Pulse (slot 3): projectile delivery, impact damage, then a pull-effect chained zone', () => {
+    expect(ABILITY_DELIVERY.souldrinker[3]).toBe('projectile');
+    const chainConfig = ABILITY_CHAINED_ZONE.souldrinker[3];
+    expect(chainConfig?.effectType).toBe('pull');
+    expect(chainConfig?.radius).toBeGreaterThan(0);
+    expect(chainConfig?.tickIntervalMs).toBeGreaterThan(0);
+    expect(chainConfig?.durationMs).toBeGreaterThan(0);
+
+    const damage = ABILITY_DAMAGE.souldrinker[3];
+    expect(damage).toBeGreaterThan(0);
+
+    // Impact damage first (existing projectile-hit path, Story 3.13's AC4 ordering) —
+    // the chain spawn itself is GameRoom.ts's job, not this pure function's.
+    const projectile: ProjectileState = { id: 'proj-1', ownerId: 'caster', x: 100, y: 0, class: PlayerClass.SOULDRINKER, abilityIndex: 3 };
+    const hitResult = resolveProjectileHit(projectile, mockEnemy(), damage, 0);
+    expect(hitResult.ok).toBe(true);
+    if (hitResult.ok) expect(hitResult.value.enemy.hp).toBe(100 - damage);
+
+    // Chained pull zone reuses the same displacement primitive as Stone Wall's pull (3.16).
+    const { dx, dy } = applyDisplacement(200, 0, 100, 0, VOID_PULSE_PULL_STRENGTH_PX);
+    expect(dx).toBeCloseTo(-VOID_PULSE_PULL_STRENGTH_PX);
+    expect(dy).toBeCloseTo(0);
+  });
+
+  it('no other class has projectile delivery or a chained-zone config (Souldrinker-only in this story)', () => {
+    for (const cls of [PlayerClass.STONEHIDE, PlayerClass.SPIRITCALLER, PlayerClass.STORMCALLER]) {
+      expect(ABILITY_DELIVERY[cls]).toEqual(['hitscan', 'hitscan', 'hitscan', 'hitscan']);
+      expect(ABILITY_CHAINED_ZONE[cls]).toEqual([null, null, null, null]);
     }
   });
 });

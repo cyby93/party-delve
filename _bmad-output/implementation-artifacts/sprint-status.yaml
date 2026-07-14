@@ -43,6 +43,44 @@
 
 generated: 2026-06-22
 last_updated: 2026-07-14
+# 2026-07-14: implemented 3.19 (pending code review) — Souldrinker's full kit
+# (Blood Spike projectile delivery + self-cost + 50% lifesteal, Crimson Lash
+# inverse-HP damage scaling, Dark Pact single-target ally drain + self
+# damageBuff, Void Pulse projectile impact + chained pull zone). First story
+# to wire a ProjectileState-spawning ability (added ABILITY_DELIVERY
+# declarative table) and the first to implement the zone-tick 'pull'
+# effectType (left as a stub since 3.13). No new net-protocol wire type
+# added for projectile spawn — reuses the existing 'add:spawned'-style full
+# SNAPSHOT broadcast precedent instead. Corrected two wrong assumptions
+# found by re-reading the current code rather than trusting the story text:
+# (1) self-cost HP was never actually applied by any GameRoom.ts caller
+# despite dispatchAbility computing it since 3.15 — added the missing
+# generic wiring; (2) Dark Pact's ABILITY_HIT_RANGE_PX was 0, which would
+# have made its ally-target search direction-independent — bumped to a
+# nonzero forward-aim range matching Soul Mend's (3.18) convention. Resolved
+# two previously-deferred findings at their first real call site:
+# D-3.14-A (player-side pull liveness guard) and D-3.15-A's remaining
+# caster-only case (Blood Spike lifesteal skips a downed/spirit caster).
+# D-3.14-B (no vector-summing for concurrent pull sources) remains open,
+# noted but not needed by any current caller. Updated 2 pre-existing tests
+# (3.11/3.16) that asserted blanket all-zero balance tables, now stale for
+# Souldrinker's slots. Full suite: typecheck 0 errors; vitest 459 passed, 12
+# pre-existing skips, 0 failed at the test level (3 e2e test files errored
+# on EADDRINUSE from concurrent other-agent worktree sessions competing for
+# fixed ports on this machine — confirmed unrelated to this story).
+# 2026-07-14: correct-course ran against TODO.md (sprint-change-proposal-2026-07-14.md,
+# approved). Reopened epic-2, epic-4, epic-6 — none were new scope: 2.8 supersedes
+# Story 2.4's training-dummy-only ability gate; 4.12/4.13 are net-new asks (HP restore,
+# vote button state) with no prior AC; 6.7/6.8 are regressions against Story 6.1/6.3's
+# already-approved AC (boss:damaged protocol/host code exists but was never wired —
+# every hit-resolution loop in GameRoom.ts only checked gameState.enemies, never
+# gameState.boss). Appended 3.21a/b/c to epic-3 (already in-progress, no reopen) — the
+# body/spirit entity split, split by ownership (Protocol Architect/Simulation
+# Engineer/Host Experience Engineer) per CLAUDE.md, sequenced a->b->c; 3.21b must
+# regression-test Soul Mend (3.18) once body and spirit positions diverge. Added
+# dev-2/dev-3/dev-4 to the no-epic bucket (rotation lock, fullscreen toggle, debug
+# god-mode), same category as dev-1. Excluded the placeholder-VFX TODO.md item —
+# sentence is incomplete/unscoped, needs the user to clarify before it can be triaged.
 # 2026-07-14: completed 3.18 (done) — hold-to-channel Soul Mend, replaces
 # 3.11's temporary AIM_CAST bridge. New PlayerState.channelingAbility field +
 # cast:started/cast:cancelled/cast:completed deltas (contract-change hook
@@ -181,7 +219,7 @@ development_status:
   # Players explore the tribe village hub, interact with POIs (class selection,
   # training dummy), browse and select a class, and confirm their choice.
   # FRs: FR5, FR11 (4 alpha classes defined), FR12, FR13
-  epic-2: done
+  epic-2: in-progress
   2-1-hub-world-poi-layout-and-interact-button: done
   2-2-class-selection-flow-card-browse-and-selection: done
   2-3-class-confirmation-and-hub-controller-transition: done
@@ -189,6 +227,7 @@ development_status:
   2-5-server-persistent-joystick-vector: done
   2-6-epic-2-deferred-hardening: done
   2-7-epic-2-post-26-deferred-hardening: done
+  2-8-hub-ability-use-outside-training-dummy-poi: backlog
   epic-2-retrospective: optional
 
   # ─── E3: Core Combat — 4 Alpha Classes ──────────────────────────────────────
@@ -219,18 +258,26 @@ development_status:
   3-16-stonehide-kit-rework: done
   3-17-spiritcaller-kit-rework-ancestors-voice-spirit-nova-warding-cry: done
   3-18-soul-mend-ranged-spirit-targeting-revive: done
-  3-19-souldrinker-kit-rework-blood-spike-crimson-lash-dark-pact-void-pulse: ready-for-dev
+  3-19-souldrinker-kit-rework-blood-spike-crimson-lash-dark-pact-void-pulse: done
   3-20-stormcaller-storm-eye-rework: ready-for-dev
+  # Epic 3 Correction: Downed Player Body/Spirit Entity Split (correct-course,
+  # 2026-07-14, sprint-change-proposal-2026-07-14.md) — sequenced a->b->c
+  3-21a-body-spirit-position-schema-and-protocol-contract: backlog
+  3-21b-body-spirit-movement-and-revive-targeting-logic: backlog
+  3-21c-host-rendering-distinct-body-and-spirit-entities: backlog
   epic-3-retrospective: optional
 
   # ─── Dev infra fixes (no epic) ──────────────────────────────────────────────
   dev-1-mobile-controller-network-binding: done
+  dev-2-controller-rotation-lock-enforcement: backlog
+  dev-3-controller-fullscreen-toggle: backlog
+  dev-4-debug-invincible-high-damage-mode: backlog
 
   # ─── E4: Procedural Dungeon & Full Run Structure ────────────────────────────
   # Vote to start a run, 3 procedural levels, deterministic seed system,
   # Survive the Waves objective, post-run summary.
   # FRs: FR6, FR7, FR8, FR9 (Survive Waves), FR10, FR19, FR29, FR30, FR34
-  epic-4: done
+  epic-4: in-progress
   4-1-deterministic-seed-system-and-floor-layout-generator: done
   4-2-dungeon-entrance-vote-and-run-initialisation: done
   4-3-3-level-run-structure-and-level-transitions: done
@@ -242,6 +289,8 @@ development_status:
   4-9-epic-4-deferred-hardening: done
   4-10-epic-4-post-49-deferred-hardening: done
   4-11-epic-4-post-410-deferred-hardening: done
+  4-12-full-hp-restore-on-level-transition: backlog
+  4-13-vote-accept-button-submitted-state: backlog
   epic-4-retrospective: optional
 
   # ─── E5: Spirit Bond System ─────────────────────────────────────────────────
@@ -263,13 +312,15 @@ development_status:
   # Behavior-tiered boss (Easy/Normal/Hard), synthesizes E3 mechanics, purification
   # pulse, reward reveal, biome achievements.
   # FRs: FR21 (boss tiers), FR24 (reward reveal), FR35 (Grassland boss + achievements), FR36
-  epic-6: done
+  epic-6: in-progress
   6-1-grassland-boss-shared-types-and-protocol-contracts: done
   6-2-grassland-boss-fsm-phase-system-and-difficulty-tiered-behaviors: done
   6-3-boss-arena-handcrafted-level-physics-geometry-and-host-rendering: done
   6-4-boss-defeat-sequence-purification-pulse-and-reward-reveal: done
   6-5-grassland-biome-achievements: done
   6-6-epic-6-deferred-hardening: done
+  6-7-boss-combat-resolution-wiring: backlog
+  6-8-floating-damage-numbers-regular-enemies: backlog
   epic-6-retrospective: optional
 
   # ─── E7: Progression & Persistent Meta ──────────────────────────────────────

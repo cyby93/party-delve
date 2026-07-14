@@ -46,7 +46,7 @@ export const CLASS_DEFINITIONS: Record<PlayerClass, ClassDef> = {
     role: 'Drain DPS · Risk-Reward',
     flavor: 'The Bloodrite trade in sacrifice and return. Pain is currency.',
     abilities: [
-      { name: 'Blood Draw',   inputType: 'AUTO'    },
+      { name: 'Blood Spike',  inputType: 'AUTO'    },
       { name: 'Crimson Lash', inputType: 'RELEASE' },
       { name: 'Dark Pact',    inputType: 'RELEASE' },
       { name: 'Void Pulse',   inputType: 'RELEASE' },

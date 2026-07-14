@@ -30,12 +30,15 @@ export {
   ABILITY_STATUS_EFFECT,
   ABILITY_DISPLACEMENT_STRENGTH,
   ABILITY_HEAL_AMOUNT,
+  ABILITY_DELIVERY,
+  VOID_PULSE_PULL_STRENGTH_PX,
+  DARK_PACT_DRAIN_PCT,
   SPIRIT_NOVA_DURATION_MS,
   SPIRIT_NOVA_MAX_RADIUS_PX,
   SOUL_MEND_CHANNEL_DURATION_MS,
   SOUL_MEND_LIVENESS_MS,
 } from './balance.js';
-export type { ChainedZoneConfig, AbilityStatusEffectConfig, StatusEffectScope } from './balance.js';
+export type { ChainedZoneConfig, AbilityStatusEffectConfig, StatusEffectScope, AbilityDeliveryType } from './balance.js';
 export { applyPlayerDamage, getReviveWindowMs, healPlayer, calculateLifesteal } from './systems/player-health.js';
 export type { PlayerDamageResult, HealthError } from './systems/player-health.js';
 export { resolveMixedFactionTargets, resolveExpandingRadius } from './systems/targeting.js';

@@ -573,6 +573,25 @@ So that I can learn what my class feels like before entering a dungeon.
 
 ---
 
+### Story 2.8: Hub Ability Use Outside Training-Dummy POI
+
+As a player,
+I want to use my abilities anywhere in the hub, not only near the training dummy,
+So that the trainer POI can be repurposed for something else without blocking normal ability use.
+
+**Acceptance Criteria:**
+
+**Given** a player with a confirmed class is anywhere in the hub (not in a dungeon)
+**When** they activate a skill cell
+**Then** the ability fires exactly as it would in a dungeon — the `nearPoiId === 'training-dummy'` requirement is removed from the hub ability-processing guard
+**And** this supersedes Story 2.4's original scoping of ability use to the training-dummy POI specifically
+
+**Given** the training-dummy POI itself
+**When** this story ships
+**Then** the POI's zone, interact button, and targetable-dummy visuals are unchanged — only the ability-use gate is removed; repurposing the POI is out of scope for this story
+
+---
+
 ## Epic 3: Core Combat — 4 Alpha Classes
 
 Stonehide, Spiritcaller, Souldrinker, and Stormcaller are fully playable in a dungeon combat encounter with real enemies. Players use abilities, go down, get revived by teammates, and enter spirit form when the revive timer expires. The "Clear" objective type is operational.
@@ -1105,6 +1124,81 @@ So that my ultimate creates lasting area pressure instead of doing nothing.
 
 ---
 
+### Epic 3 Correction: Downed Player Body/Spirit Entity Split
+
+Scoped from the 2026-07-14 correct-course review of `TODO.md` — not new PRD/GDD FRs. Today `PlayerState` tracks a single `x`/`y`: frozen in place while `isDown`, then that same position starts moving once `isSpirit` becomes true (Story 3.6). This story splits that into a fixed body position (revive target) and an independently-moving spirit position, split across three ownership areas per CLAUDE.md's cross-context rule. Sequenced 3.21a → 3.21b → 3.21c; 3.21b must explicitly re-verify Story 3.18 (Soul Mend)'s ranged spirit-targeting still resolves correctly once the spirit position diverges from the body position.
+
+### Story 3.21a: Body/Spirit Position Schema & Protocol Contract
+
+As a protocol architect,
+I want `PlayerState` and its wire deltas to carry a fixed body position alongside the existing (now spirit-only) position,
+So that downstream simulation and rendering work has a stable contract to build on.
+
+**Acceptance Criteria:**
+
+**Given** `packages/shared-types/src/player.ts` `PlayerState`
+**When** the schema is extended
+**Then** it gains `bodyX: number` and `bodyY: number`, set once when `isDown` first becomes `true` and left unchanged until the player is revived
+**And** the existing `x`/`y` fields remain the single source of truth for the player's controllable position (body while down-and-not-yet-spirit, spirit once `isSpirit` is true)
+
+**Given** `packages/net-protocol` delta messages for `player:downed` and `player:revived`
+**When** the schema change lands
+**Then** `player:downed` includes `bodyX`/`bodyY` in its payload, and both messages have a serialize→deserialize round-trip contract test added to `tests/contract/net-protocol.test.ts`
+
+**Given** this is a contract-change per CLAUDE.md
+**When** the change is proposed
+**Then** it is reviewed by the Protocol Architect and `docs/adr/**` is updated to record the body/spirit split decision
+
+---
+
+### Story 3.21b: Body/Spirit Movement & Revive-Targeting Logic
+
+As a simulation engineer,
+I want the downed body to stay fixed while the spirit moves independently once spirit form begins,
+So that teammates revive the body's location, not a moving target, while the downed player can still act via their spirit.
+
+**Acceptance Criteria:**
+
+**Given** a player's health reaches zero
+**When** `player:downed` fires
+**Then** `bodyX`/`bodyY` are set to the player's current position and velocity is zeroed (unchanged from today's frozen-while-down behavior)
+
+**Given** the revive timer expires and `isSpirit` becomes `true`
+**When** the spirit-form player sends movement input
+**Then** `x`/`y` move independently of `bodyX`/`bodyY`, which remain fixed at the down location
+
+**Given** a teammate attempts to revive a downed player
+**When** the proximity check runs (`GameRoom.ts` revive resolution, currently comparing `teammate.x/y` to `player.x/y`)
+**Then** it compares against `bodyX`/`bodyY` instead, regardless of where the spirit has moved
+
+**Given** Story 3.18's Soul Mend ranged revive
+**When** a Spiritcaller channels Soul Mend at a downed ally
+**Then** it continues to target the spirit's current `x`/`y` (unchanged targeting behavior) — verified with a regression test added to `tests/unit/soul-mend.test.ts` confirming Soul Mend still resolves correctly once body and spirit positions diverge
+
+---
+
+### Story 3.21c: Host Rendering — Distinct Body & Spirit Entities
+
+As a player watching the host screen,
+I want to see a downed teammate's body where they fell and their spirit moving separately,
+So that the revive objective (reach the body) is visually clear even after the spirit has wandered off.
+
+**Acceptance Criteria:**
+
+**Given** a player is downed
+**When** the host canvas renders
+**Then** a body sprite renders at `bodyX`/`bodyY` (replacing today's single frozen figure) for the duration of the down state
+
+**Given** the player enters spirit form
+**When** the host canvas renders
+**Then** a separate luminous spirit figure (Story 3.6's existing visual) renders at `x`/`y`, independently of the body sprite, until the player is revived or the run ends
+
+**Given** the player is revived (proximity or Soul Mend)
+**When** `player:revived` is received
+**Then** the body sprite is removed and the player's normal alive-state rendering resumes at the body's location
+
+---
+
 ## Epic 4: Procedural Dungeon & Full Run Structure
 
 Players vote to start a run at the dungeon entrance. Three procedurally generated dungeon levels (Clear + Survive the Waves) run sequentially with escalating difficulty. A placeholder victory state ends the run. Post-run summary displays on host. Procedural seed system is deterministic.
@@ -1282,6 +1376,36 @@ So that we can detect regressions as the codebase grows and have data to validat
 **Given** `tests/e2e/reconnect.test.ts`
 **When** it runs
 **Then** it verifies: player drops → grace timer starts → player rejoins within 30s → slot restored → snapshot received
+
+---
+
+### Story 4.12: Full HP Restore on Level Transition
+
+As a player,
+I want my health restored to full when a new dungeon level loads,
+So that a hard-fought level doesn't carry a health penalty into the next one.
+
+**Acceptance Criteria:**
+
+**Given** `loadLevel()` runs at a level transition
+**When** it processes each player
+**Then** every player's `hp` is reset to `maxHp`, not only players who were `isDown`/`isSpirit` (which already reset to `REVIVE_HP`)
+**And** this applies uniformly regardless of how much HP a player had remaining at the end of the previous level
+
+---
+
+### Story 4.13: Vote-Accept Button Submitted State
+
+As a player,
+I want to see that my vote was registered when I tap Accept on a dungeon run proposal,
+So that I know my input was received while waiting for the rest of the party.
+
+**Acceptance Criteria:**
+
+**Given** the dungeon run proposal popup is showing on a player's phone
+**When** the player taps Accept
+**Then** the button immediately shows a disabled/pending visual state (e.g. dimmed + "Waiting..." label) — no double-submission is possible while pending
+**And** the pending state clears when `gameState.runProposal` resolves (accepted, declined, or expires) or the popup closes
 
 ---
 
@@ -1732,4 +1856,91 @@ So that the game rewards coordination, skill, and exploration of difficulty — 
 **And** `VigilHeld` correctly returns `true` only when a spirit-form player existed AND `run:complete` was reached
 **And** `FastBoss` returns `false` when boss defeat time exceeds `BOSS_FAST_CLEAR_MS`
 **And** no achievement appears twice in the returned array
+
+---
+
+### Story 6.7: Boss Combat Resolution Wiring
+
+As a player,
+I want my attacks to actually damage the Grassland boss,
+So that the boss fight is winnable instead of a permanent stalemate.
+
+**Acceptance Criteria:**
+
+**Given** any player attack resolves a hit (melee, ability, or nova AoE hit-zone check in `GameRoom.ts`)
+**When** the target is `GameState.boss` rather than an entry in `GameState.enemies`
+**Then** the same hit-resolution loops that currently check only `gameState.enemies` also check `gameState.boss`, applying damage via the existing `applyDamage()` (`packages/game-rules/src/systems/combat.ts`)
+**And** this applies to every hit-resolution path: melee hit-scan, ability hit, and nova AoE — not just one of them
+
+**Given** the boss takes damage
+**When** its HP changes
+**Then** a `boss:damaged` delta is broadcast (the message type and host-side `applyDelta` handling already exist and require no protocol change — only the emission was missing)
+
+**Given** `debug:kill-boss` already sets `boss.hp = 0` directly
+**When** this story ships
+**Then** normal combat damage and the debug command both correctly reduce `boss.hp`, with no double-counting or conflict between the two paths
+
+---
+
+### Story 6.8: Floating Damage Numbers for Regular Enemies
+
+As a player,
+I want to see damage numbers when I hit a regular enemy, not just the boss,
+So that combat feedback is consistent across all enemy types.
+
+**Acceptance Criteria:**
+
+**Given** the host canvas already renders a damage-flash/number on `boss:damaged` (`DungeonScreen.tsx`)
+**When** this story ships
+**Then** the same pattern is extended to `enemy:damaged` deltas — a floating damage number appears above the hit enemy's sprite
+**And** the existing `enemy:killed` fade-out behavior is unchanged
+
+---
+
+## Dev Infra Fixes (No Epic)
+
+Isolated platform/tooling items that don't extend or correct a specific epic's approved scope — same category as `dev-1-mobile-controller-network-binding`.
+
+### Story dev-2: Controller Rotation Lock Enforcement
+
+As a player on my phone,
+I want the game to require landscape orientation after I join a session,
+So that the controller layout has the space it needs and I'm not playing in a cramped portrait view.
+
+**Acceptance Criteria:**
+
+**Given** a player has joined a session
+**When** their phone is in portrait orientation
+**Then** the controller UI is blocked by a rotate-device prompt until the phone is turned to landscape
+**And** once landscape is detected, the normal controller UI resumes automatically
+
+---
+
+### Story dev-3: Controller Fullscreen Toggle
+
+As a player on my phone,
+I want the controller to go fullscreen automatically and have a toggle to turn it on or off,
+So that I have as much screen space as possible for the joystick and ability grid.
+
+**Acceptance Criteria:**
+
+**Given** a player joins a session
+**When** the controller UI loads
+**Then** it automatically requests fullscreen via the Fullscreen API
+**And** a toggle button in the header lets the player exit or re-enter fullscreen manually at any time
+
+---
+
+### Story dev-4: Debug Invincible/High-Damage Mode
+
+As a developer testing combat balance solo or with 1-2 players,
+I want a debug toggle that makes my character invincible and deal much more damage,
+So that I can test enemy and boss encounters without dying to a full-party-tuned difficulty curve.
+
+**Acceptance Criteria:**
+
+**Given** the existing `NODE_ENV`-gated debug message pattern (`debug:kill-boss`, `debug:kill-all`)
+**When** a new `debug:toggle-god-mode` message is sent for a player
+**Then** that player takes zero damage from all sources and deals a configured damage multiplier (from `balance.ts`) until toggled off
+**And** the toggle is gated behind the same `NODE_ENV !== 'production'` check as the existing debug messages
 

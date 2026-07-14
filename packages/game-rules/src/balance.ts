@@ -32,7 +32,7 @@ export const SPIRIT_ABILITY_NAMES: Record<PlayerClass, string> = {
 export const ABILITY_COOLDOWNS_MS: Record<PlayerClass, readonly [number, number, number, number]> = {
   stonehide:    [2000, 4000, 6000, 1000],  // Stone Wall, Tremor Stomp, Iron Skin, Avalanche(AUTO)
   spiritcaller: [1500, 5000, 4000, 6000],  // Ancestor's Voice(AUTO), Spirit Nova, Soul Mend, Warding Cry
-  souldrinker:  [1000, 3000, 5000, 4000],  // Blood Draw(AUTO), Crimson Lash, Dark Pact, Void Pulse
+  souldrinker:  [1000, 3000, 5000, 4000],  // Blood Spike(AUTO), Crimson Lash, Dark Pact, Void Pulse
   stormcaller:  [1000, 3000, 5000, 2000],  // Lightning Arc(AUTO), Tempest Hurl, Thunder Clap, Storm Eye(AUTO)
 };
 
@@ -40,7 +40,7 @@ export const ABILITY_COOLDOWNS_MS: Record<PlayerClass, readonly [number, number,
 export const ABILITY_DAMAGE: Record<PlayerClass, readonly [number, number, number, number]> = {
   stonehide:    [15, 35,  0, 50],  // Stone Wall(no dmg), Tremor AoE, Iron Skin(buff), Avalanche
   spiritcaller: [15, 40,  0,  0],  // Ancestor's Voice(mixed-faction), Spirit Nova(mixed-faction), Soul Mend, Warding Cry(buff)
-  souldrinker:  [12, 30,  0, 25],  // Blood Draw drain, Crimson Lash, Dark Pact(debuff), Void Pulse
+  souldrinker:  [12, 30,  0, 25],  // Blood Spike (lifesteal), Crimson Lash, Dark Pact(HP-drain, not this table), Void Pulse
   stormcaller:  [18, 40, 45,  0],  // Lightning Arc, Tempest Hurl, Thunder Clap AoE, Storm Eye(field)
 };
 
@@ -56,26 +56,26 @@ export const ABILITY_HEAL_AMOUNT: Record<PlayerClass, readonly [number, number, 
 };
 
 // ── Self-cost / HP-scaled damage / lifesteal ─────────────────────────────────
-// All zero until Story 3.19 (Blood Spike self-cost/lifesteal, Crimson Lash
-// HP-scaled damage) sets Souldrinker's slots.
+// Story 3.19: Blood Spike (slot 0) pays HP on cast and lifesteals on hit;
+// Crimson Lash (slot 1) deals more damage the lower the caster's HP.
 export const ABILITY_SELF_COST_HP: Record<PlayerClass, readonly [number, number, number, number]> = {
   stonehide:    [0, 0, 0, 0],
   spiritcaller: [0, 0, 0, 0],
-  souldrinker:  [0, 0, 0, 0],
+  souldrinker:  [10, 0, 0, 0],
   stormcaller:  [0, 0, 0, 0],
 };
 
 export const ABILITY_HP_SCALED_DAMAGE: Record<PlayerClass, readonly [number, number, number, number]> = {
   stonehide:    [0, 0, 0, 0],
   spiritcaller: [0, 0, 0, 0],
-  souldrinker:  [0, 0, 0, 0],
+  souldrinker:  [0, 1.0, 0, 0],
   stormcaller:  [0, 0, 0, 0],
 };
 
 export const ABILITY_LIFESTEAL_PCT: Record<PlayerClass, readonly [number, number, number, number]> = {
   stonehide:    [0, 0, 0, 0],
   spiritcaller: [0, 0, 0, 0],
-  souldrinker:  [0, 0, 0, 0],
+  souldrinker:  [0.5, 0, 0, 0],
   stormcaller:  [0, 0, 0, 0],
 };
 
@@ -101,7 +101,7 @@ export const STOMP_COOLDOWN_TICKS = 240;      // 8 seconds at 30hz
 export const ABILITY_HIT_RANGE_PX: Record<PlayerClass, readonly [number, number, number, number]> = {
   stonehide:    [  0, 160,   0, 200],
   spiritcaller: [180,   0, 200,   0],
-  souldrinker:  [150, 180,   0,   0],
+  souldrinker:  [150, 180, 180,   0], // Dark Pact (slot 2) now aims a forward cone for its ally-target search (Story 3.19)
   stormcaller:  [160, 200,   0, 160],
 };
 
@@ -110,6 +110,19 @@ export const ABILITY_HIT_RADIUS_PX: Record<PlayerClass, readonly [number, number
   spiritcaller: [ 50, 90,  60,  90],
   souldrinker:  [ 50, 65,  80,  80],
   stormcaller:  [ 60, 70, 110,  80],
+};
+
+// ── Ability delivery type ────────────────────────────────────────────────────
+// Story 3.19: the first abilities to resolve via a spawned ProjectileState
+// (Story 3.13) instead of the default same-tick hit-scan. Declarative so
+// GameRoom branches on this table instead of special-casing any one ability.
+export type AbilityDeliveryType = 'hitscan' | 'projectile';
+
+export const ABILITY_DELIVERY: Record<PlayerClass, readonly [AbilityDeliveryType, AbilityDeliveryType, AbilityDeliveryType, AbilityDeliveryType]> = {
+  stonehide:    ['hitscan', 'hitscan', 'hitscan', 'hitscan'],
+  spiritcaller: ['hitscan', 'hitscan', 'hitscan', 'hitscan'],
+  souldrinker:  ['projectile', 'hitscan', 'hitscan', 'projectile'], // Blood Spike, Void Pulse
+  stormcaller:  ['hitscan', 'hitscan', 'hitscan', 'hitscan'],
 };
 
 // ── Projectiles ───────────────────────────────────────────────────────────────
@@ -129,9 +142,18 @@ export interface ChainedZoneConfig {
 export const ABILITY_CHAINED_ZONE: Record<PlayerClass, readonly [ChainedZoneConfig | null, ChainedZoneConfig | null, ChainedZoneConfig | null, ChainedZoneConfig | null]> = {
   stonehide:    [null, null, null, null],
   spiritcaller: [null, null, null, null],
-  souldrinker:  [null, null, null, null],
+  souldrinker:  [null, null, null, { effectType: 'pull', radius: 150, tickIntervalMs: 500, durationMs: 2000 }], // Void Pulse
   stormcaller:  [null, null, null, null],
 };
+
+// Void Pulse's chained pull zone (Story 3.19) — plain named constant, not a
+// per-class table, same rationale as Spirit Nova/Soul Mend's constants below:
+// it's the only ability in the full spec that spawns a 'pull' zone.
+export const VOID_PULSE_PULL_STRENGTH_PX = 50;
+
+// Dark Pact's ally-HP drain percentage (Story 3.19) — named rather than a
+// bare literal at the call site, matching this file's tunable-constant convention.
+export const DARK_PACT_DRAIN_PCT = 0.10;
 
 // ── Declarative per-ability status-effect application ───────────────────────
 // Populated per-ability by each kit-rework story (3.16 sets Stonehide; 3.17
@@ -174,7 +196,12 @@ export const ABILITY_STATUS_EFFECT: Record<PlayerClass, readonly [AbilityStatusE
     null, // Soul Mend — Story 3.18
     { effectType: 'shield', magnitude: 30, durationMs: 4000, scope: 'allies-in-zone' }, // Warding Cry
   ],
-  souldrinker:  [null, null, null, null],
+  souldrinker: [
+    null, // Blood Spike — lifesteal via ABILITY_LIFESTEAL_PCT, not a status effect
+    null, // Crimson Lash — HP-scaled damage via ABILITY_HP_SCALED_DAMAGE, not a status effect
+    { effectType: 'damageBuff', magnitude: 0.25, durationMs: 4000, scope: 'self' }, // Dark Pact — gated on drain target found, see GameRoom.ts
+    null, // Void Pulse — projectile + chained pull zone, not a status effect
+  ],
   stormcaller:  [null, null, null, null],
 };
 
