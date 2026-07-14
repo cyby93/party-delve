@@ -29,11 +29,14 @@ export {
   ABILITY_LIFESTEAL_PCT,
   ABILITY_STATUS_EFFECT,
   ABILITY_DISPLACEMENT_STRENGTH,
+  ABILITY_HEAL_AMOUNT,
+  SPIRIT_NOVA_DURATION_MS,
+  SPIRIT_NOVA_MAX_RADIUS_PX,
 } from './balance.js';
 export type { ChainedZoneConfig, AbilityStatusEffectConfig, StatusEffectScope } from './balance.js';
 export { applyPlayerDamage, getReviveWindowMs, healPlayer, calculateLifesteal } from './systems/player-health.js';
 export type { PlayerDamageResult, HealthError } from './systems/player-health.js';
-export { resolveMixedFactionTargets } from './systems/targeting.js';
+export { resolveMixedFactionTargets, resolveExpandingRadius } from './systems/targeting.js';
 export type { MixedFactionSplit } from './systems/targeting.js';
 export { applyDamage, isInHitZone } from './systems/combat.js';
 export type { DamageResult, CombatError } from './systems/combat.js';

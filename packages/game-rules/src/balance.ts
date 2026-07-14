@@ -39,9 +39,20 @@ export const ABILITY_COOLDOWNS_MS: Record<PlayerClass, readonly [number, number,
 // Base damage per ability per class (applied in Story 3.4; defined here for balance).
 export const ABILITY_DAMAGE: Record<PlayerClass, readonly [number, number, number, number]> = {
   stonehide:    [15, 35,  0, 50],  // Stone Wall(no dmg), Tremor AoE, Iron Skin(buff), Avalanche
-  spiritcaller: [ 0, 40,  0,  0],  // Ancestor's Voice(heal), Spirit Nova(burst heal), Soul Mend, Warding Cry(buff)
+  spiritcaller: [15, 40,  0,  0],  // Ancestor's Voice(mixed-faction), Spirit Nova(mixed-faction), Soul Mend, Warding Cry(buff)
   souldrinker:  [12, 30,  0, 25],  // Blood Draw drain, Crimson Lash, Dark Pact(debuff), Void Pulse
   stormcaller:  [18, 40, 45,  0],  // Lightning Arc, Tempest Hurl, Thunder Clap AoE, Storm Eye(field)
+};
+
+// Heal value applied to allies for Spiritcaller's mixed-faction abilities (Story 3.17).
+// Soul Mend (slot 2) heals via full revive, not this table (Story 3.18); Warding Cry
+// (slot 3) shields, doesn't heal. All zero for every other class — no mixed-faction
+// ability exists outside Spiritcaller.
+export const ABILITY_HEAL_AMOUNT: Record<PlayerClass, readonly [number, number, number, number]> = {
+  stonehide:    [0, 0, 0, 0],
+  spiritcaller: [10, 30, 0, 0],
+  souldrinker:  [0, 0, 0, 0],
+  stormcaller:  [0, 0, 0, 0],
 };
 
 // ── Self-cost / HP-scaled damage / lifesteal ─────────────────────────────────
@@ -128,6 +139,13 @@ export const ABILITY_CHAINED_ZONE: Record<PlayerClass, readonly [ChainedZoneConf
 // special-casing any one ability by class/index.
 export type StatusEffectScope = 'self' | 'enemies-in-zone' | 'allies-in-zone';
 
+// ── Spirit Nova expanding-radius sweep (Story 3.17) ──────────────────────────
+// Plain named constants, not a per-class table — Spirit Nova is the only ability
+// in the full spec that uses this delivery type (see resolveExpandingRadius in
+// targeting.ts); a 4-tuple table would be mostly-unused ceremony for one consumer.
+export const SPIRIT_NOVA_DURATION_MS = 600;
+export const SPIRIT_NOVA_MAX_RADIUS_PX = 220;
+
 export interface AbilityStatusEffectConfig {
   effectType: StatusEffectType;
   magnitude: number;
@@ -142,7 +160,12 @@ export const ABILITY_STATUS_EFFECT: Record<PlayerClass, readonly [AbilityStatusE
     { effectType: 'damageReduction', magnitude: 0.3, durationMs: 3000, scope: 'self' }, // Iron Skin
     null, // Avalanche
   ],
-  spiritcaller: [null, null, null, null],
+  spiritcaller: [
+    null, // Ancestor's Voice — mixed-faction damage/heal, not a status effect
+    null, // Spirit Nova — mixed-faction damage/heal, not a status effect
+    null, // Soul Mend — Story 3.18
+    { effectType: 'shield', magnitude: 30, durationMs: 4000, scope: 'allies-in-zone' }, // Warding Cry
+  ],
   souldrinker:  [null, null, null, null],
   stormcaller:  [null, null, null, null],
 };

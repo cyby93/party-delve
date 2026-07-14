@@ -12,7 +12,7 @@ import {
   CAT_BOSS, createZoneBody,
 } from '../physics/world.js';
 import type { PoiBeginContactEvent, PoiEndContactEvent, EssenceBeginContactEvent, PhysicsBodyData } from '../physics/world.js';
-import { createRng, tickEnemy, dispatchAbility, getEnemyCount, applyDamage, isInHitZone, ABILITY_HIT_RANGE_PX, ABILITY_HIT_RADIUS_PX, ABILITY_DAMAGE, applyPlayerDamage, getReviveWindowMs, ENEMY_MELEE_DAMAGE, ENEMY_MELEE_RANGE_PX, ENEMY_ATTACK_COOLDOWN_MS, REVIVE_RADIUS_PX, REVIVE_HP, SPIRIT_ABILITY_COOLDOWN_MS, generateFloorLayout, GRASSLAND_ROOM_POOL, WAVE_COUNTS, WAVE_PAUSE_MS, WAVE_ENEMY_SCALE, bondKey, getProximityBuffedPlayers, getFateBuffedPlayers, getFateBondWipeTargets, getProximityDrainTargets, BOND_PROXIMITY_RANGE_PX, BOND_DRAIN_THRESHOLD_S, BOND_DRAIN_HP_PER_TICK, BOND_DAMAGE_MULT, BOND_SPEED_MULT, assignBond, BOND_DESCRIPTIONS, BOND_MECHANICS, createBossState, tickBoss, BOSS_ADD_HP, BOSS_STOMP_DAMAGE, evaluateGrasslandAchievements, JOYSTICK_DEADBAND, createEasyLayers, createNormalLayers, createHardLayers, tickStatusEffects, getStatusEffectMagnitude, applyStatusEffect, resolveProjectileHit, isProjectileExpired, shouldZoneTick, isZoneExpired, PROJECTILE_MAX_RANGE_PX, ABILITY_CHAINED_ZONE, ABILITY_STATUS_EFFECT, ABILITY_DISPLACEMENT_STRENGTH, applyDisplacement } from 'game-rules';
+import { createRng, tickEnemy, dispatchAbility, getEnemyCount, applyDamage, isInHitZone, ABILITY_HIT_RANGE_PX, ABILITY_HIT_RADIUS_PX, ABILITY_DAMAGE, applyPlayerDamage, getReviveWindowMs, ENEMY_MELEE_DAMAGE, ENEMY_MELEE_RANGE_PX, ENEMY_ATTACK_COOLDOWN_MS, REVIVE_RADIUS_PX, REVIVE_HP, SPIRIT_ABILITY_COOLDOWN_MS, generateFloorLayout, GRASSLAND_ROOM_POOL, WAVE_COUNTS, WAVE_PAUSE_MS, WAVE_ENEMY_SCALE, bondKey, getProximityBuffedPlayers, getFateBuffedPlayers, getFateBondWipeTargets, getProximityDrainTargets, BOND_PROXIMITY_RANGE_PX, BOND_DRAIN_THRESHOLD_S, BOND_DRAIN_HP_PER_TICK, BOND_DAMAGE_MULT, BOND_SPEED_MULT, assignBond, BOND_DESCRIPTIONS, BOND_MECHANICS, createBossState, tickBoss, BOSS_ADD_HP, BOSS_STOMP_DAMAGE, evaluateGrasslandAchievements, JOYSTICK_DEADBAND, createEasyLayers, createNormalLayers, createHardLayers, tickStatusEffects, getStatusEffectMagnitude, applyStatusEffect, resolveProjectileHit, isProjectileExpired, shouldZoneTick, isZoneExpired, PROJECTILE_MAX_RANGE_PX, ABILITY_CHAINED_ZONE, ABILITY_STATUS_EFFECT, ABILITY_DISPLACEMENT_STRENGTH, applyDisplacement, resolveMixedFactionTargets, healPlayer, resolveExpandingRadius, ABILITY_HEAL_AMOUNT, SPIRIT_NOVA_DURATION_MS, SPIRIT_NOVA_MAX_RADIUS_PX } from 'game-rules';
 import type { BehaviorLayer, EnemyContext, EnemyAIEvent, BossEvent, BossStompedEvent, ChainedZoneConfig } from 'game-rules';
 import { BOSS_ARENA_SPAWN_POINTS, loadBossArena } from '../levels/boss-arena.js';
 import { CLASS_DEFINITIONS } from 'shared-types';
@@ -164,6 +164,14 @@ export class GameRoom extends Room {
   private pendingZoneContactBegin: Array<ZoneContactEvent> = [];
   private pendingZoneContactEnd: Array<ZoneContactEvent> = [];
   private nextZoneSeq = 0; // disambiguates zone ids when one owner chains 2+ zones in the same tick
+  // ── Spirit Nova expanding-radius sweep (Story 3.17) ─────────────────────────
+  // GameRoom-local only — no persistent GameState entity per the story's Non-goals;
+  // resolves within its short duration via ordinary enemy:damaged/player:hp-updated deltas.
+  private activeSpiritNovas: Array<{
+    casterId: string; x: number; y: number;
+    startedAtMs: number; durationMs: number; maxRadiusPx: number;
+    hitIds: Set<string>;
+  }> = [];
 
   async onCreate(_options: unknown): Promise<void> {
     this.roomId = generateRoomCode();
@@ -815,6 +823,7 @@ export class GameRoom extends Room {
     this.pendingZoneContactBegin.length = 0;
     this.pendingZoneContactEnd.length = 0;
     this.gameState.zones = [];
+    this.activeSpiritNovas.length = 0;
     this.waveIndex = 0;
     this.totalWaves = 0;
     this.wavePauseUntil = 0;
@@ -924,6 +933,7 @@ export class GameRoom extends Room {
     this.pendingZoneContactBegin.length = 0;
     this.pendingZoneContactEnd.length = 0;
     this.gameState.zones = [];
+    this.activeSpiritNovas.length = 0;
 
     // Clear previous victory trigger
     if (this.victoryTriggerBody) {
@@ -1042,6 +1052,32 @@ export class GameRoom extends Room {
       }
     }
     return { nearestPlayerPos: { x: nearest.x, y: nearest.y }, nearestPlayerDistance: minDist, dt, nowMs };
+  }
+
+  // Story 3.17: first ability query to gather nearby PLAYERS for a hit zone — every
+  // ability before this story only ever targeted enemies. Mirrors the existing enemy
+  // hit-scan's isInHitZone call; excludes the caster and any player who isn't a valid
+  // interaction target (same isDown/isSpirit/isFrozen guard style as the proximity-revive
+  // block). Used by Ancestor's Voice/Spirit Nova's mixed-faction gather and Warding Cry's
+  // 'allies-in-zone' status-effect scope.
+  private gatherPlayersInHitZone(
+    originX: number,
+    originY: number,
+    dirX: number,
+    dirY: number,
+    hitRadiusPx: number,
+    hitRangePx: number,
+    isDirectional: boolean,
+    casterId: string,
+  ): PlayerState[] {
+    const found: PlayerState[] = [];
+    for (const p of this.gameState.players) {
+      if (p.id === casterId) continue;
+      if (p.isDown || p.isSpirit || p.isFrozen) continue;
+      if (!isInHitZone(originX, originY, dirX, dirY, p.x, p.y, hitRadiusPx, hitRangePx, isDirectional)) continue;
+      found.push(p);
+    }
+    return found;
   }
 
   // Ready-to-use for 3.16-3.20's kit-rework stories — no ability calls this yet in 3.12,
@@ -1700,16 +1736,47 @@ export class GameRoom extends Room {
               nowAbility,
             );
           }
+        } else if (statusConfig?.scope === 'allies-in-zone') {
+          // Warding Cry (Story 3.17): proximity radius, no direction/cone — uses Task 1's
+          // players-gathering query instead of the enemy loop. Same "runs independent of
+          // the damage hit-scan" rationale as the self-scope branch above.
+          const allyHitRadius = ABILITY_HIT_RADIUS_PX[player.class][abilityIndex] ?? 60;
+          for (const ally of this.gatherPlayersInHitZone(player.x, player.y, 0, 0, allyHitRadius, 0, false, clientId)) {
+            const allyIdx = this.gameState.players.findIndex(p => p.id === ally.id);
+            if (allyIdx === -1) continue;
+            this.gameState.players[allyIdx] = this.applyStatusEffectToTarget(
+              this.gameState.players[allyIdx]!,
+              { type: statusConfig.effectType, magnitude: statusConfig.magnitude, expiresAtMs: nowAbility + statusConfig.durationMs },
+              nowAbility,
+            );
+          }
+        }
+
+        // Spirit Nova (Spiritcaller slot 1): expanding-radius sweep, not an instant
+        // hit-scan — tracked over its duration by the "Spirit Nova sweep" tick phase
+        // below instead. Branch before the hit-scan path (Story 3.17, Task 3).
+        if (player.class === PlayerClass.SPIRITCALLER && abilityIndex === 1) {
+          this.activeSpiritNovas.push({
+            casterId: clientId,
+            x: player.x,
+            y: player.y,
+            startedAtMs: nowAbility,
+            durationMs: SPIRIT_NOVA_DURATION_MS,
+            maxRadiusPx: SPIRIT_NOVA_MAX_RADIUS_PX,
+            hitIds: new Set(),
+          });
+          continue;
         }
 
         const isDirectional = abilityDef.inputType !== 'TAP';
         const hitRange  = ABILITY_HIT_RANGE_PX[player.class][abilityIndex] ?? 0;
         const hitRadius = ABILITY_HIT_RADIUS_PX[player.class][abilityIndex] ?? 60;
         const displacementStrength = ABILITY_DISPLACEMENT_STRENGTH[player.class][abilityIndex] ?? 0;
+        const healAmount = ABILITY_HEAL_AMOUNT[player.class][abilityIndex] ?? 0;
         const casterX = player.x;
         const casterY = player.y;
         const rawDamage = result.value.damage;
-        if (rawDamage <= 0) continue;  // ponytail: skip hit-scan for buff/heal abilities (damage=0 in balance table)
+        if (rawDamage <= 0 && healAmount <= 0) continue;  // ponytail: skip hit-scan for buff-only abilities (damage=0, heal=0)
         const damage = proximityBuffed.has(clientId)
           ? Math.round(rawDamage * BOND_DAMAGE_MULT)
           : rawDamage;
@@ -1723,6 +1790,69 @@ export class GameRoom extends Room {
         if (isDirectional && mag === 0 && hitRange > 0) continue; // no direction = no hit
         const normDirX = isDirectional && mag > 0 ? dirX / mag : dirX;
         const normDirY = isDirectional && mag > 0 ? dirY / mag : dirY;
+
+        // Ancestor's Voice (Spiritcaller slot 0): mixed-faction cone — gather enemies
+        // and allies in the hit zone from one query, split via resolveMixedFactionTargets,
+        // damage enemies / heal allies (Story 3.17, Task 2).
+        if (player.class === PlayerClass.SPIRITCALLER && abilityIndex === 0) {
+          const enemiesInZone = this.gameState.enemies.filter(e =>
+            e.isAlive && isInHitZone(casterX, casterY, normDirX, normDirY, e.x, e.y, hitRadius, hitRange, isDirectional));
+          const alliesInZone = this.gatherPlayersInHitZone(casterX, casterY, normDirX, normDirY, hitRadius, hitRange, isDirectional, clientId);
+          const { allies, enemies } = resolveMixedFactionTargets(clientId, [...enemiesInZone, ...alliesInZone]);
+
+          for (const target of enemies) {
+            const ei = this.gameState.enemies.findIndex(e => e.id === target.id);
+            if (ei === -1) continue;
+            const dropId = `drop-${this.tickCount}-${target.id}`;
+            const dmgResult = applyDamage(this.gameState.enemies[ei]!, damage, dropId, nowAbility);
+            if (!dmgResult.ok) continue;
+            this.gameState.enemies[ei] = dmgResult.value.enemy;
+
+            this.broadcast(EventNames.DELTA, {
+              type: 'enemy:damaged' as const,
+              enemyId: target.id,
+              damage,
+              remainingHp: dmgResult.value.enemy.hp,
+            } satisfies DeltaEventMsg);
+
+            if (dmgResult.value.killed) {
+              this.broadcast(EventNames.DELTA, {
+                type: 'enemy:killed' as const,
+                enemyId: target.id,
+                byPlayerId: clientId,
+              } satisfies DeltaEventMsg);
+
+              const enemyBody = this.enemyBodies.get(target.id);
+              if (enemyBody) {
+                this.physicsWorld.destroyBody(enemyBody);
+                this.enemyBodies.delete(target.id);
+              }
+              this.enemyAttackCooldowns.delete(target.id);
+
+              const drop = dmgResult.value.essenceDrop!;
+              this.gameState.essenceDrops.push(drop);
+              this.broadcast(EventNames.DELTA, {
+                type: 'essence:dropped' as const,
+                drop,
+              } satisfies DeltaEventMsg);
+
+              const sensor = createEssenceSensorBody(this.physicsWorld, drop.id, drop.x, drop.y);
+              this.essenceSensorBodies.set(drop.id, sensor);
+            }
+          }
+
+          for (const ally of allies) {
+            const pi = this.gameState.players.findIndex(p => p.id === ally.id);
+            if (pi === -1) continue;
+            this.gameState.players[pi] = healPlayer(this.gameState.players[pi]!, healAmount);
+            this.broadcast(EventNames.DELTA, {
+              type: 'player:hp-updated' as const,
+              playerId: ally.id,
+              hp: this.gameState.players[pi]!.hp,
+            } satisfies DeltaEventMsg);
+          }
+          continue;
+        }
 
         for (let ei = 0; ei < this.gameState.enemies.length; ei++) {
           const enemy = this.gameState.enemies[ei]!;
@@ -1783,6 +1913,97 @@ export class GameRoom extends Room {
       }
 
       logger.debug({ roomId: this.roomId, clientId, abilityIndex, dirX, dirY }, 'ability fired');
+    }
+
+    // ── Spirit Nova sweep (Story 3.17) ────────────────────────────────────────
+    // One-shot growing-ring sweep: each active entry's hit radius grows from 0 to
+    // its max over its duration; each target is hit exactly once as the ring
+    // passes over it (tracked via hitIds), not every tick for the whole duration.
+    // Guarded to dungeon phase, matching every other per-tick combat block (bond
+    // drain, revive timers, spirit-ability dispatch) — a sweep still in flight
+    // when the phase flips to post-run (boss defeat / run failure) must not keep
+    // dealing damage or healing into the post-run screen.
+    if (this.gameState.session.phase === 'dungeon') {
+      for (let si = this.activeSpiritNovas.length - 1; si >= 0; si--) {
+        const nova = this.activeSpiritNovas[si]!;
+        const currentRadius = resolveExpandingRadius(tickNowMs - nova.startedAtMs, nova.durationMs, nova.maxRadiusPx);
+
+        const enemiesInRing = this.gameState.enemies.filter(e =>
+          e.isAlive && !nova.hitIds.has(e.id) &&
+          isInHitZone(nova.x, nova.y, 0, 0, e.x, e.y, currentRadius, 0, false));
+        const alliesInRing = this.gatherPlayersInHitZone(nova.x, nova.y, 0, 0, currentRadius, 0, false, nova.casterId)
+          .filter(p => !nova.hitIds.has(p.id));
+
+        if (enemiesInRing.length > 0 || alliesInRing.length > 0) {
+          const { allies, enemies } = resolveMixedFactionTargets(nova.casterId, [...enemiesInRing, ...alliesInRing]);
+          const rawNovaDamage = ABILITY_DAMAGE[PlayerClass.SPIRITCALLER][1];
+          // Same Bond proximity-damage-buff treatment as every other damaging ability
+          // (see Ancestor's Voice a few lines above) — heal is intentionally unbuffed,
+          // matching Ancestor's Voice's heal side (BOND_DAMAGE_MULT is a damage-only buff).
+          const novaDamage = proximityBuffed.has(nova.casterId)
+            ? Math.round(rawNovaDamage * BOND_DAMAGE_MULT)
+            : rawNovaDamage;
+          const novaHeal = ABILITY_HEAL_AMOUNT[PlayerClass.SPIRITCALLER][1];
+
+          for (const target of enemies) {
+            nova.hitIds.add(target.id);
+            const ei = this.gameState.enemies.findIndex(e => e.id === target.id);
+            if (ei === -1) continue;
+            const dropId = `drop-${this.tickCount}-${target.id}`;
+            const dmgResult = applyDamage(this.gameState.enemies[ei]!, novaDamage, dropId, tickNowMs);
+            if (!dmgResult.ok) continue;
+            this.gameState.enemies[ei] = dmgResult.value.enemy;
+
+            this.broadcast(EventNames.DELTA, {
+              type: 'enemy:damaged' as const,
+              enemyId: target.id,
+              damage: novaDamage,
+              remainingHp: dmgResult.value.enemy.hp,
+            } satisfies DeltaEventMsg);
+
+            if (dmgResult.value.killed) {
+              this.broadcast(EventNames.DELTA, {
+                type: 'enemy:killed' as const,
+                enemyId: target.id,
+                byPlayerId: nova.casterId,
+              } satisfies DeltaEventMsg);
+
+              const enemyBody = this.enemyBodies.get(target.id);
+              if (enemyBody) {
+                this.physicsWorld.destroyBody(enemyBody);
+                this.enemyBodies.delete(target.id);
+              }
+              this.enemyAttackCooldowns.delete(target.id);
+
+              const drop = dmgResult.value.essenceDrop!;
+              this.gameState.essenceDrops.push(drop);
+              this.broadcast(EventNames.DELTA, {
+                type: 'essence:dropped' as const,
+                drop,
+              } satisfies DeltaEventMsg);
+
+              const sensor = createEssenceSensorBody(this.physicsWorld, drop.id, drop.x, drop.y);
+              this.essenceSensorBodies.set(drop.id, sensor);
+            }
+          }
+
+          for (const ally of allies) {
+            nova.hitIds.add(ally.id);
+            const pi = this.gameState.players.findIndex(p => p.id === ally.id);
+            if (pi === -1) continue;
+            this.gameState.players[pi] = healPlayer(this.gameState.players[pi]!, novaHeal);
+            this.broadcast(EventNames.DELTA, {
+              type: 'player:hp-updated' as const,
+              playerId: ally.id,
+              hp: this.gameState.players[pi]!.hp,
+            } satisfies DeltaEventMsg);
+          }
+        }
+
+        if (tickNowMs >= nova.startedAtMs + nova.durationMs) {
+          this.activeSpiritNovas.splice(si, 1);
+        }
+      }
     }
 
     // ── Spirit ability dispatch ───────────────────────────────────────────────

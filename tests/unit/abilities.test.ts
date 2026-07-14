@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { dispatchAbility, applyDamage, applyStatusEffect, applyDisplacement, applyPlayerDamage, ABILITY_STATUS_EFFECT, ABILITY_DISPLACEMENT_STRENGTH, ABILITY_DAMAGE } from 'game-rules';
+import { dispatchAbility, applyDamage, applyStatusEffect, applyDisplacement, applyPlayerDamage, healPlayer, resolveMixedFactionTargets, ABILITY_STATUS_EFFECT, ABILITY_DISPLACEMENT_STRENGTH, ABILITY_DAMAGE, ABILITY_HEAL_AMOUNT } from 'game-rules';
 import { PlayerClass, CLASS_DEFINITIONS, EnemyType, DifficultyTier, EnemyFSMState, SessionColor } from 'shared-types';
 import type { EnemyState, PlayerState } from 'shared-types';
 
@@ -245,10 +245,92 @@ describe('Stonehide kit rework (Story 3.16)', () => {
     expect(ABILITY_DAMAGE.stonehide[3]).toBeGreaterThan(0);
   });
 
-  it('no other class has a status-effect or displacement config yet (Stonehide-only in this story)', () => {
+  it('no other class has a displacement config yet (Stonehide-only in this story); status-effect config is Stonehide-only except Spiritcaller\'s Warding Cry (Story 3.17)', () => {
     for (const cls of [PlayerClass.SPIRITCALLER, PlayerClass.SOULDRINKER, PlayerClass.STORMCALLER]) {
-      expect(ABILITY_STATUS_EFFECT[cls]).toEqual([null, null, null, null]);
       expect(ABILITY_DISPLACEMENT_STRENGTH[cls]).toEqual([0, 0, 0, 0]);
+    }
+    for (const cls of [PlayerClass.SOULDRINKER, PlayerClass.STORMCALLER]) {
+      expect(ABILITY_STATUS_EFFECT[cls]).toEqual([null, null, null, null]);
+    }
+  });
+});
+
+describe('Spiritcaller kit rework (Story 3.17)', () => {
+  function mockEnemy(overrides?: Partial<EnemyState>): EnemyState {
+    return {
+      id: 'e1', type: EnemyType.GRUNT, x: 200, y: 0, hp: 100, maxHp: 100,
+      difficultyTier: DifficultyTier.EASY, isAlive: true, fsmState: EnemyFSMState.IDLE,
+      attackCooldownTicks: 0, statusEffects: [],
+      ...overrides,
+    };
+  }
+
+  function mockPlayer(overrides?: Partial<PlayerState>): PlayerState {
+    return {
+      id: 'p1', displayName: 'Tester', class: PlayerClass.SPIRITCALLER,
+      x: 0, y: 0, hp: 100, maxHp: 100,
+      isFrozen: false, isDown: false, isSpirit: false,
+      sessionColor: SessionColor.RED, downCount: 0, nearPoiId: null,
+      essenceTotal: 0, reviveTimerExpiresAt: 0, statusEffects: [],
+      ...overrides,
+    };
+  }
+
+  it('Ancestor\'s Voice (slot 0, AUTO): resolveMixedFactionTargets splits one gathered zone into a damaged enemy and a healed ally', () => {
+    const damage = ABILITY_DAMAGE.spiritcaller[0];
+    const heal = ABILITY_HEAL_AMOUNT.spiritcaller[0];
+    expect(damage).toBeGreaterThan(0);
+    expect(heal).toBeGreaterThan(0);
+
+    const caster = mockPlayer({ id: 'caster' });
+    const ally = mockPlayer({ id: 'ally', hp: 60 });
+    const enemy = mockEnemy({ id: 'foe' });
+
+    const { allies, enemies } = resolveMixedFactionTargets(caster.id, [caster, ally, enemy]);
+    expect(allies).toEqual([ally]); // caster excluded from their own AoE
+    expect(enemies).toEqual([enemy]);
+
+    const dmgResult = applyDamage(enemies[0]!, damage, 'drop-1', 0);
+    expect(dmgResult.ok).toBe(true);
+    if (dmgResult.ok) expect(dmgResult.value.enemy.hp).toBe(100 - damage);
+
+    const healed = healPlayer(allies[0]!, heal);
+    expect(healed.hp).toBe(60 + heal);
+  });
+
+  it('Spirit Nova (slot 1): both ABILITY_DAMAGE and ABILITY_HEAL_AMOUNT are configured (mixed-faction, fixing the damage-only mislabel)', () => {
+    expect(ABILITY_DAMAGE.spiritcaller[1]).toBeGreaterThan(0);
+    expect(ABILITY_HEAL_AMOUNT.spiritcaller[1]).toBeGreaterThan(0);
+  });
+
+  it('Warding Cry (slot 3, allies-in-zone scope): applies a flat-HP shield status effect', () => {
+    const config = ABILITY_STATUS_EFFECT[PlayerClass.SPIRITCALLER][3];
+    expect(config).toEqual({ effectType: 'shield', magnitude: 30, durationMs: 4000, scope: 'allies-in-zone' });
+
+    const nowMs = 0;
+    const applied = applyStatusEffect(
+      mockPlayer(),
+      { type: config!.effectType, magnitude: config!.magnitude, expiresAtMs: nowMs + config!.durationMs },
+      nowMs,
+    );
+    expect(applied.ok).toBe(true);
+    if (applied.ok) {
+      // shield's magnitude is flat HP absorption, not a 0-1 fraction — 30 must survive unclamped.
+      expect(applied.value.target.statusEffects).toEqual([{ type: 'shield', magnitude: 30, expiresAtMs: 4000 }]);
+    }
+  });
+
+  it('Soul Mend (slot 2) is untouched — out of scope, no status-effect/heal config (Story 3.18)', () => {
+    expect(ABILITY_STATUS_EFFECT.spiritcaller[2]).toBeNull();
+    expect(ABILITY_HEAL_AMOUNT.spiritcaller[2]).toBe(0);
+  });
+
+  it('no other class has an allies-in-zone status config or nonzero heal amount (Spiritcaller-only in this story)', () => {
+    for (const cls of [PlayerClass.STONEHIDE, PlayerClass.SOULDRINKER, PlayerClass.STORMCALLER]) {
+      expect(ABILITY_HEAL_AMOUNT[cls]).toEqual([0, 0, 0, 0]);
+      for (const config of ABILITY_STATUS_EFFECT[cls]) {
+        expect(config?.scope).not.toBe('allies-in-zone');
+      }
     }
   });
 });

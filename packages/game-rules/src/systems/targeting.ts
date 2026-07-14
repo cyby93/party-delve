@@ -22,3 +22,15 @@ export function resolveMixedFactionTargets(
   }
   return { allies, enemies };
 }
+
+// Pure radius-at-time calculation for Spirit Nova's expanding-ring sweep (Story 3.17).
+// The stateful sweep bookkeeping (which targets were already hit, when to retire the
+// sweep) lives in GameRoom.ts, not here — keeps the pure/impure boundary consistent
+// with the rest of this codebase.
+export function resolveExpandingRadius(
+  elapsedMs: number,
+  durationMs: number,
+  maxRadiusPx: number,
+): number {
+  return maxRadiusPx * Math.min(1, Math.max(0, elapsedMs / durationMs));
+}
