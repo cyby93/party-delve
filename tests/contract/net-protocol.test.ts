@@ -529,6 +529,86 @@ describe('net-protocol contract tests', () => {
     });
   });
 
+  describe('Story 3.21a: bodyX/bodyY schema and protocol contract', () => {
+    function mockPlayer(overrides?: Partial<PlayerState>): PlayerState {
+      return {
+        id: 'p1',
+        displayName: 'Test',
+        class: PlayerClass.STONEHIDE,
+        x: 0,
+        y: 0,
+        hp: 100,
+        maxHp: 100,
+        isFrozen: false,
+        isDown: false,
+        isSpirit: false,
+        sessionColor: SessionColor.RED,
+        downCount: 0,
+        nearPoiId: null,
+        essenceTotal: 0,
+        reviveTimerExpiresAt: 0,
+        statusEffects: [],
+        channelingAbility: null,
+        ...overrides,
+      };
+    }
+
+    it('player:downed delta with bodyX/bodyY survives serialize → deserialize', () => {
+      const delta = {
+        type: 'player:downed' as const, playerId: 'p1', downCount: 1, reviveWindowMs: 60000, bodyX: 500, bodyY: 300,
+      } satisfies PlayerDownedDelta;
+      expect(deserialize<DeltaEventMsg>(serialize(delta))).toEqual(delta);
+    });
+
+    it('applyDelta player:downed sets bodyX/bodyY from the delta when present', () => {
+      const state: GameState = { ...mockGameState(), players: [mockPlayer({ x: 500, y: 300 })] };
+      const next = applyDelta(state, {
+        type: 'player:downed', playerId: 'p1', downCount: 1, reviveWindowMs: 60000, bodyX: 500, bodyY: 300,
+      });
+      expect(next.players[0]?.bodyX).toBe(500);
+      expect(next.players[0]?.bodyY).toBe(300);
+    });
+
+    it('applyDelta player:downed falls back to the player\'s current x/y when the delta omits bodyX/bodyY (pre-3.21b sim traffic)', () => {
+      const state: GameState = { ...mockGameState(), players: [mockPlayer({ x: 700, y: 400 })] };
+      const next = applyDelta(state, { type: 'player:downed', playerId: 'p1', downCount: 1, reviveWindowMs: 60000 });
+      expect(next.players[0]?.bodyX).toBe(700);
+      expect(next.players[0]?.bodyY).toBe(400);
+    });
+
+    it('applyDelta player:downed falls back on both axes together when the delta supplies only one (never mixes fresh + stale)', () => {
+      const state: GameState = { ...mockGameState(), players: [mockPlayer({ x: 900, y: 600 })] };
+      const next = applyDelta(state, {
+        type: 'player:downed', playerId: 'p1', downCount: 1, reviveWindowMs: 60000, bodyX: 123,
+      });
+      expect(next.players[0]?.bodyX).toBe(900);
+      expect(next.players[0]?.bodyY).toBe(600);
+    });
+
+    it('applyDelta player:downed leaves a different player\'s bodyX/bodyY untouched', () => {
+      const state: GameState = {
+        ...mockGameState(),
+        players: [mockPlayer({ id: 'p1', x: 500, y: 300 }), mockPlayer({ id: 'p2', x: 10, y: 20 })],
+      };
+      const next = applyDelta(state, {
+        type: 'player:downed', playerId: 'p1', downCount: 1, reviveWindowMs: 60000, bodyX: 500, bodyY: 300,
+      });
+      expect(next.players.find(p => p.id === 'p2')?.bodyX).toBeUndefined();
+      expect(next.players.find(p => p.id === 'p2')?.bodyY).toBeUndefined();
+    });
+
+    it('a never-downed player has bodyX/bodyY undefined by default', () => {
+      const player = mockPlayer();
+      expect(player.bodyX).toBeUndefined();
+      expect(player.bodyY).toBeUndefined();
+    });
+
+    it('player:revived delta survives serialize → deserialize', () => {
+      const delta = { type: 'player:revived' as const, playerId: 'p1' } satisfies DeltaEventMsg;
+      expect(deserialize<DeltaEventMsg>(serialize(delta))).toEqual(delta);
+    });
+  });
+
   describe('Story 4.2 delta round-trips', () => {
     it('run:proposed delta survives serialize → deserialize', () => {
       const delta = {

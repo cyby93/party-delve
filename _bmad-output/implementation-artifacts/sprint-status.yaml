@@ -42,7 +42,7 @@
 # Phase2 legacy stories (old Phase-based keys) are tracked below under PHASE 2 STORIES.
 
 generated: 2026-06-22
-last_updated: 2026-07-14
+last_updated: 2026-07-15
 # 2026-07-14: implemented 3.19 (pending code review) — Souldrinker's full kit
 # (Blood Spike projectile delivery + self-cost + 50% lifesteal, Crimson Lash
 # inverse-HP damage scaling, Dark Pact single-target ally drain + self
@@ -262,9 +262,9 @@ development_status:
   3-20-stormcaller-storm-eye-rework: done
   # Epic 3 Correction: Downed Player Body/Spirit Entity Split (correct-course,
   # 2026-07-14, sprint-change-proposal-2026-07-14.md) — sequenced a->b->c
-  3-21a-body-spirit-position-schema-and-protocol-contract: backlog
-  3-21b-body-spirit-movement-and-revive-targeting-logic: backlog
-  3-21c-host-rendering-distinct-body-and-spirit-entities: backlog
+  3-21a-body-spirit-position-schema-and-protocol-contract: done
+  3-21b-body-spirit-movement-and-revive-targeting-logic: done
+  3-21c-host-rendering-distinct-body-and-spirit-entities: done
   epic-3-retrospective: optional
 
   # ─── Dev infra fixes (no epic) ──────────────────────────────────────────────

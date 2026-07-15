@@ -42,6 +42,7 @@ const STATUS_EFFECT_COLORS: Record<StatusEffectType, number> = {
 
 interface PlayerEntry {
   circle: Graphics;
+  body: Graphics | null; // Story 3.21c: lazily created while isDown/isSpirit, destroyed when neither holds
   flashUntil: number;
 }
 
@@ -93,6 +94,10 @@ function renderFrame(
     if (!currentPlayerIds.has(id)) {
       app.stage.removeChild(entry.circle);
       entry.circle.destroy();
+      if (entry.body) {
+        app.stage.removeChild(entry.body);
+        entry.body.destroy();
+      }
       playerGraphics.delete(id);
     }
   }
@@ -102,7 +107,7 @@ function renderFrame(
     if (!entry) {
       const circle = new Graphics();
       app.stage.addChild(circle);
-      entry = { circle, flashUntil: 0 };
+      entry = { circle, body: null, flashUntil: 0 };
       playerGraphics.set(player.id, entry);
     }
     const { circle } = entry;
@@ -118,11 +123,44 @@ function renderFrame(
         : 1;
       circle.circle(0, 0, 28).fill({ color, alpha: 0.35 });
       circle.circle(0, 0, 14).fill({ color, alpha: 0.85 });
+    } else if (player.isDown) {
+      // Body sprite (below) is the only visual for the down-not-yet-spirit state —
+      // it renders at bodyX/bodyY, which equals player.x/y here anyway (frozen),
+      // so drawing the normal circle too would just duplicate it at the same spot.
+      circle.alpha = 0;
     } else {
       circle.alpha = isFlashing
         ? 0.2 + 0.8 * Math.abs(Math.cos(Math.PI * (entry.flashUntil - now) / ABILITY_FLASH_MS))
         : (player.isFrozen ? 0.3 : 1);
       circle.circle(0, 0, PLAYER_RADIUS).fill({ color });
+    }
+
+    // Body sprite (Story 3.21c): visible for the whole isDown+isSpirit window,
+    // anchored at bodyX/bodyY — the fixed down location, independent of the
+    // spirit's own (possibly wandered-off) position above.
+    if (player.isDown || (player.isSpirit && !isPurified)) {
+      if (!entry.body) {
+        const body = new Graphics();
+        app.stage.addChildAt(body, 0); // below circle/spirit, matches tether layering
+        entry.body = body;
+      }
+      const bodyX = player.bodyX ?? player.x;
+      const bodyY = player.bodyY ?? player.y;
+      entry.body.position.set(bodyX, bodyY);
+      entry.body.clear();
+      // Dimmed fill + outline stroke — distinct from both the opaque alive circle
+      // and the plain frozen/disconnected dim (which has no stroke and sits at
+      // player.x/y). Further dimmed when isFrozen so the pre-existing disconnect
+      // cue (frozen ? 0.3 : 1 on the alive circle) isn't lost for a down/spirit
+      // player who has also disconnected — Client-UX hook's reconnect-state-
+      // visibility check.
+      const fillAlpha = player.isFrozen ? 0.15 : 0.35;
+      const strokeAlpha = player.isFrozen ? 0.4 : 0.9;
+      entry.body.circle(0, 0, PLAYER_RADIUS).fill({ color, alpha: fillAlpha }).stroke({ color, width: 3, alpha: strokeAlpha });
+    } else if (entry.body) {
+      app.stage.removeChild(entry.body);
+      entry.body.destroy();
+      entry.body = null;
     }
   }
 

@@ -1254,6 +1254,8 @@ export class GameRoom extends Room {
         playerId: nearest.id,
         downCount: dmgResult.value.player.downCount,
         reviveWindowMs: dmgResult.value.reviveWindowMs!,
+        bodyX: dmgResult.value.player.bodyX!,
+        bodyY: dmgResult.value.player.bodyY!,
       } satisfies DeltaEventMsg);
       const downedClient = this.clients.find(c => c.sessionId === nearest.id);
       if (downedClient) {
@@ -1735,6 +1737,8 @@ export class GameRoom extends Room {
             const nowStomp = Date.now();
             player.downCount++;
             player.isDown = true;
+            player.bodyX = player.x;
+            player.bodyY = player.y;
             if (this.gameState.session.levelIndex === BOSS_LEVEL_INDEX) {
               this.gameState.session.anyPlayerDownedDuringBoss = true;
             }
@@ -1745,6 +1749,8 @@ export class GameRoom extends Room {
               playerId: player.id,
               downCount: player.downCount,
               reviveWindowMs: windowMs,
+              bodyX: player.bodyX!,
+              bodyY: player.bodyY!,
             } satisfies DeltaEventMsg);
             const downedClient = this.clients.find(c => c.sessionId === player.id);
             if (downedClient) {
@@ -2410,6 +2416,8 @@ export class GameRoom extends Room {
             playerId: targetPlayer.id,
             downCount: dmgResult.value.player.downCount,
             reviveWindowMs: windowMs,
+            bodyX: dmgResult.value.player.bodyX!,
+            bodyY: dmgResult.value.player.bodyY!,
           } satisfies DeltaEventMsg);
 
           // Notify mobile: downed (spirit cell visible but locked until timer expires)
@@ -2452,6 +2460,8 @@ export class GameRoom extends Room {
                   playerId: partnerId,
                   downCount: wipeResult.value.player.downCount,
                   reviveWindowMs: wipeWindowMs,
+                  bodyX: wipeResult.value.player.bodyX!,
+                  bodyY: wipeResult.value.player.bodyY!,
                 } satisfies DeltaEventMsg);
                 const wipeClient = this.clients.find(c => c.sessionId === partnerId);
                 if (wipeClient) {
@@ -2509,7 +2519,14 @@ export class GameRoom extends Room {
       const nowRevive = Date.now();
 
       for (const player of this.gameState.players) {
-        if (!player.isDown) continue;
+        // Story 3.21b: must admit isSpirit players too, not just isDown — otherwise
+        // a player who has already transitioned to spirit form never re-enters this
+        // loop on any later tick, and the proximity-revive check below (which now
+        // targets bodyX/bodyY) never runs for them at all. The "Timer expiry" branch
+        // immediately below is itself gated on reviveTimerExpiresAt > 0, which is
+        // already 0 for an isSpirit player, so it's skipped safely and falls through
+        // to the proximity-revive check.
+        if (!player.isDown && !player.isSpirit) continue;
 
         // Timer expiry → spirit form
         if (player.reviveTimerExpiresAt > 0 && nowRevive >= player.reviveTimerExpiresAt) {
@@ -2530,13 +2547,17 @@ export class GameRoom extends Room {
           continue;
         }
 
-        // Proximity revive: first living teammate in range wins
+        // Proximity revive: first living teammate in range wins. Targets bodyX/bodyY
+        // (Story 3.21b) — the fixed down location — not player.x/y, which has been
+        // moving independently under the spirit's own input since timer expiry.
         let revivedBy: string | null = null;
+        const targetX = player.bodyX ?? player.x;
+        const targetY = player.bodyY ?? player.y;
         for (const teammate of this.gameState.players) {
           if (teammate.id === player.id) continue;
           if (teammate.isDown || teammate.isSpirit || teammate.isFrozen) continue;
-          const dx = teammate.x - player.x;
-          const dy = teammate.y - player.y;
+          const dx = teammate.x - targetX;
+          const dy = teammate.y - targetY;
           if (Math.sqrt(dx * dx + dy * dy) <= REVIVE_RADIUS_PX) {
             revivedBy = teammate.id;
             break;
@@ -2545,11 +2566,26 @@ export class GameRoom extends Room {
 
         if (revivedBy !== null) {
           const piRevive = this.gameState.players.findIndex(p => p.id === player.id);
-          this.gameState.players[piRevive] = { ...this.gameState.players[piRevive]!, isDown: false, isSpirit: false, hp: REVIVE_HP, reviveTimerExpiresAt: 0 };
+          // x/y snap back to the body location (Story 3.21b) — a spirit revived
+          // after wandering must resume at the body, not wherever the spirit stood.
+          // Must also reposition the physics body: otherwise the next tick's
+          // Planck phase-3 position read-back would overwrite x/y right back to
+          // wherever the body actually still is (the spirit's last physical spot),
+          // undoing this snap (same reasoning as applyDisplacementToPlayer above).
+          this.gameState.players[piRevive] = { ...this.gameState.players[piRevive]!, isDown: false, isSpirit: false, hp: REVIVE_HP, reviveTimerExpiresAt: 0, x: targetX, y: targetY };
+          const reviveBody = this.playerBodies.get(player.id);
+          if (reviveBody) reviveBody.setPosition(Vec2(toMeters(targetX), toMeters(targetY)));
 
           this.broadcast(EventNames.DELTA, {
             type: 'player:revived' as const,
             playerId: player.id,
+          } satisfies DeltaEventMsg);
+
+          this.broadcast(EventNames.DELTA, {
+            type: 'player:moved' as const,
+            playerId: player.id,
+            x: targetX,
+            y: targetY,
           } satisfies DeltaEventMsg);
 
           this.broadcast(EventNames.DELTA, {
@@ -2817,6 +2853,10 @@ export class GameRoom extends Room {
     const targetIdx = this.gameState.players.findIndex(p => p.id === targetId);
     if (targetIdx !== -1) {
       this.gameState.players[targetIdx] = reviveBySoulMend(this.gameState.players[targetIdx]!, REVIVE_HP);
+      // No physics-body reposition needed here (unlike the proximity-revive block):
+      // Soul Mend only ever targets isDown players, whose physics body never moves
+      // while down (isSensor fixtures, velocity zeroed every tick), so it's already
+      // sitting exactly at bodyX/bodyY — reviveBySoulMend's x/y snap is a no-op.
 
       this.broadcast(EventNames.DELTA, { type: 'player:revived' as const, playerId: targetId } satisfies DeltaEventMsg);
       this.broadcast(EventNames.DELTA, { type: 'player:hp-updated' as const, playerId: targetId, hp: REVIVE_HP } satisfies DeltaEventMsg);

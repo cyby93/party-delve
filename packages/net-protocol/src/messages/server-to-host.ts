@@ -17,6 +17,10 @@ export type PlayerDownedDelta = {
   playerId: string;
   downCount: number;
   reviveWindowMs: number;
+  // Story 3.21: optional until 3.21b's sim-side down-transitions populate them —
+  // see PlayerState.bodyX/bodyY for why these must stay optional.
+  bodyX?: number;
+  bodyY?: number;
 };
 
 export type PlayerReviveDelta = {

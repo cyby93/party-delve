@@ -24,6 +24,11 @@ export interface PlayerState {
   class: PlayerClass | null;
   x: number;
   y: number;
+  // Story 3.21: fixed body position, set once when isDown first becomes true.
+  // Optional (not required) so apps/simulation-server's existing PlayerState/
+  // player:downed object literals keep typechecking until 3.21b populates them.
+  bodyX?: number;
+  bodyY?: number;
   hp: number;
   maxHp: number;
   isFrozen: boolean;

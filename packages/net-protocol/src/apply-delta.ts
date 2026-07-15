@@ -58,11 +58,22 @@ export function applyDelta(state: GameState, evt: DeltaEventMsg): GameState {
     }
     case 'player:downed': {
       if (!state.players.some(p => p.id === evt.playerId)) return state;
+      // bodyX/bodyY fall back together (both-or-neither), never one fresh + one
+      // stale — a delta carrying only one axis would otherwise mix coordinates.
+      // (Narrowing must stay inline per-field — hoisting the check into a shared
+      // boolean loses TS's connection to evt.bodyX/evt.bodyY's own narrowing.)
       return {
         ...state,
         players: state.players.map(p =>
           p.id === evt.playerId
-            ? { ...p, isDown: true, downCount: evt.downCount, reviveTimerExpiresAt: Date.now() + evt.reviveWindowMs }
+            ? {
+                ...p,
+                isDown: true,
+                bodyX: evt.bodyX !== undefined && evt.bodyY !== undefined ? evt.bodyX : p.x,
+                bodyY: evt.bodyX !== undefined && evt.bodyY !== undefined ? evt.bodyY : p.y,
+                downCount: evt.downCount,
+                reviveTimerExpiresAt: Date.now() + evt.reviveWindowMs,
+              }
             : p
         ),
       };

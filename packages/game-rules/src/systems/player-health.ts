@@ -33,11 +33,15 @@ export function applyPlayerDamage(
   const newDownCount = downed ? player.downCount + 1 : player.downCount;
   const reviveWindowMs = downed ? getReviveWindowMs(newDownCount) : undefined;
 
+  // bodyX/bodyY fix the revive target at the down location (Story 3.21b). Conditional
+  // spread, not a ternary: exactOptionalPropertyTypes rejects explicitly assigning
+  // `player.bodyX` (number | undefined) to the optional field even when downed is false.
   const updatedPlayer: PlayerState = {
     ...player,
     hp: newHp,
     isDown: downed,
     downCount: newDownCount,
+    ...(downed ? { bodyX: player.x, bodyY: player.y } : {}),
   };
 
   const result: PlayerDamageResult = { player: updatedPlayer, downed };

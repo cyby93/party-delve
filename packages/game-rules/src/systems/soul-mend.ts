@@ -51,5 +51,14 @@ export function shouldCancelSoulMendChannel(
 // GameRoom.ts's proximity-revive block) — Soul Mend bypasses that flow's
 // trigger logic entirely but reuses its exact output shape.
 export function reviveBySoulMend(target: PlayerState, reviveHp: number): PlayerState {
-  return { ...target, isDown: false, isSpirit: false, hp: reviveHp, reviveTimerExpiresAt: 0 };
+  // x/y snap to bodyX/bodyY (Story 3.21b), matching the proximity-revive block.
+  return {
+    ...target,
+    isDown: false,
+    isSpirit: false,
+    hp: reviveHp,
+    reviveTimerExpiresAt: 0,
+    x: target.bodyX ?? target.x,
+    y: target.bodyY ?? target.y,
+  };
 }

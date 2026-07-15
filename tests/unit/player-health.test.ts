@@ -65,6 +65,24 @@ describe('applyPlayerDamage', () => {
     applyPlayerDamage(p, 10, 0);
     expect(p.hp).toBe(100);
   });
+
+  it('sets bodyX/bodyY to the pre-damage position when the hit downs the player (Story 3.21b)', () => {
+    const r = applyPlayerDamage(mockPlayer({ x: 640, y: 420, hp: 10 }), 50, 0);
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.value.player.bodyX).toBe(640);
+      expect(r.value.player.bodyY).toBe(420);
+    }
+  });
+
+  it('leaves bodyX/bodyY untouched when the hit does not down the player (Story 3.21b)', () => {
+    const r = applyPlayerDamage(mockPlayer({ x: 640, y: 420, hp: 100 }), 15, 0);
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.value.player.bodyX).toBeUndefined();
+      expect(r.value.player.bodyY).toBeUndefined();
+    }
+  });
 });
 
 describe('getReviveWindowMs', () => {

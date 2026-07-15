@@ -51,6 +51,16 @@ describe('findSoulMendTarget', () => {
   it('returns null when no downed players are given', () => {
     expect(findSoulMendTarget(0, 0, 1, 0, [], HIT_RANGE, HIT_RADIUS)).toBeNull();
   });
+
+  it('regression (Story 3.21b): still resolves the correct isDown target when other players in the candidate set have diverged x/y (spirit) vs bodyX/bodyY', () => {
+    // Neither this ability's targeting math nor its isDown-only filter reads
+    // bodyX/bodyY at all — this proves the schema split (Story 3.21a/b) doesn't
+    // regress Soul Mend's existing, unchanged targeting behavior.
+    const wanderingSpirit = mockPlayer({ id: 'spirit-ally', isDown: false, isSpirit: true, x: 9999, y: 9999, bodyX: 0, bodyY: 0 });
+    const downedTarget = mockPlayer({ id: 'ally', isDown: true, x: HIT_RANGE, y: 0, bodyX: HIT_RANGE, bodyY: 0 });
+    const found = findSoulMendTarget(0, 0, 1, 0, [wanderingSpirit, downedTarget], HIT_RANGE, HIT_RADIUS);
+    expect(found?.id).toBe('ally');
+  });
 });
 
 describe('shouldCancelSoulMendChannel', () => {
@@ -103,5 +113,19 @@ describe('reviveBySoulMend', () => {
     const downed = mockPlayer({ id: 'ally', isDown: true, hp: 0, reviveTimerExpiresAt: 99999 });
     const revived = reviveBySoulMend(downed, REVIVE_HP);
     expect(revived).toMatchObject({ isDown: false, isSpirit: false, hp: REVIVE_HP, reviveTimerExpiresAt: 0 });
+  });
+
+  it('resets x/y to bodyX/bodyY on revive (Story 3.21b, AC4)', () => {
+    const downed = mockPlayer({ id: 'ally', isDown: true, hp: 0, x: 999, y: 999, bodyX: 300, bodyY: 200 });
+    const revived = reviveBySoulMend(downed, REVIVE_HP);
+    expect(revived.x).toBe(300);
+    expect(revived.y).toBe(200);
+  });
+
+  it('falls back to the current x/y when bodyX/bodyY are absent', () => {
+    const downed = mockPlayer({ id: 'ally', isDown: true, hp: 0, x: 300, y: 200 });
+    const revived = reviveBySoulMend(downed, REVIVE_HP);
+    expect(revived.x).toBe(300);
+    expect(revived.y).toBe(200);
   });
 });
