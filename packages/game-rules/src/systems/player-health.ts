@@ -28,10 +28,19 @@ export function applyPlayerDamage(
 
   const damageReduction = getStatusEffectMagnitude(player, 'damageReduction', nowMs);
   const mitigatedDamage = damage * (1 - damageReduction);
-  const newHp = Math.max(0, player.hp - mitigatedDamage);
+  const shieldMagnitude = getStatusEffectMagnitude(player, 'shield', nowMs);
+  const absorbed = Math.min(shieldMagnitude, mitigatedDamage);
+  const hpDamage = mitigatedDamage - absorbed;
+  const newHp = Math.max(0, player.hp - hpDamage);
   const downed = newHp === 0;
   const newDownCount = downed ? player.downCount + 1 : player.downCount;
   const reviveWindowMs = downed ? getReviveWindowMs(newDownCount) : undefined;
+
+  // shield depletes by the absorbed amount; write the new magnitude back onto
+  // statusEffects (Result<T,E> rule — depletion is returned, never mutated in place).
+  const statusEffects = absorbed > 0
+    ? player.statusEffects.map(e => e.type === 'shield' ? { ...e, magnitude: shieldMagnitude - absorbed } : e)
+    : player.statusEffects;
 
   // bodyX/bodyY fix the revive target at the down location (Story 3.21b). Conditional
   // spread, not a ternary: exactOptionalPropertyTypes rejects explicitly assigning
@@ -39,6 +48,7 @@ export function applyPlayerDamage(
   const updatedPlayer: PlayerState = {
     ...player,
     hp: newHp,
+    statusEffects,
     isDown: downed,
     downCount: newDownCount,
     ...(downed ? { bodyX: player.x, bodyY: player.y } : {}),

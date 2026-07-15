@@ -4,6 +4,7 @@ import type { ZoneState } from 'shared-types';
 // overlapping) is tracked by GameRoom via planck contact events; this only
 // answers "is it time".
 export function shouldZoneTick(zone: ZoneState, nowMs: number, lastTickAtMs: number): boolean {
+  if (zone.tickIntervalMs <= 0) return false;
   return nowMs - lastTickAtMs >= zone.tickIntervalMs;
 }
 

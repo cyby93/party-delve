@@ -43,6 +43,21 @@
 
 generated: 2026-06-22
 last_updated: 2026-07-15
+# 2026-07-15: created 3.22 (epic-3-post-321-deferred-hardening) — closes the Epic 3
+# deferred-work.md backlog that accumulated since 3.10 (Stories 3.11-3.21c never had a
+# hardening pass). Re-verified every candidate D-3.x entry against current source before
+# scoping: 6 real, actionable findings bundled in (D-3.16-A, D-3.17-A/B/C, D-3.20-A,
+# D-3.13-D); 2 dismissed on re-inspection as no longer matching the code (D-3.14-B's
+# "overwrite" premise — current applyDisplacementTo* already does `+=`, not assignment,
+# so concurrent pulls already sum) or as revisit-condition-still-unmet (D-3.13-A —
+# 3.19/3.20 never actually gave projectiles per-ability visual identity, the condition
+# this finding names to act on); D-3.18-A and the three Phase-5-scoped 3.21a/b findings
+# left deferred, unchanged, per their own explicit conditions. The main task reuses the
+# existing tests/e2e live-room harness (built for 4.6) to close a gap 4 separate code
+# reviews (3.16, 3.17 x2, 3.20) each flagged independently: no test anywhere fires a real
+# ability against a live GameRoom and asserts on the resulting deltas — full-run.test.ts
+# bypasses all combat via debug:kill-all/debug:kill-boss, and every game-room-*.test.ts
+# file mirrors GameRoom's logic in standalone functions rather than instantiating a room.
 # 2026-07-14: implemented 3.19 (pending code review) — Souldrinker's full kit
 # (Blood Spike projectile delivery + self-cost + 50% lifesteal, Crimson Lash
 # inverse-HP damage scaling, Dark Pact single-target ally drain + self
@@ -265,6 +280,9 @@ development_status:
   3-21a-body-spirit-position-schema-and-protocol-contract: done
   3-21b-body-spirit-movement-and-revive-targeting-logic: done
   3-21c-host-rendering-distinct-body-and-spirit-entities: done
+  # Post-3.21 hardening: closes deferred-work.md backlog accumulated by 3.11-3.21c
+  # (never had its own hardening pass, unlike 3.1-3.9 which got 3.9/3.10)
+  3-22-epic-3-post-321-deferred-hardening: done
   epic-3-retrospective: optional
 
   # ─── Dev infra fixes (no epic) ──────────────────────────────────────────────
