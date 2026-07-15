@@ -1,5 +1,5 @@
 # generated: 2026-06-22
-# last_updated: 2026-07-13
+# last_updated: 2026-07-15
 # project: party-delve
 # project_key: NOKEY
 # tracking_system: file-system
@@ -242,7 +242,7 @@ development_status:
   2-5-server-persistent-joystick-vector: done
   2-6-epic-2-deferred-hardening: done
   2-7-epic-2-post-26-deferred-hardening: done
-  2-8-hub-ability-use-outside-training-dummy-poi: backlog
+  2-8-hub-ability-use-outside-training-dummy-poi: ready-for-dev
   epic-2-retrospective: optional
 
   # ─── E3: Core Combat — 4 Alpha Classes ──────────────────────────────────────
@@ -250,7 +250,7 @@ development_status:
   # dungeon combat. Players use abilities, go down, get revived, enter spirit
   # form. "Clear" objective type is operational.
   # FRs: FR9(Clear), FR11, FR12, FR13, FR17, FR18, FR19, FR20, FR21, FR22, FR23
-  epic-3: in-progress
+  epic-3: done
   3-1-xoshiro128-prng-and-planckjs-physics-world: done
   3-2-enemy-ai-base-fsm-and-layered-difficulty-behaviors: done
   3-3-4-alpha-class-implementations-abilities-and-input-types: done
@@ -287,9 +287,9 @@ development_status:
 
   # ─── Dev infra fixes (no epic) ──────────────────────────────────────────────
   dev-1-mobile-controller-network-binding: done
-  dev-2-controller-rotation-lock-enforcement: backlog
-  dev-3-controller-fullscreen-toggle: backlog
-  dev-4-debug-invincible-high-damage-mode: backlog
+  dev-2-controller-rotation-lock-enforcement: ready-for-dev
+  dev-3-controller-fullscreen-toggle: ready-for-dev
+  dev-4-debug-invincible-high-damage-mode: ready-for-dev
 
   # ─── E4: Procedural Dungeon & Full Run Structure ────────────────────────────
   # Vote to start a run, 3 procedural levels, deterministic seed system,
@@ -307,8 +307,8 @@ development_status:
   4-9-epic-4-deferred-hardening: done
   4-10-epic-4-post-49-deferred-hardening: done
   4-11-epic-4-post-410-deferred-hardening: done
-  4-12-full-hp-restore-on-level-transition: backlog
-  4-13-vote-accept-button-submitted-state: backlog
+  4-12-full-hp-restore-on-level-transition: ready-for-dev
+  4-13-vote-accept-button-submitted-state: ready-for-dev
   epic-4-retrospective: optional
 
   # ─── E5: Spirit Bond System ─────────────────────────────────────────────────
@@ -337,8 +337,8 @@ development_status:
   6-4-boss-defeat-sequence-purification-pulse-and-reward-reveal: done
   6-5-grassland-biome-achievements: done
   6-6-epic-6-deferred-hardening: done
-  6-7-boss-combat-resolution-wiring: backlog
-  6-8-floating-damage-numbers-regular-enemies: backlog
+  6-7-boss-combat-resolution-wiring: ready-for-dev
+  6-8-floating-damage-numbers-regular-enemies: ready-for-dev
   epic-6-retrospective: optional
 
   # ─── E7: Progression & Persistent Meta ──────────────────────────────────────
