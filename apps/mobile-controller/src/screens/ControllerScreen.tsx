@@ -973,7 +973,6 @@ export function ControllerScreen({ session, gameState, cooldowns, bondNotificati
   const [joystickOriginState, setJoystickOriginState] = useState<{ x: number; y: number } | null>(null);
   const [joystickKnobOffset, setJoystickKnobOffset] = useState({ x: 0, y: 0 });
   const [classSelectionOpen, setClassSelectionOpen] = useState(false);
-  const [trainingDummyActive, setTrainingDummyActive] = useState(false);
   const [dungeonEntranceOpen, setDungeonEntranceOpen] = useState(false);
   const inDungeon = gameState?.session.phase === 'dungeon';
   const [tapFlash, setTapFlash] = useState<boolean[]>([false, false, false, false]);
@@ -983,13 +982,6 @@ export function ControllerScreen({ session, gameState, cooldowns, bondNotificati
   useEffect(() => {
     sessionRef.current = session;
   }, [session]);
-
-  // Clear training mode when player moves away from training dummy
-  useEffect(() => {
-    if (activePoi !== 'training-dummy') {
-      setTrainingDummyActive(false);
-    }
-  }, [activePoi]);
 
   useEffect(() => {
     if (activePoi !== 'dungeon-entrance') {
@@ -1186,7 +1178,6 @@ export function ControllerScreen({ session, gameState, cooldowns, bondNotificati
         onTap={() => {
           if (inBondMoment && bondNotification === null) { onContinue(); return; }
           if (activePoi === 'class-select') setClassSelectionOpen(true);
-          if (activePoi === 'training-dummy' && confirmedClass !== null) setTrainingDummyActive(true);
           if (activePoi === 'dungeon-entrance') setDungeonEntranceOpen(true);
         }}
       />
@@ -1281,7 +1272,7 @@ export function ControllerScreen({ session, gameState, cooldowns, bondNotificati
           gap: 4,
           padding: 8,
           boxSizing: 'border-box',
-          touchAction: (trainingDummyActive || inDungeon) ? 'none' : 'auto',
+          touchAction: 'none',
           position: 'relative',
         }}
       >
@@ -1297,7 +1288,7 @@ export function ControllerScreen({ session, gameState, cooldowns, bondNotificati
           const isOnCooldown = cd !== null && cd.expiresAt > now;
           const isInteractive = isSpiritCell
             ? !isOnCooldown && !isFrozen && !inBondMoment
-            : (trainingDummyActive || (inDungeon && !isDown && !isSpirit)) && ability !== null && !isOnCooldown && !inBondMoment;
+            : (!inDungeon || (!isDown && !isSpirit)) && ability !== null && !isOnCooldown && !inBondMoment;
           const badgeBorderColor = ability !== null
             ? (ability.inputType === 'AUTO' ? 'var(--accent-spirit)'
               : ability.inputType === 'RELEASE' ? 'var(--accent-warm)'

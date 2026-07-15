@@ -785,6 +785,20 @@ If the server adds a new `GrasslandAchievement` value before the host client is 
 **D-6.6-B — `handleReconnect` doesn't reset `runOutcome`/`runVictoryEssence`** [`apps/mobile-controller/src/App.tsx`]
 `handleReconnect` resets cooldowns, bond state, and connection state but not `runOutcome` or `runVictoryEssence`. The new hub-phase `useEffect` covers the normal path (server sends hub snapshot → effect fires → state cleared). Edge case: player reconnects into a still-`post-run` room where `lastRunReward` has been cleared on the server (e.g., host crashed and room restarted), leaving `runVictoryEssence` stale from the previous run. Low probability; fix when stale post-run state is reported.
 
+## Deferred from: code review of 2-8-hub-ability-use-outside-training-dummy-poi (2026-07-15)
+
+**D-2.8-A — `isInteractive`'s `!inDungeon` short-circuit bypasses `isDown`/`isSpirit` outside a dungeon** [`apps/mobile-controller/src/screens/ControllerScreen.tsx:1291`]
+`(!inDungeon || (!isDown && !isSpirit))` never evaluates the `isDown`/`isSpirit` clause when `inDungeon` is false. Currently unreachable in practice: `App.tsx` routes the `post-run` phase away from `ControllerScreen` to `PostRunMobileScreen`, and `resetToHub` unconditionally zeroes `isDown`/`isSpirit` before `hub`/`lobby` ever render `ControllerScreen` again. But the client has no independent gate of its own — if that routing ever changes, a downed/spirit player could see an incorrectly-interactive skill cell. Server-side is unaffected (GameRoom.ts's own `isDown`/`isSpirit` guard at line 1896 still blocks the actual ability dispatch).
+
+**D-2.8-B — No automated test coverage for the `ControllerScreen.tsx` interactivity-gate rewrite** [`apps/mobile-controller/src/screens/ControllerScreen.tsx`]
+The riskier of this story's two diff hunks (a boolean-expression rewrite gating real touch input) ships with zero test coverage. Consistent with this repo's pre-existing lack of any `apps/mobile-controller` test precedent (confirmed: no `.test.*` files exist under that app), so this is not a regression introduced by 2.8, but the gap remains real.
+
+**D-2.8-C — No regression test for the surviving ability-input guards** [`apps/simulation-server/src/rooms/GameRoom.ts:1896`]
+`isFrozen`/`isDown`/`isSpirit`/`player.class === null` still gate ability processing (unchanged by this story) but no test asserts any of them still reject input post-change. Pre-existing gap, not introduced by 2.8 and outside its Required Tests scope.
+
+**D-2.8-D — `raceTimeout` test helper duplicated instead of centralized** [`tests/e2e/hub-ability-use.test.ts`]
+The `raceTimeout` generic (wraps `Promise.race` + `setTimeout`) is copy-pasted verbatim from `ability-dispatch.test.ts` rather than extracted into `tests/helpers/`. Low risk, but the next e2e test file will likely copy it a third time. Out of this story's Allowed Paths (adding/editing a shared helper file wasn't in scope).
+
 **D-6.6-C — Reconnecting player during the 5.5s purification window lands on ControllerScreen then abruptly jumps to PostRunMobileScreen** [`apps/simulation-server/src/rooms/GameRoom.ts:1184`]
 While online players see the purification animation on the host screen, the mobile client's phase is still `'dungeon'` (only changed via `run:complete` delta or snapshot). A player who reconnects during this 5.5-second window gets a snapshot with `phase='post-run'` immediately from the server but their mobile then shows the controller screen briefly before `run:complete` arrives. No data loss; UX is jarring. Pre-existing design; fix when post-run mobile UX is polished.
 

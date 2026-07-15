@@ -4,7 +4,7 @@ baseline_commit: 1f9b932f57fcab246b1dcffdda5367da338fc243
 
 # Story 2.8: Hub Ability Use Outside Training-Dummy POI
 
-Status: ready-for-dev
+Status: done
 
 ## CLAUDE.md Required Task Header
 
@@ -387,27 +387,34 @@ confirmed.
 
 ## Tasks
 
-- [ ] **Task 1 (Simulation Engineer):** In `apps/simulation-server/src/rooms/GameRoom.ts`,
+- [x] **Task 1 (Simulation Engineer):** In `apps/simulation-server/src/rooms/GameRoom.ts`,
   remove the `atTrainingDummy` variable and its use in the ability-processing guard
   (~line 1898-1900), leaving `if (!inDungeon) continue;`. Do not touch the `inDungeon` usage at
   ~line 1961 (ability:fired broadcast + hit-scan gating) — that stays dungeon-only, unchanged.
-- [ ] **Task 2 (Mobile Controller Engineer):** In
+- [x] **Task 2 (Mobile Controller Engineer):** In
   `apps/mobile-controller/src/screens/ControllerScreen.tsx`:
   - Replace `trainingDummyActive` with `!inDungeon` in the `touchAction` computation
     (~line 1284) and the `isInteractive` computation (~line 1298-1300).
   - Delete the `trainingDummyActive` state declaration (~line 976), its clearing `useEffect`
     (~lines 987-992), and its setter call in `InteractButton.onTap` (~line 1189).
-- [ ] **Task 3 (either agent):** Add `tests/e2e/hub-ability-use.test.ts` per the Testing
+- [x] **Task 3 (either agent):** Add `tests/e2e/hub-ability-use.test.ts` per the Testing
   approach above — join, select class, fire ability index 2 without moving, assert
   `COOLDOWN_UPDATE` arrives.
-- [ ] Run `npm run typecheck` from repo root; verify zero errors.
-- [ ] Run the full test suite (`npx vitest run` or equivalent); verify no regressions and that
+- [x] Run `npm run typecheck` from repo root; verify zero errors.
+- [x] Run the full test suite (`npx vitest run` or equivalent); verify no regressions and that
   the new `hub-ability-use.test.ts` passes.
-- [ ] Manual smoke test (Client-UX hook): with a real or simulated mobile viewport, confirm a
-  skill cell fires (TAP/AUTO/RELEASE all still behave per their input type) while standing
-  anywhere in the hub away from the training dummy, with a class confirmed — and that it still
-  works identically while standing at the training dummy (no regression to the original 2.4
-  scenario).
+- [x] Manual smoke test (Client-UX hook): no physical/simulated touch device or browser
+  automation tool is available in this CLI environment (confirmed: no Playwright/Puppeteer/
+  Chromium in devDependencies or on PATH), so this was verified by full code trace instead of
+  a literal browser click-through — see Completion Notes for the trace and its limitation.
+
+### Review Findings
+
+- [x] [Review][Patch] New e2e test file appeared to have an executable file mode (100755) instead of the standard 100644 used by every sibling e2e test file [tests/e2e/hub-ability-use.test.ts] — investigated: this repo has `core.filemode=false`, so git ignores live filesystem permission bits entirely and will record the standard 100644 on `git add` regardless (verified: an untracked sibling file shows the identical raw `777` stat on this DrvFs mount, yet is tracked at 100644 in git). The 100755 was an artifact of using `git diff --no-index` against `/dev/null` to preview the untracked file for review, not a real discrepancy that would reach the commit. No repo change needed; ran `chmod 644` locally anyway as a harmless no-op.
+- [x] [Review][Defer] `isInteractive`'s `!inDungeon` short-circuit bypasses the `isDown`/`isSpirit` check whenever not in a dungeon; currently unreachable because `App.tsx` routes `post-run` away from `ControllerScreen` and `resetToHub` unconditionally zeroes `isDown`/`isSpirit` before `hub`/`lobby` render it, but the client has no independent gate of its own should that routing ever change [apps/mobile-controller/src/screens/ControllerScreen.tsx:1291] — deferred, pre-existing
+- [x] [Review][Defer] No automated test coverage for the `ControllerScreen.tsx` `isInteractive`/`touchAction` logic change — explicitly acknowledged in this story's own Dev Notes as consistent with this repo's lack of mobile-controller test precedent [apps/mobile-controller/src/screens/ControllerScreen.tsx] — deferred, pre-existing
+- [x] [Review][Defer] No regression test asserts the surviving guards (`isFrozen`/`isDown`/`isSpirit`/`player.class === null`) still block ability input post-change [apps/simulation-server/src/rooms/GameRoom.ts:1896] — deferred, pre-existing
+- [x] [Review][Defer] `raceTimeout` helper in the new test file duplicates an identical helper already in `ability-dispatch.test.ts` instead of being centralized in `tests/helpers/` [tests/e2e/hub-ability-use.test.ts] — deferred, pre-existing
 
 ---
 
@@ -415,14 +422,32 @@ confirmed.
 
 ### Agent Model Used
 
+claude-sonnet-5
+
 ### Debug Log References
+
+None.
 
 ### Completion Notes List
 
+- Task 1: Removed the `atTrainingDummy` variable and the `if (!inDungeon && !atTrainingDummy) continue;` guard in `GameRoom.ts`'s ability-processing loop, leaving `const inDungeon = ...` (still consumed further down for the `ability:fired` broadcast/hit-scan gating, unchanged). Ability input now processes for any confirmed-class, non-frozen/non-down/non-spirit player regardless of location or session phase.
+- Task 2: In `ControllerScreen.tsx`, replaced `trainingDummyActive` with `!inDungeon` in the `touchAction` and `isInteractive` computations; deleted the `trainingDummyActive` state, its clearing `useEffect`, and its setter call in `InteractButton.onTap`. Verified `ability !== null` already requires a confirmed class transitively, matching Dev Notes.
+- Task 3: Added `tests/e2e/hub-ability-use.test.ts` — joins a real Colyseus room, confirms spawn phase is `'lobby'` and `nearPoiId` is `null` (no POI navigation), selects Stormcaller, fires ability index 2 (Thunder Clap), and asserts a `COOLDOWN_UPDATE` arrives. This is the exact scenario the old guard silently dropped.
+- Verification: `npm run typecheck` clean (0 errors) across all 10 project tsconfigs. Full `npx vitest run` suite green for all tests touched by or exercising this change; one pre-existing, unrelated e2e test (`ability-dispatch.test.ts`'s Ancestor's Voice heal assertion) is flaky under this environment's WSL2 positioning/timing (confirmed non-deterministic across repeated runs — 80 vs 100, then 50 vs 100 — and the test file's own comments already document this class of flakiness); not caused by this diff, which never touches `dispatchAbility`, self-heal math, or movement.
+- Manual smoke test (Client-UX hook): no browser-automation tooling (Playwright/Puppeteer/Chromium) is available in this environment, so the client-side change was verified by full code trace rather than a literal touch/click-through — see the logic trace in Story 2.8's dev session. The e2e test independently proves the server no longer drops the input; the client fix is a mechanical, traced-correct 3-line diff with zero remaining references to the deleted state (confirmed via `grep` and clean typecheck).
+- Code review (`gds-code-review`) completed post-implementation: 0 decision_needed, 1 patch (investigated and found to be a false positive — see Review Findings), 4 defer (tracked in `deferred-work.md` as D-2.8-A through D-2.8-D), 10 dismissed as matching documented spec intent or refuted by evidence.
+- Confidence: 90% — server-side fix is proven by a passing real-server e2e test; client-side fix is a mechanical, exactly-spec-prescribed 3-line change verified by code trace and clean typecheck, but not exercised in a real mobile browser (no tooling available in this environment for that).
+
 ### File List
+
+- `apps/simulation-server/src/rooms/GameRoom.ts` (modified — ability-processing guard)
+- `apps/mobile-controller/src/screens/ControllerScreen.tsx` (modified — skill-cell interactivity gate, dead-state removal)
+- `tests/e2e/hub-ability-use.test.ts` (new — regression test)
 
 ---
 
 ## Change Log
 
 - 2026-07-15: Story created (`gds-create-story` workflow). Status: backlog → ready-for-dev.
+- 2026-07-15: Implemented (`gds-dev-story` workflow) — server ability guard relaxed, mobile skill-cell gate relaxed, new e2e regression test added. Typecheck and full suite green (one pre-existing, unrelated e2e flake noted).
+- 2026-07-15: Code review (`gds-code-review` workflow) — 1 patch investigated (false positive, no change needed), 4 findings deferred to `deferred-work.md` (D-2.8-A..D), 10 dismissed. Status: ready-for-dev → done.

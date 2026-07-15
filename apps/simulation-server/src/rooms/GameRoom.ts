@@ -1887,7 +1887,7 @@ export class GameRoom extends Room {
       }
     }
 
-    // Process ability inputs — valid in dungeon phase or near training dummy
+    // Process ability inputs — valid anywhere in the hub, or in dungeon phase
     for (const { clientId, msg } of this.inputQueue) {
       if (msg.event.type !== 'ability') continue;
       const { abilityIndex, directionX, directionY } = msg.event.ability;
@@ -1896,8 +1896,6 @@ export class GameRoom extends Room {
       if (!player || player.class === null || player.isFrozen || player.isDown || player.isSpirit) continue;
 
       const inDungeon = this.gameState.session.phase === 'dungeon';
-      const atTrainingDummy = player.nearPoiId === 'training-dummy';
-      if (!inDungeon && !atTrainingDummy) continue;
 
       const playerCooldowns = this.cooldownMap.get(clientId);
       if (!playerCooldowns) continue;

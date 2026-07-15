@@ -1,5 +1,5 @@
 # generated: 2026-06-22
-# last_updated: 2026-07-15
+# last_updated: 2026-07-15 (2-8-hub-ability-use-outside-training-dummy-poi → done)
 # project: party-delve
 # project_key: NOKEY
 # tracking_system: file-system
@@ -242,7 +242,7 @@ development_status:
   2-5-server-persistent-joystick-vector: done
   2-6-epic-2-deferred-hardening: done
   2-7-epic-2-post-26-deferred-hardening: done
-  2-8-hub-ability-use-outside-training-dummy-poi: ready-for-dev
+  2-8-hub-ability-use-outside-training-dummy-poi: done
   epic-2-retrospective: optional
 
   # ─── E3: Core Combat — 4 Alpha Classes ──────────────────────────────────────
