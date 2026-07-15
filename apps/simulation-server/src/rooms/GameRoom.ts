@@ -994,10 +994,12 @@ export class GameRoom extends Room {
         player.isDown = false;
         player.isSpirit = false;
         player.reviveTimerExpiresAt = 0;
-        player.hp = REVIVE_HP;
         // Flush class-ability cooldowns that expired during spirit form (AC7 fix)
         if (wasSpirit) this.flushExpiredClassCooldowns(player.id);
       }
+      // Full HP restore on every level transition (Story 4.12) — applies to every player,
+      // not only the isDown/isSpirit subset; matches resetToHub()'s existing pattern.
+      player.hp = player.maxHp;
       const spawnIdx = this.gameState.players.indexOf(player);
       const spawn = DUNGEON_SPAWN_POSITIONS[spawnIdx] ?? { x: 400, y: 540 };
       player.x = spawn.x;

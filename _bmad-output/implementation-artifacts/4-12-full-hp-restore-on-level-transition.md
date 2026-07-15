@@ -4,7 +4,7 @@ baseline_commit: 1f9b932f57fcab246b1dcffdda5367da338fc243
 
 # Story 4.12: Full HP Restore on Level Transition
 
-Status: ready-for-dev
+Status: done
 
 ## CLAUDE.md Required Task Header
 
@@ -124,21 +124,31 @@ the previous level
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1** (AC: #1) — In `GameRoom.loadLevel()`'s player-reset loop
+- [x] **Task 1** (AC: #1) — In `GameRoom.loadLevel()`'s player-reset loop
   (`apps/simulation-server/src/rooms/GameRoom.ts`, ~line 990-1007), move the HP assignment
   out of the `if (player.isDown || player.isSpirit)` branch so it runs unconditionally for
   every player, and change its value from `REVIVE_HP` to `player.maxHp`. See exact diff below.
-- [ ] **Task 2** (AC: #1) — Verify the down/spirit branch still clears `isDown`, `isSpirit`,
+- [x] **Task 2** (AC: #1) — Verify the down/spirit branch still clears `isDown`, `isSpirit`,
   `reviveTimerExpiresAt`, and still flushes expired class-ability cooldowns for players who
   were in spirit form — none of that logic changes, only the HP line moves and its value
   changes.
-- [ ] **Task 3** (AC: #4) — Add unit test coverage in `apps/simulation-server/tests/`
+- [x] **Task 3** (AC: #4) — Add unit test coverage in `apps/simulation-server/tests/`
   mirroring the corrected reset-loop logic: one case for a partial-HP survivor (not
   down/spirit) landing at `maxHp`, one case for a down/spirit player landing at `maxHp` (not
   `REVIVE_HP`) with down/spirit state still cleared correctly.
-- [ ] Run `npm run typecheck` (full monorepo) — confirm 0 errors.
-- [ ] Run the full Vitest suite (`npx vitest run` from monorepo root) — confirm no
+- [x] Run `npm run typecheck` (full monorepo) — confirm 0 errors.
+- [x] Run the full Vitest suite (`npx vitest run` from monorepo root) — confirm no
   regressions, especially `tests/e2e/full-run.test.ts` (level-transition paths).
+
+### Review Findings
+
+- [x] [Review][Defer] `isFrozen` is never cleared in `loadLevel()`'s reset loop
+  [apps/simulation-server/src/rooms/GameRoom.ts:990-1002] — deferred, pre-existing. A
+  disconnected/frozen player passing through a level transition keeps `isFrozen === true`
+  (and now also gets healed to `maxHp` and repositioned, same as every other player), unlike
+  `resetToHub()` which explicitly clears `isFrozen`. This behavior predates this story —
+  `loadLevel()`'s reset loop never touched `isFrozen`, before or after this diff — and is out
+  of this story's HP-only scope.
 
 ---
 
@@ -352,8 +362,43 @@ worth carrying forward here:
 
 ### Agent Model Used
 
+Claude Sonnet 5
+
 ### Debug Log References
+
+- `npm run typecheck` (full monorepo): 0 errors.
+- `npx vitest run` (full suite): PASS (511/512 non-skipped prior to this story's new tests),
+  1 pre-existing failure in `tests/e2e/ability-dispatch.test.ts` ("Ancestor's Voice...AC1") —
+  confirmed present on baseline (`git stash` of the `GameRoom.ts` change, re-ran, same failure
+  with a different random hp value each run). This is the race condition the test's own
+  comment already documents (an incidental enemy-melee `player:hp-updated` delta can land
+  before the heal delta within the wait window) — unrelated to this story's change.
+- Also observed a second pre-existing flaky failure on one full-suite run,
+  `tests/e2e/full-run.test.ts` "boss defeat path" (elapsed-time assertion, `ponytail:` comment
+  in that file already flags WSL2 event-loop jitter as a known source of timing flakiness).
+  Reproduced identically on baseline via the same stash/re-run check — not a regression from
+  this story.
+- New test file `apps/simulation-server/tests/game-room-level-transition-hp.test.ts` run in
+  isolation: PASS (3/3).
 
 ### Completion Notes List
 
+- Moved `player.hp = ...` out of the `if (player.isDown || player.isSpirit)` branch in
+  `GameRoom.loadLevel()` and changed its value from `REVIVE_HP` to `player.maxHp`, so every
+  player's HP is restored to full on every level transition, matching `resetToHub()`'s
+  existing unconditional-reset pattern. `REVIVE_HP` import remains valid — still used at the
+  mid-level revive-by-proximity and Soul Mend revive call sites (untouched by this story).
+- Added 3 unit tests mirroring the corrected reset-loop logic (partial-HP survivor, down
+  player, spirit player) — all assert `hp === maxHp` post-transition; down/spirit tests also
+  assert `isDown`/`isSpirit`/`reviveTimerExpiresAt` are still cleared.
+- Full monorepo typecheck: 0 errors. Full Vitest suite: no regressions from this change;
+  2 pre-existing flaky e2e failures confirmed unrelated (reproduced identically on the
+  pre-story baseline).
+- Confidence: 95% — single-line-scope fix matching an established in-file precedent
+  (`resetToHub()`), all ACs directly verified by new unit tests, and the only test-suite
+  failures were confirmed pre-existing via baseline comparison.
+
 ### File List
+
+- `apps/simulation-server/src/rooms/GameRoom.ts` (modified)
+- `apps/simulation-server/tests/game-room-level-transition-hp.test.ts` (new)

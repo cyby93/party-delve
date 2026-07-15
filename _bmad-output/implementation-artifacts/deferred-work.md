@@ -1017,3 +1017,10 @@ The e2e test's movement-timing math depends on matching the server's actual per-
 
 **D-3.22-D — Shield magnitude has no lower/upper bound validation, unlike every other status-effect type** [`packages/game-rules/src/systems/status-effects.ts` line 20, consumed at `packages/game-rules/src/systems/player-health.ts`]
 `applyStatusEffect` exempts `'shield'` from its `0 ≤ magnitude ≤ 1` guard (correctly, since shield magnitude is flat HP, not a fraction) — but this means a negative or unbounded shield magnitude would reach `applyPlayerDamage`'s absorption arithmetic with no clamp at all. Not reachable today: the only producer of `'shield'` effects in the entire codebase is Warding Cry, with a hardcoded `magnitude: 30` (`packages/game-rules/src/balance.ts:213`). Revisit if a future ability computes a dynamic shield magnitude (e.g. scaled by caster stat or level) without its own clamp — a negative magnitude would make `absorbed` negative, inflating `hpDamage` above the pre-shield mitigated damage while simultaneously growing the shield's stored magnitude each hit.
+
+---
+
+## Deferred from: code review of 4-12-full-hp-restore-on-level-transition (2026-07-15)
+
+**D1 — `isFrozen` is never cleared in `loadLevel()`'s reset loop** [`apps/simulation-server/src/rooms/GameRoom.ts:990-1002`]
+A disconnected/frozen player passing through a level transition keeps `isFrozen === true` (and, after this story's fix, also gets healed to `maxHp` and repositioned like every other player), unlike `resetToHub()` which explicitly clears `isFrozen`. This predates Story 4.12 — `loadLevel()`'s reset loop never touched `isFrozen`, before or after this diff — and is out of this story's HP-only scope. Revisit if frozen/disconnected-player state during level transitions is ever reported as a real player-facing issue.

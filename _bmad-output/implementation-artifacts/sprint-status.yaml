@@ -1,5 +1,5 @@
 # generated: 2026-06-22
-# last_updated: 2026-07-15 (2-8-hub-ability-use-outside-training-dummy-poi → done)
+# last_updated: 2026-07-15 (4-12-full-hp-restore-on-level-transition → done)
 # project: party-delve
 # project_key: NOKEY
 # tracking_system: file-system
@@ -307,7 +307,7 @@ development_status:
   4-9-epic-4-deferred-hardening: done
   4-10-epic-4-post-49-deferred-hardening: done
   4-11-epic-4-post-410-deferred-hardening: done
-  4-12-full-hp-restore-on-level-transition: ready-for-dev
+  4-12-full-hp-restore-on-level-transition: done
   4-13-vote-accept-button-submitted-state: ready-for-dev
   epic-4-retrospective: optional
 
