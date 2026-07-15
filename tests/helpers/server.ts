@@ -18,6 +18,10 @@ export async function startTestServer(port = TEST_PORT): Promise<void> {
     cwd: SIM_DIR,
     env: { ...process.env, PORT: String(port) },
     stdio: ['ignore', 'pipe', 'pipe'],
+    // ponytail: own process group so we can kill tsx's spawned node child too —
+    // tsx's cli.mjs spawns a separate grandchild to actually run the script, and
+    // killing only the outer PID leaves that grandchild running as a WSL2 orphan.
+    detached: true,
   });
 
   return new Promise((resolve, reject) => {
@@ -61,11 +65,17 @@ export async function startTestServer(port = TEST_PORT): Promise<void> {
 export async function stopTestServer(): Promise<void> {
   const proc = serverProcess;
   serverProcess = null;
-  if (!proc || proc.exitCode !== null) return;
-  // ponytail: SIGKILL instead of SIGTERM — tsx spawns a node child on WSL2 that survives SIGTERM
+  if (!proc || proc.exitCode !== null || !proc.pid) return;
+  // ponytail: kill the whole process group (negative pid) — tsx's cli.mjs spawns
+  // its own node child to run the script, so killing only proc.pid orphans that
+  // child instead of stopping it.
   return new Promise<void>((resolve) => {
     proc.once('exit', () => resolve());
-    proc.kill('SIGKILL');
+    try {
+      process.kill(-proc.pid!, 'SIGKILL');
+    } catch {
+      proc.kill('SIGKILL');
+    }
     setTimeout(resolve, 2_000); // safety fallback
   });
 }
