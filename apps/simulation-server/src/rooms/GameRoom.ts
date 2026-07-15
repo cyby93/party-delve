@@ -9,18 +9,18 @@ import type { World } from 'planck';
 import {
   createPhysicsWorld, createPlayerBody, createPoiSensorBody, createEssenceSensorBody,
   extractPoiBeginContact, extractPoiEndContact, extractEssenceBeginContact, toMeters, toPixels,
-  CAT_BOSS,
+  CAT_BOSS, createZoneBody, createProjectileBody,
 } from '../physics/world.js';
 import type { PoiBeginContactEvent, PoiEndContactEvent, EssenceBeginContactEvent, PhysicsBodyData } from '../physics/world.js';
-import { createRng, tickEnemy, dispatchAbility, getEnemyCount, applyDamage, isInHitZone, ABILITY_HIT_RANGE_PX, ABILITY_HIT_RADIUS_PX, applyPlayerDamage, getReviveWindowMs, ENEMY_MELEE_DAMAGE, ENEMY_MELEE_RANGE_PX, ENEMY_ATTACK_COOLDOWN_MS, REVIVE_RADIUS_PX, REVIVE_HP, SPIRIT_ABILITY_COOLDOWN_MS, generateFloorLayout, GRASSLAND_ROOM_POOL, WAVE_COUNTS, WAVE_PAUSE_MS, WAVE_ENEMY_SCALE, bondKey, getProximityBuffedPlayers, getFateBuffedPlayers, getFateBondWipeTargets, getProximityDrainTargets, BOND_PROXIMITY_RANGE_PX, BOND_DRAIN_THRESHOLD_S, BOND_DRAIN_HP_PER_TICK, BOND_DAMAGE_MULT, BOND_SPEED_MULT, assignBond, BOND_DESCRIPTIONS, BOND_MECHANICS, createBossState, tickBoss, BOSS_ADD_HP, BOSS_STOMP_DAMAGE, evaluateGrasslandAchievements, JOYSTICK_DEADBAND, createEasyLayers, createNormalLayers, createHardLayers } from 'game-rules';
-import type { BehaviorLayer, EnemyContext, EnemyAIEvent, BossEvent, BossStompedEvent } from 'game-rules';
+import { createRng, tickEnemy, dispatchAbility, getEnemyCount, applyDamage, isInHitZone, ABILITY_HIT_RANGE_PX, ABILITY_HIT_RADIUS_PX, ABILITY_DAMAGE, applyPlayerDamage, getReviveWindowMs, ENEMY_MELEE_DAMAGE, ENEMY_MELEE_RANGE_PX, ENEMY_ATTACK_COOLDOWN_MS, REVIVE_RADIUS_PX, REVIVE_HP, SPIRIT_ABILITY_COOLDOWN_MS, generateFloorLayout, GRASSLAND_ROOM_POOL, WAVE_COUNTS, WAVE_PAUSE_MS, WAVE_ENEMY_SCALE, bondKey, getProximityBuffedPlayers, getFateBuffedPlayers, getFateBondWipeTargets, getProximityDrainTargets, BOND_PROXIMITY_RANGE_PX, BOND_DRAIN_THRESHOLD_S, BOND_DRAIN_HP_PER_TICK, BOND_DAMAGE_MULT, BOND_SPEED_MULT, assignBond, BOND_DESCRIPTIONS, BOND_MECHANICS, createBossState, tickBoss, BOSS_ADD_HP, BOSS_STOMP_DAMAGE, evaluateGrasslandAchievements, JOYSTICK_DEADBAND, createEasyLayers, createNormalLayers, createHardLayers, tickStatusEffects, getStatusEffectMagnitude, applyStatusEffect, resolveProjectileHit, isProjectileExpired, shouldZoneTick, isZoneExpired, PROJECTILE_MAX_RANGE_PX, PROJECTILE_SPEED_PX_S, ABILITY_CHAINED_ZONE, ABILITY_STATUS_EFFECT, ABILITY_DISPLACEMENT_STRENGTH, applyDisplacement, resolveMixedFactionTargets, healPlayer, calculateLifesteal, resolveExpandingRadius, ABILITY_HEAL_AMOUNT, SPIRIT_NOVA_DURATION_MS, SPIRIT_NOVA_MAX_RADIUS_PX, findSoulMendTarget, shouldCancelSoulMendChannel, reviveBySoulMend, SOUL_MEND_CHANNEL_DURATION_MS, SOUL_MEND_LIVENESS_MS, ABILITY_COOLDOWNS_MS, ABILITY_DELIVERY, ABILITY_LIFESTEAL_PCT, VOID_PULSE_PULL_STRENGTH_PX, DARK_PACT_DRAIN_PCT, STORM_EYE_ZONE_RADIUS_PX, STORM_EYE_TICK_MS, STORM_EYE_TICK_DAMAGE, STORM_EYE_DURATION_MS, STORM_EYE_STRIKE_INTERVAL_MS, STORM_EYE_STRIKE_DAMAGE, pickRandomIndex } from 'game-rules';
+import type { BehaviorLayer, EnemyContext, EnemyAIEvent, BossEvent, BossStompedEvent, ChainedZoneConfig } from 'game-rules';
 import { BOSS_ARENA_SPAWN_POINTS, loadBossArena } from '../levels/boss-arena.js';
 import { CLASS_DEFINITIONS } from 'shared-types';
-import type { EnemyState } from 'shared-types';
+import type { EnemyState, StatusEffect, ZoneState, ProjectileState } from 'shared-types';
 import { EnemyType, DifficultyTier, EnemyFSMState, OFFSET_ENEMY_SPAWN, OFFSET_FLOOR_LAYOUT, OFFSET_ROOM_POOL, OFFSET_SPIRIT_BOND } from 'shared-types';
 import { createEnemyBody } from '../physics/world.js';
-import { createBondSensor, extractBondSensorContact } from '../physics/sensors.js';
-import type { BondProximityEvent } from '../physics/sensors.js';
+import { createBondSensor, extractBondSensorContact, extractProjectileEnemyContact, extractZoneContact } from '../physics/sensors.js';
+import type { BondProximityEvent, ProjectileEnemyContactEvent, ZoneContactEvent } from '../physics/sensors.js';
 import { logger } from '../logger.js';
 
 // ponytail: boss is level index 4; dungeon runs levels 1-3
@@ -71,6 +71,8 @@ function createEmptyGameState(roomId: string): GameState {
     floorLayout: null,
     runProposal: null,
     boss: null,
+    projectiles: [],
+    zones: [],
   };
 }
 
@@ -92,6 +94,8 @@ function createPlayer(id: string, displayName: string, slotIndex: number): Playe
     nearPoiId: null,
     essenceTotal: 0,
     reviveTimerExpiresAt: 0,
+    statusEffects: [],
+    channelingAbility: null,
   };
 }
 
@@ -147,6 +151,38 @@ export class GameRoom extends Room {
   private lastRunReward: RunReward | null = null;
   private classSelectLastAccepted = new Map<string, number>();
   private levelTransitionFailedFor: number | null = null;
+  // ── Projectiles ────────────────────────────────────────────────────────────
+  private projectileBodies = new Map<string, Body>();
+  private projectileSpawnPositions = new Map<string, { x: number; y: number }>(); // GameRoom-local — not on wire-visible ProjectileState
+  private pendingProjectileHitContacts: Array<ProjectileEnemyContactEvent> = [];
+  // ── Zones ──────────────────────────────────────────────────────────────────
+  private zoneBodies = new Map<string, Body>();
+  private zoneLastTickAtMs = new Map<string, number>();
+  // ponytail: target ids only, no type tag — fine while only 'damage' (enemies-only) is
+  // implemented; Story 3.14's 'pull' effect on players will need a typed key (or a second map)
+  private zoneOverlapping = new Map<string, Set<string>>(); // zoneId → target ids currently in sensor range
+  private zoneDamagePerTick = new Map<string, number>(); // GameRoom-local — not on wire-visible ZoneState
+  private pendingZoneContactBegin: Array<ZoneContactEvent> = [];
+  private pendingZoneContactEnd: Array<ZoneContactEvent> = [];
+  private nextZoneSeq = 0; // disambiguates zone ids when one owner chains 2+ zones in the same tick
+  // Storm Eye's bonus-strike cadence (Story 3.20) — zoneId → lastStrikeAtMs. GameRoom-local,
+  // not on wire-visible ZoneState (would be premature generalization for the one ability that
+  // uses it). Presence of a zoneId in this map marks it strike-eligible — set only when Storm
+  // Eye creates the zone, so the generic zone-tick loop never needs a class/index check.
+  private zoneStrikeTimers = new Map<string, number>();
+  // ── Spirit Nova expanding-radius sweep (Story 3.17) ─────────────────────────
+  // GameRoom-local only — no persistent GameState entity per the story's Non-goals;
+  // resolves within its short duration via ordinary enemy:damaged/player:hp-updated deltas.
+  private activeSpiritNovas: Array<{
+    casterId: string; x: number; y: number;
+    startedAtMs: number; durationMs: number; maxRadiusPx: number;
+    hitIds: Set<string>;
+  }> = [];
+  // ── Soul Mend hold-to-channel (Story 3.18) ──────────────────────────────────
+  // GameRoom-local — not on the wire; caster id → epoch ms of the last AIM_CAST
+  // fire-attempt received. Drives liveness-timeout cancellation (no explicit
+  // "stop" message exists — see Dev Notes on the story for why).
+  private lastSoulMendInputAt = new Map<string, number>();
 
   async onCreate(_options: unknown): Promise<void> {
     this.roomId = generateRoomCode();
@@ -238,6 +274,13 @@ export class GameRoom extends Room {
         }
         if (player.isFrozen) {
           logger.warn({ clientId: client.sessionId, roomId: this.roomId }, 'CLASS_SELECT from frozen player — discarded');
+          return;
+        }
+        // Soul Mend's channel re-reads `caster.class` fresh every tick for its range/
+        // cooldown lookups (Story 3.18) — switching class mid-channel would corrupt
+        // those lookups, so block class changes while actively channeling.
+        if (player.channelingAbility !== null) {
+          logger.warn({ clientId: client.sessionId, roomId: this.roomId }, 'CLASS_SELECT from mid-channel player — discarded');
           return;
         }
         player.class = classId;
@@ -344,12 +387,19 @@ export class GameRoom extends Room {
       // Bond proximity sensor
       const bondBeginEvt = extractBondSensorContact(contact);
       if (bondBeginEvt) this.pendingBondProximityBegin.push(bondBeginEvt);
+      // Projectile/zone sensors
+      const projectileHitEvt = extractProjectileEnemyContact(contact);
+      if (projectileHitEvt) this.pendingProjectileHitContacts.push(projectileHitEvt);
+      const zoneBeginEvt = extractZoneContact(contact);
+      if (zoneBeginEvt) this.pendingZoneContactBegin.push(zoneBeginEvt);
     });
     this.physicsWorld.on('end-contact', (contact: Contact) => {
       const evt = extractPoiEndContact(contact);
       if (evt) this.pendingPoiEndContacts.push(evt);
       const bondEndEvt = extractBondSensorContact(contact);
       if (bondEndEvt) this.pendingBondProximityEnd.push(bondEndEvt);
+      const zoneEndEvt = extractZoneContact(contact);
+      if (zoneEndEvt) this.pendingZoneContactEnd.push(zoneEndEvt);
     });
 
     this.tickTimer = setInterval(() => {
@@ -402,6 +452,7 @@ export class GameRoom extends Room {
       this.spiritCooldownMap.delete(client.sessionId);
       this.lastKnownJoystick.delete(client.sessionId);
       this.classSelectLastAccepted.delete(client.sessionId);
+      this.lastSoulMendInputAt.delete(client.sessionId);
       const leaveBody = this.playerBodies.get(client.sessionId);
       if (leaveBody) {
         this.physicsWorld.destroyBody(leaveBody);
@@ -474,6 +525,7 @@ export class GameRoom extends Room {
       this.spiritCooldownMap.delete(client.sessionId);
       this.lastKnownJoystick.delete(client.sessionId);
       this.classSelectLastAccepted.delete(client.sessionId);
+      this.lastSoulMendInputAt.delete(client.sessionId);
       const expireBody = this.playerBodies.get(client.sessionId);
       if (expireBody) {
         this.physicsWorld.destroyBody(expireBody);
@@ -613,6 +665,7 @@ export class GameRoom extends Room {
         isAlive: true,
         fsmState: EnemyFSMState.IDLE,
         attackCooldownTicks: 0,
+        statusEffects: [],
       };
       this.gameState.enemies.push(enemy);
       const body = createEnemyBody(this.physicsWorld, id, x, y);
@@ -657,6 +710,7 @@ export class GameRoom extends Room {
         id, type: EnemyType.GRUNT, x, y,
         hp: 60, maxHp: 60, difficultyTier: difficulty,
         isAlive: true, fsmState: EnemyFSMState.IDLE, attackCooldownTicks: 0,
+        statusEffects: [],
       };
       this.gameState.enemies.push(enemy);
       const body = createEnemyBody(this.physicsWorld, id, x, y);
@@ -776,6 +830,28 @@ export class GameRoom extends Room {
     this.pendingPoiEndContacts = [];
     this.pendingEssenceBeginContacts = [];
     this.pendingVictoryContact = false;
+    for (const body of this.projectileBodies.values()) this.physicsWorld.destroyBody(body);
+    this.projectileBodies.clear();
+    this.projectileSpawnPositions.clear();
+    this.pendingProjectileHitContacts.length = 0;
+    this.gameState.projectiles = [];
+    for (const body of this.zoneBodies.values()) this.physicsWorld.destroyBody(body);
+    this.zoneBodies.clear();
+    this.zoneLastTickAtMs.clear();
+    this.zoneOverlapping.clear();
+    this.zoneDamagePerTick.clear();
+    this.zoneStrikeTimers.clear();
+    this.pendingZoneContactBegin.length = 0;
+    this.pendingZoneContactEnd.length = 0;
+    this.gameState.zones = [];
+    this.activeSpiritNovas.length = 0;
+    this.lastSoulMendInputAt.clear();
+    // A mid-channel caster's channelingAbility lives on their own PlayerState (part of
+    // GameState, unlike the GameRoom-local maps above) — must be explicitly cleared here
+    // too, or it leaks into the next run's snapshots (Story 3.18 review finding).
+    this.gameState.players = this.gameState.players.map(p =>
+      p.channelingAbility !== null ? { ...p, channelingAbility: null } : p
+    );
     this.waveIndex = 0;
     this.totalWaves = 0;
     this.wavePauseUntil = 0;
@@ -870,6 +946,23 @@ export class GameRoom extends Room {
     for (const body of this.essenceSensorBodies.values()) this.physicsWorld.destroyBody(body);
     this.essenceSensorBodies.clear();
     this.gameState.essenceDrops = [];
+
+    // Clear projectiles and zones
+    for (const body of this.projectileBodies.values()) this.physicsWorld.destroyBody(body);
+    this.projectileBodies.clear();
+    this.projectileSpawnPositions.clear();
+    this.pendingProjectileHitContacts.length = 0;
+    this.gameState.projectiles = [];
+    for (const body of this.zoneBodies.values()) this.physicsWorld.destroyBody(body);
+    this.zoneBodies.clear();
+    this.zoneLastTickAtMs.clear();
+    this.zoneOverlapping.clear();
+    this.zoneDamagePerTick.clear();
+    this.zoneStrikeTimers.clear();
+    this.pendingZoneContactBegin.length = 0;
+    this.pendingZoneContactEnd.length = 0;
+    this.gameState.zones = [];
+    this.activeSpiritNovas.length = 0;
 
     // Clear previous victory trigger
     if (this.victoryTriggerBody) {
@@ -968,13 +1061,13 @@ export class GameRoom extends Room {
     }
   }
 
-  private buildEnemyContext(enemy: EnemyState): EnemyContext {
+  private buildEnemyContext(enemy: EnemyState, nowMs: number): EnemyContext {
     const dt = 1 / TICK_RATE_HZ;
     const targetable = this.gameState.players.filter(
       p => !p.isFrozen && !p.isDown && !p.isSpirit,
     );
     if (targetable.length === 0) {
-      return { nearestPlayerPos: null, nearestPlayerDistance: Infinity, dt };
+      return { nearestPlayerPos: null, nearestPlayerDistance: Infinity, dt, nowMs };
     }
     let minDist = Infinity;
     let nearest = targetable[0]!;
@@ -987,12 +1080,212 @@ export class GameRoom extends Room {
         nearest = p;
       }
     }
-    return { nearestPlayerPos: { x: nearest.x, y: nearest.y }, nearestPlayerDistance: minDist, dt };
+    return { nearestPlayerPos: { x: nearest.x, y: nearest.y }, nearestPlayerDistance: minDist, dt, nowMs };
+  }
+
+  // Story 3.17: first ability query to gather nearby PLAYERS for a hit zone — every
+  // ability before this story only ever targeted enemies. Mirrors the existing enemy
+  // hit-scan's isInHitZone call; excludes the caster and any player who isn't a valid
+  // interaction target (same isDown/isSpirit/isFrozen guard style as the proximity-revive
+  // block). Used by Ancestor's Voice/Spirit Nova's mixed-faction gather and Warding Cry's
+  // 'allies-in-zone' status-effect scope.
+  private gatherPlayersInHitZone(
+    originX: number,
+    originY: number,
+    dirX: number,
+    dirY: number,
+    hitRadiusPx: number,
+    hitRangePx: number,
+    isDirectional: boolean,
+    casterId: string,
+  ): PlayerState[] {
+    const found: PlayerState[] = [];
+    for (const p of this.gameState.players) {
+      if (p.id === casterId) continue;
+      if (p.isDown || p.isSpirit || p.isFrozen) continue;
+      if (!isInHitZone(originX, originY, dirX, dirY, p.x, p.y, hitRadiusPx, hitRangePx, isDirectional)) continue;
+      found.push(p);
+    }
+    return found;
+  }
+
+  // Ready-to-use for 3.16-3.20's kit-rework stories — no ability calls this yet in 3.12,
+  // so there is no caller here. Applies the effect and broadcasts status:applied; returns
+  // the target unchanged if applyStatusEffect rejects it (e.g. already-expired effect).
+  private applyStatusEffectToTarget<T extends PlayerState | EnemyState>(
+    target: T,
+    effect: StatusEffect,
+    nowMs: number,
+  ): T {
+    const result = applyStatusEffect(target, effect, nowMs);
+    if (!result.ok) return target;
+
+    this.broadcast(EventNames.DELTA, {
+      type: 'status:applied' as const,
+      targetId: target.id,
+      effectType: effect.type,
+      magnitude: effect.magnitude,
+      expiresAtMs: effect.expiresAtMs,
+    } satisfies DeltaEventMsg);
+
+    return result.value.target as T;
+  }
+
+  // Called from the projectile-hit-resolution phase when the hitting ability's
+  // ABILITY_CHAINED_ZONE entry is non-null (Story 3.19's Void Pulse). Declarative —
+  // this method has no knowledge of which ability triggered it.
+  private spawnChainedZone(
+    ownerId: string,
+    x: number,
+    y: number,
+    config: ChainedZoneConfig,
+    damagePerTick: number,
+    nowMs: number,
+  ): void {
+    const zoneId = `zone-${this.tickCount}-${ownerId}-${this.nextZoneSeq++}`;
+    const zone: ZoneState = {
+      id: zoneId,
+      ownerId,
+      x, y,
+      radius: config.radius,
+      effectType: config.effectType,
+      tickIntervalMs: config.tickIntervalMs,
+      expiresAtMs: nowMs + config.durationMs,
+    };
+    this.gameState.zones.push(zone);
+    const body = createZoneBody(this.physicsWorld, zoneId, x, y, config.radius);
+    this.zoneBodies.set(zoneId, body);
+    this.zoneLastTickAtMs.set(zoneId, nowMs);
+    this.zoneOverlapping.set(zoneId, new Set());
+    this.zoneDamagePerTick.set(zoneId, damagePerTick);
+  }
+
+  // dx/dy come from game-rules' applyDisplacement. Direct position mutation,
+  // not body.applyLinearImpulse: see Story 3.14 for why impulses are inert
+  // for both entity types in this tick architecture (velocity gets
+  // overwritten every tick for players). Repositions the physics body and
+  // broadcasts immediately (mirrors applyDisplacementToPlayer below) — the
+  // enemy's own AI tick only emits 'enemy:moved' from tickChase, so an
+  // IDLE/ATTACK-state enemy would otherwise sit displaced server-side with
+  // no client ever told, surfacing as a teleport whenever it next chases.
+  private applyDisplacementToEnemy(enemy: EnemyState, dx: number, dy: number): void {
+    if (dx === 0 && dy === 0) return;
+
+    enemy.x += dx;
+    enemy.y += dy;
+
+    const body = this.enemyBodies.get(enemy.id);
+    if (body) body.setPosition(Vec2(toMeters(enemy.x), toMeters(enemy.y)));
+
+    this.broadcast(EventNames.DELTA, {
+      type: 'enemy:moved' as const,
+      enemyId: enemy.id,
+      x: enemy.x,
+      y: enemy.y,
+    } satisfies DeltaEventMsg);
+  }
+
+  private applyDisplacementToPlayer(playerId: string, dx: number, dy: number): void {
+    if (dx === 0 && dy === 0) return;
+
+    const player = this.gameState.players.find(p => p.id === playerId);
+    const body = this.playerBodies.get(playerId);
+    if (!player || !body) return;
+
+    player.x += dx;
+    player.y += dy;
+    body.setPosition(Vec2(toMeters(player.x), toMeters(player.y)));
+
+    this.broadcast(EventNames.DELTA, {
+      type: 'player:moved' as const,
+      playerId: player.id,
+      x: player.x,
+      y: player.y,
+    } satisfies DeltaEventMsg);
+  }
+
+  // Dark Pact (Souldrinker slot 2, Story 3.19): single-target ally drain + self
+  // damageBuff. Its own dispatch branch — not a hit-scan (no enemy involved), not a
+  // mixed-faction AoE (single nearest ally, not everyone in the zone), and not a
+  // channel (instant RELEASE, unlike Soul Mend). Reuses gatherPlayersInHitZone's
+  // "aim a cone, filter to valid living allies, exclude caster" query shape.
+  // The damageBuff status effect is gated on a target actually being found — no
+  // drain means no buff, per the ability's single linked drain-transfer effect.
+  private handleDarkPact(casterId: string, caster: PlayerState, dirX: number, dirY: number, nowMs: number): void {
+    const abilityIndex = 2;
+    const hitRange = ABILITY_HIT_RANGE_PX[PlayerClass.SOULDRINKER][abilityIndex];
+    const hitRadius = ABILITY_HIT_RADIUS_PX[PlayerClass.SOULDRINKER][abilityIndex];
+    const mag = Math.hypot(dirX, dirY);
+    if (mag === 0) return; // no direction = no target, same rule as every other directional ability
+    const normDirX = dirX / mag;
+    const normDirY = dirY / mag;
+
+    const candidates = this.gatherPlayersInHitZone(caster.x, caster.y, normDirX, normDirY, hitRadius, hitRange, true, casterId);
+    if (candidates.length === 0) return; // aimed at nothing — cooldown still applies (handled by the caller), no drain/buff
+
+    let nearest = candidates[0]!;
+    let nearestDistSq = Infinity;
+    for (const c of candidates) {
+      const dx = c.x - caster.x;
+      const dy = c.y - caster.y;
+      const distSq = dx * dx + dy * dy;
+      if (distSq < nearestDistSq) {
+        nearestDistSq = distSq;
+        nearest = c;
+      }
+    }
+
+    const targetIdx = this.gameState.players.findIndex(p => p.id === nearest.id);
+    if (targetIdx === -1) return;
+    const drainAmount = this.gameState.players[targetIdx]!.hp * DARK_PACT_DRAIN_PCT;
+    const dmgResult = applyPlayerDamage(this.gameState.players[targetIdx]!, drainAmount, nowMs);
+    if (!dmgResult.ok) return; // target became invalid this tick (e.g. concurrently downed) — no drain, no buff
+
+    this.gameState.players[targetIdx] = dmgResult.value.player;
+    this.broadcast(EventNames.DELTA, {
+      type: 'player:hp-updated' as const,
+      playerId: nearest.id,
+      hp: dmgResult.value.player.hp,
+    } satisfies DeltaEventMsg);
+
+    if (dmgResult.value.downed) {
+      this.broadcast(EventNames.DELTA, {
+        type: 'player:downed' as const,
+        playerId: nearest.id,
+        downCount: dmgResult.value.player.downCount,
+        reviveWindowMs: dmgResult.value.reviveWindowMs!,
+        bodyX: dmgResult.value.player.bodyX!,
+        bodyY: dmgResult.value.player.bodyY!,
+      } satisfies DeltaEventMsg);
+      const downedClient = this.clients.find(c => c.sessionId === nearest.id);
+      if (downedClient) {
+        downedClient.send(EventNames.SPIRIT_FORM, { type: 'spirit:form', isActive: false } satisfies SpiritFormMsg);
+      }
+    }
+
+    const casterIdx = this.gameState.players.findIndex(p => p.id === casterId);
+    if (casterIdx === -1) return;
+    this.gameState.players[casterIdx] = healPlayer(this.gameState.players[casterIdx]!, drainAmount);
+    this.broadcast(EventNames.DELTA, {
+      type: 'player:hp-updated' as const,
+      playerId: casterId,
+      hp: this.gameState.players[casterIdx]!.hp,
+    } satisfies DeltaEventMsg);
+
+    const buffConfig = ABILITY_STATUS_EFFECT[PlayerClass.SOULDRINKER][abilityIndex];
+    if (buffConfig) {
+      this.gameState.players[casterIdx] = this.applyStatusEffectToTarget(
+        this.gameState.players[casterIdx]!,
+        { type: buffConfig.effectType, magnitude: buffConfig.magnitude, expiresAtMs: nowMs + buffConfig.durationMs },
+        nowMs,
+      );
+    }
   }
 
   private tick(): void {
     this.tickCount++;
     this.gameState.tick = this.tickCount;
+    const tickNowMs = Date.now();
 
     // Pre-compute bond buff sets for this tick (empty unless activeBonds is populated by 5.4)
     const spiritPlayerIds = this.gameState.activeBonds.length > 0
@@ -1032,7 +1325,9 @@ export class GameRoom extends Room {
       const jy = joystick?.y ?? 0;
       const inDeadzone = Math.abs(jx) < JOYSTICK_DEADBAND && Math.abs(jy) < JOYSTICK_DEADBAND;
 
-      const speed = (fateBuffed.has(player.id) && !player.isSpirit) ? SPEED * BOND_SPEED_MULT : SPEED;
+      const bondSpeed = (fateBuffed.has(player.id) && !player.isSpirit) ? SPEED * BOND_SPEED_MULT : SPEED;
+      const slowMagnitude = getStatusEffectMagnitude(player, 'slow', tickNowMs);
+      const speed = bondSpeed * (1 - slowMagnitude);
       body.setLinearVelocity(inDeadzone
         ? Vec2(0, 0)
         : Vec2(toMeters(jx * speed), toMeters(jy * speed))
@@ -1062,6 +1357,15 @@ export class GameRoom extends Room {
         } satisfies DeltaEventMsg;
         this.broadcast(EventNames.DELTA, delta);
       }
+    }
+
+    // ── Planck phase 3b: read back projectile positions ──────────────────────────
+    for (const projectile of this.gameState.projectiles) {
+      const body = this.projectileBodies.get(projectile.id);
+      if (!body) continue;
+      const pos = body.getPosition();
+      projectile.x = toPixels(pos.x);
+      projectile.y = toPixels(pos.y);
     }
 
     // ── Planck phase 4: process POI contact events from this tick's world.step() ─
@@ -1121,6 +1425,283 @@ export class GameRoom extends Room {
     }
     this.pendingEssenceBeginContacts.length = 0;
 
+    // ── Flush zone overlap contacts (begin/end-contact tracking, bond-sensor style) ─
+    for (const { zoneId, targetId } of this.pendingZoneContactBegin) {
+      let overlap = this.zoneOverlapping.get(zoneId);
+      if (!overlap) {
+        overlap = new Set();
+        this.zoneOverlapping.set(zoneId, overlap);
+      }
+      overlap.add(targetId);
+    }
+    for (const { zoneId, targetId } of this.pendingZoneContactEnd) {
+      this.zoneOverlapping.get(zoneId)?.delete(targetId);
+    }
+    this.pendingZoneContactBegin.length = 0;
+    this.pendingZoneContactEnd.length = 0;
+
+    // ── Zone tick/expiry ──────────────────────────────────────────────────────
+    for (let zi = this.gameState.zones.length - 1; zi >= 0; zi--) {
+      const zone = this.gameState.zones[zi]!;
+
+      if (isZoneExpired(zone, tickNowMs)) {
+        this.gameState.zones.splice(zi, 1);
+        const zoneBody = this.zoneBodies.get(zone.id);
+        if (zoneBody) {
+          this.physicsWorld.destroyBody(zoneBody);
+          this.zoneBodies.delete(zone.id);
+        }
+        this.zoneLastTickAtMs.delete(zone.id);
+        this.zoneOverlapping.delete(zone.id);
+        this.zoneDamagePerTick.delete(zone.id);
+        this.zoneStrikeTimers.delete(zone.id);
+        this.broadcast(EventNames.DELTA, { type: 'zone:expired' as const, zoneId: zone.id } satisfies DeltaEventMsg);
+        continue;
+      }
+
+      const lastTick = this.zoneLastTickAtMs.get(zone.id) ?? 0;
+      if (!shouldZoneTick(zone, tickNowMs, lastTick)) continue;
+      this.zoneLastTickAtMs.set(zone.id, tickNowMs);
+
+      if (zone.effectType === 'pull') {
+        // Void Pulse (Story 3.19): pulls both allies and enemies toward the zone
+        // center using Story 3.14's displacement primitive. Excludes isDown/
+        // isSpirit/isFrozen players from being pulled — resolves D-3.14-A's
+        // still-open player-side liveness gap, mirroring gatherPlayersInHitZone's
+        // exact same three-flag exclusion. Dead enemies are skipped the same way
+        // Story 3.16's Stone Wall gates its own displacement call.
+        const overlapping = this.zoneOverlapping.get(zone.id);
+        if (overlapping) {
+          for (const targetId of overlapping) {
+            const enemyIdx = this.gameState.enemies.findIndex(e => e.id === targetId);
+            if (enemyIdx !== -1) {
+              const enemy = this.gameState.enemies[enemyIdx]!;
+              if (!enemy.isAlive) continue;
+              const { dx, dy } = applyDisplacement(enemy.x, enemy.y, zone.x, zone.y, VOID_PULSE_PULL_STRENGTH_PX);
+              this.applyDisplacementToEnemy(enemy, dx, dy);
+              continue;
+            }
+            const player = this.gameState.players.find(p => p.id === targetId);
+            if (!player || player.isDown || player.isSpirit || player.isFrozen) continue;
+            const { dx, dy } = applyDisplacement(player.x, player.y, zone.x, zone.y, VOID_PULSE_PULL_STRENGTH_PX);
+            this.applyDisplacementToPlayer(targetId, dx, dy);
+          }
+        }
+      } else if (zone.effectType === 'damage') {
+        const damage = this.zoneDamagePerTick.get(zone.id) ?? 0;
+        const overlapping = this.zoneOverlapping.get(zone.id);
+        if (damage > 0 && overlapping) {
+          for (const targetId of overlapping) {
+            const ei = this.gameState.enemies.findIndex(e => e.id === targetId);
+            if (ei === -1) continue;
+            const enemy = this.gameState.enemies[ei]!;
+            if (!enemy.isAlive) continue;
+
+            const dropId = `drop-${this.tickCount}-${enemy.id}`;
+            const dmgResult = applyDamage(enemy, damage, dropId, tickNowMs);
+            if (!dmgResult.ok) continue;
+            this.gameState.enemies[ei] = dmgResult.value.enemy;
+
+            if (dmgResult.value.killed) {
+              this.broadcast(EventNames.DELTA, {
+                type: 'enemy:killed' as const,
+                enemyId: targetId,
+                byPlayerId: zone.ownerId,
+              } satisfies DeltaEventMsg);
+              const enemyBody = this.enemyBodies.get(targetId);
+              if (enemyBody) {
+                this.physicsWorld.destroyBody(enemyBody);
+                this.enemyBodies.delete(targetId);
+              }
+              this.enemyAttackCooldowns.delete(targetId);
+
+              const drop = dmgResult.value.essenceDrop!;
+              this.gameState.essenceDrops.push(drop);
+              this.broadcast(EventNames.DELTA, { type: 'essence:dropped' as const, drop } satisfies DeltaEventMsg);
+              const sensor = createEssenceSensorBody(this.physicsWorld, drop.id, drop.x, drop.y);
+              this.essenceSensorBodies.set(drop.id, sensor);
+            } else {
+              this.broadcast(EventNames.DELTA, {
+                type: 'enemy:damaged' as const,
+                enemyId: targetId,
+                damage,
+                remainingHp: dmgResult.value.enemy.hp,
+              } satisfies DeltaEventMsg);
+            }
+          }
+        }
+      }
+
+      // Storm Eye bonus lightning strike (Story 3.20): a second, longer-period
+      // cadence than the steady tick above. Presence in zoneStrikeTimers (set
+      // only when Storm Eye creates the zone) is what scopes this to Storm Eye
+      // specifically — every other zone's id is simply absent from the map, so
+      // this block is a no-op for them without a class/index check.
+      const lastStrikeAt = this.zoneStrikeTimers.get(zone.id);
+      if (lastStrikeAt !== undefined && tickNowMs - lastStrikeAt >= STORM_EYE_STRIKE_INTERVAL_MS) {
+        this.zoneStrikeTimers.set(zone.id, tickNowMs);
+        // zoneOverlapping tracks both factions (the zone sensor's filterMaskBits
+        // includes CAT_PLAYER, not just CAT_ENEMY — allies can stand in the zone
+        // too), but Storm Eye's 'damage' effectType only ever targets enemies
+        // (same scoping as the steady tick above). Filter to alive enemies before
+        // picking, or a stray ally/corpse id silently wastes the whole interval.
+        const overlapping = this.zoneOverlapping.get(zone.id);
+        const aliveEnemyIds = overlapping
+          ? Array.from(overlapping).filter(id => this.gameState.enemies.some(e => e.id === id && e.isAlive))
+          : [];
+        if (aliveEnemyIds.length > 0) {
+          const targetId = aliveEnemyIds[pickRandomIndex(this.prng(), aliveEnemyIds.length)]!;
+          const ei = this.gameState.enemies.findIndex(e => e.id === targetId);
+          if (ei !== -1) {
+            const dropId = `drop-${this.tickCount}-${targetId}-strike`;
+            const dmgResult = applyDamage(this.gameState.enemies[ei]!, STORM_EYE_STRIKE_DAMAGE, dropId, tickNowMs);
+            if (dmgResult.ok) {
+              this.gameState.enemies[ei] = dmgResult.value.enemy;
+
+              this.broadcast(EventNames.DELTA, {
+                type: 'zone:strike' as const,
+                zoneId: zone.id,
+                targetId,
+                damage: STORM_EYE_STRIKE_DAMAGE,
+              } satisfies DeltaEventMsg);
+
+              if (dmgResult.value.killed) {
+                this.broadcast(EventNames.DELTA, {
+                  type: 'enemy:killed' as const,
+                  enemyId: targetId,
+                  byPlayerId: zone.ownerId,
+                } satisfies DeltaEventMsg);
+                const enemyBody = this.enemyBodies.get(targetId);
+                if (enemyBody) {
+                  this.physicsWorld.destroyBody(enemyBody);
+                  this.enemyBodies.delete(targetId);
+                }
+                this.enemyAttackCooldowns.delete(targetId);
+
+                const drop = dmgResult.value.essenceDrop!;
+                this.gameState.essenceDrops.push(drop);
+                this.broadcast(EventNames.DELTA, { type: 'essence:dropped' as const, drop } satisfies DeltaEventMsg);
+                const sensor = createEssenceSensorBody(this.physicsWorld, drop.id, drop.x, drop.y);
+                this.essenceSensorBodies.set(drop.id, sensor);
+              } else {
+                this.broadcast(EventNames.DELTA, {
+                  type: 'enemy:damaged' as const,
+                  enemyId: targetId,
+                  damage: STORM_EYE_STRIKE_DAMAGE,
+                  remainingHp: dmgResult.value.enemy.hp,
+                } satisfies DeltaEventMsg);
+              }
+            }
+          }
+        }
+      }
+
+      this.broadcast(EventNames.DELTA, { type: 'zone:tick' as const, zoneId: zone.id } satisfies DeltaEventMsg);
+    }
+
+    // ── Projectile expiry check ──────────────────────────────────────────────
+    for (let pi = this.gameState.projectiles.length - 1; pi >= 0; pi--) {
+      const projectile = this.gameState.projectiles[pi]!;
+      const spawn = this.projectileSpawnPositions.get(projectile.id);
+      if (!spawn || !isProjectileExpired(projectile, spawn.x, spawn.y, PROJECTILE_MAX_RANGE_PX)) continue;
+
+      this.gameState.projectiles.splice(pi, 1);
+      const projectileBody = this.projectileBodies.get(projectile.id);
+      if (projectileBody) {
+        this.physicsWorld.destroyBody(projectileBody);
+        this.projectileBodies.delete(projectile.id);
+      }
+      this.projectileSpawnPositions.delete(projectile.id);
+      this.broadcast(EventNames.DELTA, { type: 'projectile:expired' as const, projectileId: projectile.id } satisfies DeltaEventMsg);
+    }
+
+    // ── Projectile hit resolution ────────────────────────────────────────────
+    for (const { projectileId, enemyId } of this.pendingProjectileHitContacts) {
+      const pi = this.gameState.projectiles.findIndex(p => p.id === projectileId);
+      if (pi === -1) continue; // already resolved or expired earlier this tick
+      const ei = this.gameState.enemies.findIndex(e => e.id === enemyId);
+      if (ei === -1) continue;
+      const enemy = this.gameState.enemies[ei]!;
+      if (!enemy.isAlive) continue;
+
+      const projectile = this.gameState.projectiles[pi]!;
+      const damage = ABILITY_DAMAGE[projectile.class][projectile.abilityIndex as 0 | 1 | 2 | 3] ?? 0;
+      const hitResult = resolveProjectileHit(projectile, enemy, damage, tickNowMs);
+      if (!hitResult.ok) continue;
+
+      this.gameState.enemies[ei] = hitResult.value.enemy;
+      this.gameState.projectiles.splice(pi, 1);
+      const projectileBody = this.projectileBodies.get(projectileId);
+      if (projectileBody) {
+        this.physicsWorld.destroyBody(projectileBody);
+        this.projectileBodies.delete(projectileId);
+      }
+      this.projectileSpawnPositions.delete(projectileId);
+
+      if (hitResult.value.enemy.isAlive) {
+        this.broadcast(EventNames.DELTA, {
+          type: 'enemy:damaged' as const,
+          enemyId,
+          damage,
+          remainingHp: hitResult.value.enemy.hp,
+        } satisfies DeltaEventMsg);
+      } else {
+        this.broadcast(EventNames.DELTA, {
+          type: 'enemy:killed' as const,
+          enemyId,
+          byPlayerId: projectile.ownerId,
+        } satisfies DeltaEventMsg);
+        const enemyBody = this.enemyBodies.get(enemyId);
+        if (enemyBody) {
+          this.physicsWorld.destroyBody(enemyBody);
+          this.enemyBodies.delete(enemyId);
+        }
+        this.enemyAttackCooldowns.delete(enemyId);
+
+        if (hitResult.value.essenceDrop) {
+          const drop = hitResult.value.essenceDrop;
+          this.gameState.essenceDrops.push(drop);
+          this.broadcast(EventNames.DELTA, { type: 'essence:dropped' as const, drop } satisfies DeltaEventMsg);
+          const sensor = createEssenceSensorBody(this.physicsWorld, drop.id, drop.x, drop.y);
+          this.essenceSensorBodies.set(drop.id, sensor);
+        }
+      }
+
+      // Lifesteal (Blood Spike, Story 3.19): declarative, fires for any projectile
+      // ability with a nonzero ABILITY_LIFESTEAL_PCT entry. Only on a hit — a miss
+      // (projectile expiry, handled elsewhere) already paid the self-cost with no
+      // compensating heal. Resolves D-3.15-A's still-open caster-only case: skips
+      // the heal if the caster went down/entered spirit form mid-flight (projectile
+      // travel time can outlast the caster's own survival), same isDown/isSpirit
+      // exclusion gatherPlayersInHitZone already applies to ally heal targets.
+      const lifestealPct = ABILITY_LIFESTEAL_PCT[projectile.class][projectile.abilityIndex as 0 | 1 | 2 | 3];
+      if (lifestealPct > 0) {
+        const casterIdx = this.gameState.players.findIndex(p => p.id === projectile.ownerId);
+        if (casterIdx !== -1 && !this.gameState.players[casterIdx]!.isDown && !this.gameState.players[casterIdx]!.isSpirit) {
+          this.gameState.players[casterIdx] = healPlayer(this.gameState.players[casterIdx]!, calculateLifesteal(damage, lifestealPct));
+          this.broadcast(EventNames.DELTA, {
+            type: 'player:hp-updated' as const,
+            playerId: projectile.ownerId,
+            hp: this.gameState.players[casterIdx]!.hp,
+          } satisfies DeltaEventMsg);
+        }
+      }
+
+      this.broadcast(EventNames.DELTA, {
+        type: 'projectile:hit' as const,
+        projectileId,
+        x: projectile.x,
+        y: projectile.y,
+      } satisfies DeltaEventMsg);
+
+      // Declarative chain: only fires once 3.19/3.20 populate ABILITY_CHAINED_ZONE for their ability.
+      const chainConfig = ABILITY_CHAINED_ZONE[projectile.class][projectile.abilityIndex as 0 | 1 | 2 | 3];
+      if (chainConfig) {
+        this.spawnChainedZone(projectile.ownerId, projectile.x, projectile.y, chainConfig, damage, tickNowMs);
+      }
+    }
+    this.pendingProjectileHitContacts.length = 0;
+
     // ── Flush bond proximity contacts ────────────────────────────────────────
     if (this.gameState.session.phase === 'dungeon') {
       const nowBond = Date.now();
@@ -1156,6 +1737,8 @@ export class GameRoom extends Room {
             const nowStomp = Date.now();
             player.downCount++;
             player.isDown = true;
+            player.bodyX = player.x;
+            player.bodyY = player.y;
             if (this.gameState.session.levelIndex === BOSS_LEVEL_INDEX) {
               this.gameState.session.anyPlayerDownedDuringBoss = true;
             }
@@ -1166,6 +1749,8 @@ export class GameRoom extends Room {
               playerId: player.id,
               downCount: player.downCount,
               reviveWindowMs: windowMs,
+              bodyX: player.bodyX!,
+              bodyY: player.bodyY!,
             } satisfies DeltaEventMsg);
             const downedClient = this.clients.find(c => c.sessionId === player.id);
             if (downedClient) {
@@ -1182,7 +1767,7 @@ export class GameRoom extends Room {
     for (const enemy of this.gameState.enemies) {
       if (!enemy.isAlive) continue;
 
-      const ctx = this.buildEnemyContext(enemy);
+      const ctx = this.buildEnemyContext(enemy, tickNowMs);
       const layers = this.enemyLayers.get(enemy.id) ?? [];
       const result = tickEnemy(enemy, ctx, layers);
 
@@ -1215,6 +1800,7 @@ export class GameRoom extends Room {
         this.gameState,
         this.gameState.session.difficulty!,
         BOSS_ARENA_SPAWN_POINTS,
+        tickNowMs,
       );
 
       if (bossResult.ok) {
@@ -1254,6 +1840,7 @@ export class GameRoom extends Room {
                 difficultyTier: this.gameState.session.difficulty ?? DifficultyTier.EASY,
                 isAlive: true, fsmState: EnemyFSMState.IDLE,
                 attackCooldownTicks: 0,
+                statusEffects: [],
               };
               this.gameState.enemies.push(addEnemy);
               const addBody = createEnemyBody(this.physicsWorld, evt.enemyId, evt.x, evt.y);
@@ -1316,6 +1903,22 @@ export class GameRoom extends Room {
       if (!playerCooldowns) continue;
 
       const nowAbility = Date.now();
+
+      // Soul Mend (Spiritcaller slot 2): AIM_CAST hold-to-channel, not an instant-
+      // resolve ability — branch before dispatchAbility so it neither triggers the
+      // normal cooldown gate/instant hit-scan path nor enters cooldown until the
+      // channel actually completes (Story 3.18). The branch condition itself is
+      // checked by inputType, not class/index, so a future AIM_CAST ability would
+      // still get routed here instead of through the normal dispatch path — but
+      // handleSoulMendFireAttempt's actual target-finding/revive logic is Soul-Mend-
+      // specific, not generic; a future non-revive AIM_CAST ability would need its
+      // own handler, not just a new case here.
+      const abilityDefForInput = CLASS_DEFINITIONS[player.class].abilities[abilityIndex];
+      if (abilityDefForInput?.inputType === 'AIM_CAST') {
+        this.handleSoulMendFireAttempt(clientId, player, abilityIndex, directionX, directionY, playerCooldowns, nowAbility);
+        continue;
+      }
+
       const result = dispatchAbility({
         playerClass: player.class,
         abilityIndex,
@@ -1323,6 +1926,8 @@ export class GameRoom extends Room {
         directionY,
         cooldownExpiresAt: playerCooldowns[abilityIndex] ?? 0,
         nowMs: nowAbility,
+        casterHp: player.hp,
+        casterMaxHp: player.maxHp,
       });
 
       if (!result.ok) continue;
@@ -1339,6 +1944,20 @@ export class GameRoom extends Room {
         } satisfies CooldownUpdateMsg);
       }
 
+      // Self-cost (Blood Spike, Story 3.19): generic for any ability with a nonzero
+      // ABILITY_SELF_COST_HP entry — dispatchAbility already computed the 1-HP-floored
+      // amount, this just applies it. Runs regardless of dungeon/training-dummy phase,
+      // same as the cooldown update above, since it's a caster-resource cost, not a
+      // combat hit effect.
+      if (result.value.selfCostHpApplied > 0) {
+        player.hp -= result.value.selfCostHpApplied;
+        this.broadcast(EventNames.DELTA, {
+          type: 'player:hp-updated' as const,
+          playerId: clientId,
+          hp: player.hp,
+        } satisfies DeltaEventMsg);
+      }
+
       if (inDungeon) {
         const abilityDelta = {
           type: 'ability:fired' as const,
@@ -1352,20 +1971,210 @@ export class GameRoom extends Room {
         // Hit-scan: check all living enemies against this ability's hit zone
         const abilityDef = CLASS_DEFINITIONS[player.class].abilities[abilityIndex];
         if (!abilityDef) continue;
+
+        // Projectile delivery (Blood Spike, Void Pulse — Story 3.19): spawns a
+        // ProjectileState instead of resolving via the same-tick hit-scan below.
+        // Branches BEFORE any hit-scan/status-effect logic — the projectile's own
+        // hit resolution (Story 3.13's contact-listener path) handles damage later.
+        if (ABILITY_DELIVERY[player.class][abilityIndex as 0 | 1 | 2 | 3] === 'projectile') {
+          const mag = Math.hypot(dirX, dirY);
+          if (mag === 0) continue; // no direction = no shot, same rule as every other directional ability
+          const projDirX = dirX / mag;
+          const projDirY = dirY / mag;
+          const projectileId = `projectile-${this.tickCount}-${clientId}-${abilityIndex}`;
+          const projectile: ProjectileState = {
+            id: projectileId,
+            ownerId: clientId,
+            x: player.x,
+            y: player.y,
+            class: player.class,
+            abilityIndex,
+          };
+          this.gameState.projectiles.push(projectile);
+          const projectileBody = createProjectileBody(this.physicsWorld, projectileId, player.x, player.y, projDirX, projDirY, PROJECTILE_SPEED_PX_S);
+          this.projectileBodies.set(projectileId, projectileBody);
+          this.projectileSpawnPositions.set(projectileId, { x: player.x, y: player.y });
+          // No dedicated "projectile:spawned" delta type exists (net-protocol is a
+          // blocked path this story) — same situation as 'add:spawned' above: a new
+          // entity needs full-state sync, so broadcast a SNAPSHOT, matching that
+          // existing precedent instead of inventing a new wire type.
+          this.broadcast(EventNames.SNAPSHOT, { type: 'snapshot', state: this.gameState } satisfies SnapshotMsg);
+          continue;
+        }
+
+        // Zone delivery (Storm Eye — Story 3.20): places a ZoneState directly at the
+        // aimed position, unlike the chained-from-projectile zones spawnChainedZone
+        // creates (Void Pulse). Branches before any hit-scan/status-effect logic, same
+        // as the projectile branch above — the zone's own tick phase (below) resolves
+        // damage later, not this dispatch.
+        if (ABILITY_DELIVERY[player.class][abilityIndex as 0 | 1 | 2 | 3] === 'zone') {
+          const mag = Math.hypot(dirX, dirY);
+          if (mag === 0) continue; // no direction = no placement, same rule as every other directional ability
+          const normDirX = dirX / mag;
+          const normDirY = dirY / mag;
+          const hitRange = ABILITY_HIT_RANGE_PX[player.class][abilityIndex] ?? 0;
+          const zoneX = player.x + normDirX * hitRange;
+          const zoneY = player.y + normDirY * hitRange;
+          const zoneId = `zone-${this.tickCount}-${clientId}-${this.nextZoneSeq++}`;
+          const zone: ZoneState = {
+            id: zoneId,
+            ownerId: clientId,
+            x: zoneX, y: zoneY,
+            radius: STORM_EYE_ZONE_RADIUS_PX,
+            effectType: 'damage',
+            tickIntervalMs: STORM_EYE_TICK_MS,
+            expiresAtMs: nowAbility + STORM_EYE_DURATION_MS,
+          };
+          this.gameState.zones.push(zone);
+          const zoneBody = createZoneBody(this.physicsWorld, zoneId, zoneX, zoneY, STORM_EYE_ZONE_RADIUS_PX);
+          this.zoneBodies.set(zoneId, zoneBody);
+          this.zoneLastTickAtMs.set(zoneId, nowAbility);
+          this.zoneOverlapping.set(zoneId, new Set());
+          this.zoneDamagePerTick.set(zoneId, STORM_EYE_TICK_DAMAGE);
+          this.zoneStrikeTimers.set(zoneId, nowAbility); // marks this zone strike-eligible — Storm Eye's only
+          this.broadcast(EventNames.SNAPSHOT, { type: 'snapshot', state: this.gameState } satisfies SnapshotMsg);
+          continue;
+        }
+
+        // Dark Pact (Souldrinker slot 2, Story 3.19): single-target ally drain, not
+        // a hit-scan or a mixed-faction AoE — its own dispatch branch, before the
+        // generic self-scope status-effect block below (the damageBuff half of its
+        // effect is gated on a drain target actually being found).
+        if (player.class === PlayerClass.SOULDRINKER && abilityIndex === 2) {
+          this.handleDarkPact(clientId, player, dirX, dirY, nowAbility);
+          continue;
+        }
+
+        // Self-scope status effect (e.g. Iron Skin) applies independently of
+        // the damage hit-scan below — must run before the damage=0 guard,
+        // since buff abilities carry no damage.
+        const statusConfig = ABILITY_STATUS_EFFECT[player.class][abilityIndex];
+        if (statusConfig?.scope === 'self') {
+          const casterIdx = this.gameState.players.findIndex(p => p.id === clientId);
+          if (casterIdx !== -1) {
+            this.gameState.players[casterIdx] = this.applyStatusEffectToTarget(
+              this.gameState.players[casterIdx]!,
+              { type: statusConfig.effectType, magnitude: statusConfig.magnitude, expiresAtMs: nowAbility + statusConfig.durationMs },
+              nowAbility,
+            );
+          }
+        } else if (statusConfig?.scope === 'allies-in-zone') {
+          // Warding Cry (Story 3.17): proximity radius, no direction/cone — uses Task 1's
+          // players-gathering query instead of the enemy loop. Same "runs independent of
+          // the damage hit-scan" rationale as the self-scope branch above.
+          const allyHitRadius = ABILITY_HIT_RADIUS_PX[player.class][abilityIndex] ?? 60;
+          for (const ally of this.gatherPlayersInHitZone(player.x, player.y, 0, 0, allyHitRadius, 0, false, clientId)) {
+            const allyIdx = this.gameState.players.findIndex(p => p.id === ally.id);
+            if (allyIdx === -1) continue;
+            this.gameState.players[allyIdx] = this.applyStatusEffectToTarget(
+              this.gameState.players[allyIdx]!,
+              { type: statusConfig.effectType, magnitude: statusConfig.magnitude, expiresAtMs: nowAbility + statusConfig.durationMs },
+              nowAbility,
+            );
+          }
+        }
+
+        // Spirit Nova (Spiritcaller slot 1): expanding-radius sweep, not an instant
+        // hit-scan — tracked over its duration by the "Spirit Nova sweep" tick phase
+        // below instead. Branch before the hit-scan path (Story 3.17, Task 3).
+        if (player.class === PlayerClass.SPIRITCALLER && abilityIndex === 1) {
+          this.activeSpiritNovas.push({
+            casterId: clientId,
+            x: player.x,
+            y: player.y,
+            startedAtMs: nowAbility,
+            durationMs: SPIRIT_NOVA_DURATION_MS,
+            maxRadiusPx: SPIRIT_NOVA_MAX_RADIUS_PX,
+            hitIds: new Set(),
+          });
+          continue;
+        }
+
         const isDirectional = abilityDef.inputType !== 'TAP';
         const hitRange  = ABILITY_HIT_RANGE_PX[player.class][abilityIndex] ?? 0;
         const hitRadius = ABILITY_HIT_RADIUS_PX[player.class][abilityIndex] ?? 60;
+        const displacementStrength = ABILITY_DISPLACEMENT_STRENGTH[player.class][abilityIndex] ?? 0;
+        const healAmount = ABILITY_HEAL_AMOUNT[player.class][abilityIndex] ?? 0;
+        const casterX = player.x;
+        const casterY = player.y;
         const rawDamage = result.value.damage;
-        if (rawDamage <= 0) continue;  // ponytail: skip hit-scan for buff/heal abilities (damage=0 in balance table)
+        if (rawDamage <= 0 && healAmount <= 0) continue;  // ponytail: skip hit-scan for buff-only abilities (damage=0, heal=0)
         const damage = proximityBuffed.has(clientId)
           ? Math.round(rawDamage * BOND_DAMAGE_MULT)
           : rawDamage;
 
         // AC6: normalize direction so sub-unit joystick magnitude doesn't shrink hit range
         const mag = Math.hypot(dirX, dirY);
-        if (isDirectional && mag === 0) continue; // no direction = no hit
+        // Story 3.11: hitRange=0 directional abilities (e.g. Stone Wall, Void
+        // Pulse) hit at the player's own position regardless of direction —
+        // don't require a drag for those, only for abilities whose hit
+        // circle is actually offset by direction.
+        if (isDirectional && mag === 0 && hitRange > 0) continue; // no direction = no hit
         const normDirX = isDirectional && mag > 0 ? dirX / mag : dirX;
         const normDirY = isDirectional && mag > 0 ? dirY / mag : dirY;
+
+        // Ancestor's Voice (Spiritcaller slot 0): mixed-faction cone — gather enemies
+        // and allies in the hit zone from one query, split via resolveMixedFactionTargets,
+        // damage enemies / heal allies (Story 3.17, Task 2).
+        if (player.class === PlayerClass.SPIRITCALLER && abilityIndex === 0) {
+          const enemiesInZone = this.gameState.enemies.filter(e =>
+            e.isAlive && isInHitZone(casterX, casterY, normDirX, normDirY, e.x, e.y, hitRadius, hitRange, isDirectional));
+          const alliesInZone = this.gatherPlayersInHitZone(casterX, casterY, normDirX, normDirY, hitRadius, hitRange, isDirectional, clientId);
+          const { allies, enemies } = resolveMixedFactionTargets(clientId, [...enemiesInZone, ...alliesInZone]);
+
+          for (const target of enemies) {
+            const ei = this.gameState.enemies.findIndex(e => e.id === target.id);
+            if (ei === -1) continue;
+            const dropId = `drop-${this.tickCount}-${target.id}`;
+            const dmgResult = applyDamage(this.gameState.enemies[ei]!, damage, dropId, nowAbility);
+            if (!dmgResult.ok) continue;
+            this.gameState.enemies[ei] = dmgResult.value.enemy;
+
+            this.broadcast(EventNames.DELTA, {
+              type: 'enemy:damaged' as const,
+              enemyId: target.id,
+              damage,
+              remainingHp: dmgResult.value.enemy.hp,
+            } satisfies DeltaEventMsg);
+
+            if (dmgResult.value.killed) {
+              this.broadcast(EventNames.DELTA, {
+                type: 'enemy:killed' as const,
+                enemyId: target.id,
+                byPlayerId: clientId,
+              } satisfies DeltaEventMsg);
+
+              const enemyBody = this.enemyBodies.get(target.id);
+              if (enemyBody) {
+                this.physicsWorld.destroyBody(enemyBody);
+                this.enemyBodies.delete(target.id);
+              }
+              this.enemyAttackCooldowns.delete(target.id);
+
+              const drop = dmgResult.value.essenceDrop!;
+              this.gameState.essenceDrops.push(drop);
+              this.broadcast(EventNames.DELTA, {
+                type: 'essence:dropped' as const,
+                drop,
+              } satisfies DeltaEventMsg);
+
+              const sensor = createEssenceSensorBody(this.physicsWorld, drop.id, drop.x, drop.y);
+              this.essenceSensorBodies.set(drop.id, sensor);
+            }
+          }
+
+          for (const ally of allies) {
+            const pi = this.gameState.players.findIndex(p => p.id === ally.id);
+            if (pi === -1) continue;
+            this.gameState.players[pi] = healPlayer(this.gameState.players[pi]!, healAmount);
+            this.broadcast(EventNames.DELTA, {
+              type: 'player:hp-updated' as const,
+              playerId: ally.id,
+              hp: this.gameState.players[pi]!.hp,
+            } satisfies DeltaEventMsg);
+          }
+          continue;
+        }
 
         for (let ei = 0; ei < this.gameState.enemies.length; ei++) {
           const enemy = this.gameState.enemies[ei]!;
@@ -1373,7 +2182,7 @@ export class GameRoom extends Room {
           if (!isInHitZone(player.x, player.y, normDirX, normDirY, enemy.x, enemy.y, hitRadius, hitRange, isDirectional)) continue;
 
           const dropId = `drop-${this.tickCount}-${enemy.id}`;
-          const dmgResult = applyDamage(enemy, damage, dropId);
+          const dmgResult = applyDamage(enemy, damage, dropId, nowAbility);
           if (!dmgResult.ok) continue;
 
           this.gameState.enemies[ei] = dmgResult.value.enemy;
@@ -1384,6 +2193,19 @@ export class GameRoom extends Room {
             damage,
             remainingHp: dmgResult.value.enemy.hp,
           } satisfies DeltaEventMsg);
+
+          if (!dmgResult.value.killed && statusConfig?.scope === 'enemies-in-zone') {
+            this.gameState.enemies[ei] = this.applyStatusEffectToTarget(
+              this.gameState.enemies[ei]!,
+              { type: statusConfig.effectType, magnitude: statusConfig.magnitude, expiresAtMs: nowAbility + statusConfig.durationMs },
+              nowAbility,
+            );
+          }
+
+          if (!dmgResult.value.killed && displacementStrength > 0) {
+            const { dx, dy } = applyDisplacement(enemy.x, enemy.y, casterX, casterY, displacementStrength);
+            this.applyDisplacementToEnemy(this.gameState.enemies[ei]!, dx, dy);
+          }
 
           if (dmgResult.value.killed) {
             this.broadcast(EventNames.DELTA, {
@@ -1413,6 +2235,97 @@ export class GameRoom extends Room {
       }
 
       logger.debug({ roomId: this.roomId, clientId, abilityIndex, dirX, dirY }, 'ability fired');
+    }
+
+    // ── Spirit Nova sweep (Story 3.17) ────────────────────────────────────────
+    // One-shot growing-ring sweep: each active entry's hit radius grows from 0 to
+    // its max over its duration; each target is hit exactly once as the ring
+    // passes over it (tracked via hitIds), not every tick for the whole duration.
+    // Guarded to dungeon phase, matching every other per-tick combat block (bond
+    // drain, revive timers, spirit-ability dispatch) — a sweep still in flight
+    // when the phase flips to post-run (boss defeat / run failure) must not keep
+    // dealing damage or healing into the post-run screen.
+    if (this.gameState.session.phase === 'dungeon') {
+      for (let si = this.activeSpiritNovas.length - 1; si >= 0; si--) {
+        const nova = this.activeSpiritNovas[si]!;
+        const currentRadius = resolveExpandingRadius(tickNowMs - nova.startedAtMs, nova.durationMs, nova.maxRadiusPx);
+
+        const enemiesInRing = this.gameState.enemies.filter(e =>
+          e.isAlive && !nova.hitIds.has(e.id) &&
+          isInHitZone(nova.x, nova.y, 0, 0, e.x, e.y, currentRadius, 0, false));
+        const alliesInRing = this.gatherPlayersInHitZone(nova.x, nova.y, 0, 0, currentRadius, 0, false, nova.casterId)
+          .filter(p => !nova.hitIds.has(p.id));
+
+        if (enemiesInRing.length > 0 || alliesInRing.length > 0) {
+          const { allies, enemies } = resolveMixedFactionTargets(nova.casterId, [...enemiesInRing, ...alliesInRing]);
+          const rawNovaDamage = ABILITY_DAMAGE[PlayerClass.SPIRITCALLER][1];
+          // Same Bond proximity-damage-buff treatment as every other damaging ability
+          // (see Ancestor's Voice a few lines above) — heal is intentionally unbuffed,
+          // matching Ancestor's Voice's heal side (BOND_DAMAGE_MULT is a damage-only buff).
+          const novaDamage = proximityBuffed.has(nova.casterId)
+            ? Math.round(rawNovaDamage * BOND_DAMAGE_MULT)
+            : rawNovaDamage;
+          const novaHeal = ABILITY_HEAL_AMOUNT[PlayerClass.SPIRITCALLER][1];
+
+          for (const target of enemies) {
+            nova.hitIds.add(target.id);
+            const ei = this.gameState.enemies.findIndex(e => e.id === target.id);
+            if (ei === -1) continue;
+            const dropId = `drop-${this.tickCount}-${target.id}`;
+            const dmgResult = applyDamage(this.gameState.enemies[ei]!, novaDamage, dropId, tickNowMs);
+            if (!dmgResult.ok) continue;
+            this.gameState.enemies[ei] = dmgResult.value.enemy;
+
+            this.broadcast(EventNames.DELTA, {
+              type: 'enemy:damaged' as const,
+              enemyId: target.id,
+              damage: novaDamage,
+              remainingHp: dmgResult.value.enemy.hp,
+            } satisfies DeltaEventMsg);
+
+            if (dmgResult.value.killed) {
+              this.broadcast(EventNames.DELTA, {
+                type: 'enemy:killed' as const,
+                enemyId: target.id,
+                byPlayerId: nova.casterId,
+              } satisfies DeltaEventMsg);
+
+              const enemyBody = this.enemyBodies.get(target.id);
+              if (enemyBody) {
+                this.physicsWorld.destroyBody(enemyBody);
+                this.enemyBodies.delete(target.id);
+              }
+              this.enemyAttackCooldowns.delete(target.id);
+
+              const drop = dmgResult.value.essenceDrop!;
+              this.gameState.essenceDrops.push(drop);
+              this.broadcast(EventNames.DELTA, {
+                type: 'essence:dropped' as const,
+                drop,
+              } satisfies DeltaEventMsg);
+
+              const sensor = createEssenceSensorBody(this.physicsWorld, drop.id, drop.x, drop.y);
+              this.essenceSensorBodies.set(drop.id, sensor);
+            }
+          }
+
+          for (const ally of allies) {
+            nova.hitIds.add(ally.id);
+            const pi = this.gameState.players.findIndex(p => p.id === ally.id);
+            if (pi === -1) continue;
+            this.gameState.players[pi] = healPlayer(this.gameState.players[pi]!, novaHeal);
+            this.broadcast(EventNames.DELTA, {
+              type: 'player:hp-updated' as const,
+              playerId: ally.id,
+              hp: this.gameState.players[pi]!.hp,
+            } satisfies DeltaEventMsg);
+          }
+        }
+
+        if (tickNowMs >= nova.startedAtMs + nova.durationMs) {
+          this.activeSpiritNovas.splice(si, 1);
+        }
+      }
     }
 
     // ── Spirit ability dispatch ───────────────────────────────────────────────
@@ -1477,7 +2390,7 @@ export class GameRoom extends Room {
         }
         if (!targetPlayer) continue;
 
-        const dmgResult = applyPlayerDamage(targetPlayer, ENEMY_MELEE_DAMAGE);
+        const dmgResult = applyPlayerDamage(targetPlayer, ENEMY_MELEE_DAMAGE, nowMelee);
         if (!dmgResult.ok) continue;
 
         const pi = this.gameState.players.findIndex(p => p.id === targetPlayer!.id);
@@ -1503,6 +2416,8 @@ export class GameRoom extends Room {
             playerId: targetPlayer.id,
             downCount: dmgResult.value.player.downCount,
             reviveWindowMs: windowMs,
+            bodyX: dmgResult.value.player.bodyX!,
+            bodyY: dmgResult.value.player.bodyY!,
           } satisfies DeltaEventMsg);
 
           // Notify mobile: downed (spirit cell visible but locked until timer expires)
@@ -1527,7 +2442,7 @@ export class GameRoom extends Room {
                 const partnerIdx = this.gameState.players.findIndex(p => p.id === partnerId);
                 const partner = this.gameState.players[partnerIdx];
                 if (!partner) continue;
-                const wipeResult = applyPlayerDamage(partner, partner.hp);
+                const wipeResult = applyPlayerDamage(partner, partner.hp, nowMelee);
                 if (!wipeResult.ok) continue; // already down/spirit/frozen
                 this.gameState.players[partnerIdx] = wipeResult.value.player;
                 const wipeWindowMs = wipeResult.value.reviveWindowMs!;
@@ -1545,6 +2460,8 @@ export class GameRoom extends Room {
                   playerId: partnerId,
                   downCount: wipeResult.value.player.downCount,
                   reviveWindowMs: wipeWindowMs,
+                  bodyX: wipeResult.value.player.bodyX!,
+                  bodyY: wipeResult.value.player.bodyY!,
                 } satisfies DeltaEventMsg);
                 const wipeClient = this.clients.find(c => c.sessionId === partnerId);
                 if (wipeClient) {
@@ -1602,7 +2519,14 @@ export class GameRoom extends Room {
       const nowRevive = Date.now();
 
       for (const player of this.gameState.players) {
-        if (!player.isDown) continue;
+        // Story 3.21b: must admit isSpirit players too, not just isDown — otherwise
+        // a player who has already transitioned to spirit form never re-enters this
+        // loop on any later tick, and the proximity-revive check below (which now
+        // targets bodyX/bodyY) never runs for them at all. The "Timer expiry" branch
+        // immediately below is itself gated on reviveTimerExpiresAt > 0, which is
+        // already 0 for an isSpirit player, so it's skipped safely and falls through
+        // to the proximity-revive check.
+        if (!player.isDown && !player.isSpirit) continue;
 
         // Timer expiry → spirit form
         if (player.reviveTimerExpiresAt > 0 && nowRevive >= player.reviveTimerExpiresAt) {
@@ -1623,13 +2547,17 @@ export class GameRoom extends Room {
           continue;
         }
 
-        // Proximity revive: first living teammate in range wins
+        // Proximity revive: first living teammate in range wins. Targets bodyX/bodyY
+        // (Story 3.21b) — the fixed down location — not player.x/y, which has been
+        // moving independently under the spirit's own input since timer expiry.
         let revivedBy: string | null = null;
+        const targetX = player.bodyX ?? player.x;
+        const targetY = player.bodyY ?? player.y;
         for (const teammate of this.gameState.players) {
           if (teammate.id === player.id) continue;
           if (teammate.isDown || teammate.isSpirit || teammate.isFrozen) continue;
-          const dx = teammate.x - player.x;
-          const dy = teammate.y - player.y;
+          const dx = teammate.x - targetX;
+          const dy = teammate.y - targetY;
           if (Math.sqrt(dx * dx + dy * dy) <= REVIVE_RADIUS_PX) {
             revivedBy = teammate.id;
             break;
@@ -1638,11 +2566,26 @@ export class GameRoom extends Room {
 
         if (revivedBy !== null) {
           const piRevive = this.gameState.players.findIndex(p => p.id === player.id);
-          this.gameState.players[piRevive] = { ...this.gameState.players[piRevive]!, isDown: false, isSpirit: false, hp: REVIVE_HP, reviveTimerExpiresAt: 0 };
+          // x/y snap back to the body location (Story 3.21b) — a spirit revived
+          // after wandering must resume at the body, not wherever the spirit stood.
+          // Must also reposition the physics body: otherwise the next tick's
+          // Planck phase-3 position read-back would overwrite x/y right back to
+          // wherever the body actually still is (the spirit's last physical spot),
+          // undoing this snap (same reasoning as applyDisplacementToPlayer above).
+          this.gameState.players[piRevive] = { ...this.gameState.players[piRevive]!, isDown: false, isSpirit: false, hp: REVIVE_HP, reviveTimerExpiresAt: 0, x: targetX, y: targetY };
+          const reviveBody = this.playerBodies.get(player.id);
+          if (reviveBody) reviveBody.setPosition(Vec2(toMeters(targetX), toMeters(targetY)));
 
           this.broadcast(EventNames.DELTA, {
             type: 'player:revived' as const,
             playerId: player.id,
+          } satisfies DeltaEventMsg);
+
+          this.broadcast(EventNames.DELTA, {
+            type: 'player:moved' as const,
+            playerId: player.id,
+            x: targetX,
+            y: targetY,
           } satisfies DeltaEventMsg);
 
           this.broadcast(EventNames.DELTA, {
@@ -1660,6 +2603,32 @@ export class GameRoom extends Room {
           this.flushExpiredClassCooldowns(player.id);
 
           logger.info({ roomId: this.roomId, playerId: player.id, revivedBy }, 'player revived by proximity');
+        }
+      }
+    }
+
+    // ── Soul Mend hold-to-channel progression (Story 3.18) ───────────────────
+    // Runs after proximity revive above so a target already revived by proximity
+    // (or someone else's Soul Mend) this same tick is correctly seen as no-longer-
+    // isDown and cancels here rather than double-reviving.
+    if (this.gameState.session.phase === 'dungeon') {
+      for (const caster of this.gameState.players) {
+        const channel = caster.channelingAbility;
+        if (channel === null) continue;
+
+        const target = this.gameState.players.find(p => p.id === channel.targetPlayerId);
+        const hitRange = ABILITY_HIT_RANGE_PX[caster.class as PlayerClass][channel.abilityIndex as 0 | 1 | 2 | 3] ?? 0;
+        const hitRadius = ABILITY_HIT_RADIUS_PX[caster.class as PlayerClass][channel.abilityIndex as 0 | 1 | 2 | 3] ?? 0;
+        const lastInput = this.lastSoulMendInputAt.get(caster.id) ?? 0;
+        const casterIncapacitated = caster.isDown || caster.isFrozen || caster.isSpirit;
+
+        if (shouldCancelSoulMendChannel(target, caster.x, caster.y, casterIncapacitated, lastInput, tickNowMs, SOUL_MEND_LIVENESS_MS, hitRange + hitRadius)) {
+          this.cancelSoulMendChannel(caster.id);
+          continue;
+        }
+
+        if (tickNowMs >= channel.startedAt + channel.durationMs) {
+          this.completeSoulMendChannel(caster.id, target!.id, channel.abilityIndex);
         }
       }
     }
@@ -1761,6 +2730,38 @@ export class GameRoom extends Room {
       }
     }
 
+    // Tick status effects for players/enemies, broadcasting status:expired for any removed effect.
+    for (let pi = 0; pi < this.gameState.players.length; pi++) {
+      const player = this.gameState.players[pi]!;
+      if (player.statusEffects.length === 0) continue;
+      const ticked = tickStatusEffects(player, tickNowMs);
+      if (ticked === player) continue;
+      this.gameState.players[pi] = ticked;
+      for (const effect of player.statusEffects) {
+        if (ticked.statusEffects.includes(effect)) continue;
+        this.broadcast(EventNames.DELTA, {
+          type: 'status:expired' as const,
+          targetId: player.id,
+          effectType: effect.type,
+        } satisfies DeltaEventMsg);
+      }
+    }
+    for (let ei = 0; ei < this.gameState.enemies.length; ei++) {
+      const enemy = this.gameState.enemies[ei]!;
+      if (enemy.statusEffects.length === 0) continue;
+      const ticked = tickStatusEffects(enemy, tickNowMs);
+      if (ticked === enemy) continue;
+      this.gameState.enemies[ei] = ticked;
+      for (const effect of enemy.statusEffects) {
+        if (ticked.statusEffects.includes(effect)) continue;
+        this.broadcast(EventNames.DELTA, {
+          type: 'status:expired' as const,
+          targetId: enemy.id,
+          effectType: effect.type,
+        } satisfies DeltaEventMsg);
+      }
+    }
+
     // Periodic full snapshot every SNAPSHOT_INTERVAL_S seconds
     if (this.tickCount % (SNAPSHOT_INTERVAL_S * TICK_RATE_HZ) === 0) {
       const snapshot: SnapshotMsg = { type: 'snapshot', state: this.gameState };
@@ -1782,6 +2783,111 @@ export class GameRoom extends Room {
           abilityIndex: i,
           remainingMs: 0,
         } satisfies CooldownUpdateMsg);
+      }
+    }
+  }
+
+  // ── Soul Mend hold-to-channel (Story 3.18) ──────────────────────────────────
+  // Called once per AIM_CAST fire-attempt (mobile resends every 33ms while held —
+  // same continuous-send pattern AUTO abilities already use). First fire-attempt
+  // for a not-yet-channeling caster starts the channel; subsequent fire-attempts
+  // while already channeling just refresh the liveness timestamp.
+  private handleSoulMendFireAttempt(
+    casterId: string,
+    caster: PlayerState,
+    abilityIndex: number,
+    dirX: number,
+    dirY: number,
+    playerCooldowns: number[],
+    nowMs: number,
+  ): void {
+    if (caster.channelingAbility !== null) {
+      this.lastSoulMendInputAt.set(casterId, nowMs);
+      return;
+    }
+
+    if ((playerCooldowns[abilityIndex] ?? 0) > nowMs) return;
+
+    const hitRange = ABILITY_HIT_RANGE_PX[caster.class as PlayerClass][abilityIndex as 0 | 1 | 2 | 3] ?? 0;
+    const hitRadius = ABILITY_HIT_RADIUS_PX[caster.class as PlayerClass][abilityIndex as 0 | 1 | 2 | 3] ?? 0;
+    const mag = Math.hypot(dirX, dirY);
+    if (mag === 0 && hitRange > 0) return; // no aim direction = no target, same rule as every other directional ability
+    const normDirX = mag > 0 ? dirX / mag : dirX;
+    const normDirY = mag > 0 ? dirY / mag : dirY;
+
+    const downedAllies = this.gameState.players.filter(p => p.id !== casterId && p.isDown);
+    const target = findSoulMendTarget(caster.x, caster.y, normDirX, normDirY, downedAllies, hitRange, hitRadius);
+    if (!target) return;
+
+    const casterIdx = this.gameState.players.findIndex(p => p.id === casterId);
+    if (casterIdx === -1) return;
+    this.gameState.players[casterIdx] = {
+      ...this.gameState.players[casterIdx]!,
+      channelingAbility: { abilityIndex, targetPlayerId: target.id, startedAt: nowMs, durationMs: SOUL_MEND_CHANNEL_DURATION_MS },
+    };
+    this.lastSoulMendInputAt.set(casterId, nowMs);
+
+    this.broadcast(EventNames.DELTA, {
+      type: 'cast:started' as const,
+      casterId,
+      targetPlayerId: target.id,
+      abilityIndex,
+      startedAt: nowMs,
+      durationMs: SOUL_MEND_CHANNEL_DURATION_MS,
+    } satisfies DeltaEventMsg);
+  }
+
+  private cancelSoulMendChannel(casterId: string): void {
+    const casterIdx = this.gameState.players.findIndex(p => p.id === casterId);
+    if (casterIdx !== -1) {
+      this.gameState.players[casterIdx] = { ...this.gameState.players[casterIdx]!, channelingAbility: null };
+    }
+    this.lastSoulMendInputAt.delete(casterId);
+    this.broadcast(EventNames.DELTA, { type: 'cast:cancelled' as const, casterId } satisfies DeltaEventMsg);
+  }
+
+  // Copies the existing proximity-revive block's 4 actions exactly (state mutation,
+  // player:revived broadcast, player:hp-updated broadcast, SPIRIT_FORM message) —
+  // Soul Mend bypasses the walk-to-body proximity flow but produces the same result.
+  private completeSoulMendChannel(casterId: string, targetId: string, abilityIndex: number): void {
+    const targetIdx = this.gameState.players.findIndex(p => p.id === targetId);
+    if (targetIdx !== -1) {
+      this.gameState.players[targetIdx] = reviveBySoulMend(this.gameState.players[targetIdx]!, REVIVE_HP);
+      // No physics-body reposition needed here (unlike the proximity-revive block):
+      // Soul Mend only ever targets isDown players, whose physics body never moves
+      // while down (isSensor fixtures, velocity zeroed every tick), so it's already
+      // sitting exactly at bodyX/bodyY — reviveBySoulMend's x/y snap is a no-op.
+
+      this.broadcast(EventNames.DELTA, { type: 'player:revived' as const, playerId: targetId } satisfies DeltaEventMsg);
+      this.broadcast(EventNames.DELTA, { type: 'player:hp-updated' as const, playerId: targetId, hp: REVIVE_HP } satisfies DeltaEventMsg);
+
+      const revivedClient = this.clients.find(c => c.sessionId === targetId);
+      if (revivedClient) {
+        revivedClient.send(EventNames.SPIRIT_FORM, { type: 'spirit:form', isActive: false } satisfies SpiritFormMsg);
+      }
+    }
+
+    const casterIdx = this.gameState.players.findIndex(p => p.id === casterId);
+    const caster = casterIdx !== -1 ? this.gameState.players[casterIdx] : undefined;
+    if (casterIdx !== -1 && caster) {
+      this.gameState.players[casterIdx] = { ...caster, channelingAbility: null };
+    }
+    this.lastSoulMendInputAt.delete(casterId);
+    this.broadcast(EventNames.DELTA, { type: 'cast:completed' as const, casterId } satisfies DeltaEventMsg);
+
+    if (caster?.class) {
+      const cooldowns = this.cooldownMap.get(casterId);
+      if (cooldowns) {
+        const cooldownMs = ABILITY_COOLDOWNS_MS[caster.class][abilityIndex as 0 | 1 | 2 | 3];
+        cooldowns[abilityIndex] = Date.now() + cooldownMs;
+        const casterClient = this.clients.find(c => c.sessionId === casterId);
+        if (casterClient) {
+          casterClient.send(EventNames.COOLDOWN_UPDATE, {
+            type: 'cooldown:update',
+            abilityIndex,
+            remainingMs: cooldownMs,
+          } satisfies CooldownUpdateMsg);
+        }
       }
     }
   }

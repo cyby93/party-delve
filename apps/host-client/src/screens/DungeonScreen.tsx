@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Application, Graphics, Assets } from 'pixi.js';
-import type { GameState, PlayerState } from 'shared-types';
+import type { GameState, PlayerState, StatusEffectType } from 'shared-types';
 import { SessionColor, CLASS_DEFINITIONS, PlayerClass, BossPhase, PURIFICATION_PULSE_DURATION_MS, REWARD_REVEAL_DURATION_MS } from 'shared-types';
 import type { HostSession } from '../session/host-session';
 import type { DeltaEventMsg } from 'net-protocol';
@@ -30,9 +30,19 @@ const ABILITY_FLASH_MS = 300;
 const SPIRIT_ABILITY_FLASH_MS = 200;
 const KILL_FADE_MS = 300;
 const ESSENCE_FLASH_MS = 400;
+const STATUS_BADGE_RADIUS = 6;
+
+// One generic badge shape for all status effects — differentiated by color only.
+const STATUS_EFFECT_COLORS: Record<StatusEffectType, number> = {
+  damageReduction: 0x3498db,
+  slow: 0x9b59b6,
+  damageBuff: 0xe67e22,
+  shield: 0xf1c40f,
+};
 
 interface PlayerEntry {
   circle: Graphics;
+  body: Graphics | null; // Story 3.21c: lazily created while isDown/isSpirit, destroyed when neither holds
   flashUntil: number;
 }
 
@@ -70,6 +80,9 @@ function renderFrame(
   essenceFlashes: Map<string, EssenceFlash>,
   tetherGraphics: Map<string, Graphics>,
   isPurified: boolean,
+  statusBadgeGraphics: Map<string, Graphics>,
+  projectileGraphics: Map<string, Graphics>,
+  zoneGraphics: Map<string, Graphics>,
 ): void {
   app.stage.scale.set(app.screen.width / VIRTUAL_W, app.screen.height / VIRTUAL_H);
 
@@ -81,6 +94,10 @@ function renderFrame(
     if (!currentPlayerIds.has(id)) {
       app.stage.removeChild(entry.circle);
       entry.circle.destroy();
+      if (entry.body) {
+        app.stage.removeChild(entry.body);
+        entry.body.destroy();
+      }
       playerGraphics.delete(id);
     }
   }
@@ -90,7 +107,7 @@ function renderFrame(
     if (!entry) {
       const circle = new Graphics();
       app.stage.addChild(circle);
-      entry = { circle, flashUntil: 0 };
+      entry = { circle, body: null, flashUntil: 0 };
       playerGraphics.set(player.id, entry);
     }
     const { circle } = entry;
@@ -106,11 +123,44 @@ function renderFrame(
         : 1;
       circle.circle(0, 0, 28).fill({ color, alpha: 0.35 });
       circle.circle(0, 0, 14).fill({ color, alpha: 0.85 });
+    } else if (player.isDown) {
+      // Body sprite (below) is the only visual for the down-not-yet-spirit state —
+      // it renders at bodyX/bodyY, which equals player.x/y here anyway (frozen),
+      // so drawing the normal circle too would just duplicate it at the same spot.
+      circle.alpha = 0;
     } else {
       circle.alpha = isFlashing
         ? 0.2 + 0.8 * Math.abs(Math.cos(Math.PI * (entry.flashUntil - now) / ABILITY_FLASH_MS))
         : (player.isFrozen ? 0.3 : 1);
       circle.circle(0, 0, PLAYER_RADIUS).fill({ color });
+    }
+
+    // Body sprite (Story 3.21c): visible for the whole isDown+isSpirit window,
+    // anchored at bodyX/bodyY — the fixed down location, independent of the
+    // spirit's own (possibly wandered-off) position above.
+    if (player.isDown || (player.isSpirit && !isPurified)) {
+      if (!entry.body) {
+        const body = new Graphics();
+        app.stage.addChildAt(body, 0); // below circle/spirit, matches tether layering
+        entry.body = body;
+      }
+      const bodyX = player.bodyX ?? player.x;
+      const bodyY = player.bodyY ?? player.y;
+      entry.body.position.set(bodyX, bodyY);
+      entry.body.clear();
+      // Dimmed fill + outline stroke — distinct from both the opaque alive circle
+      // and the plain frozen/disconnected dim (which has no stroke and sits at
+      // player.x/y). Further dimmed when isFrozen so the pre-existing disconnect
+      // cue (frozen ? 0.3 : 1 on the alive circle) isn't lost for a down/spirit
+      // player who has also disconnected — Client-UX hook's reconnect-state-
+      // visibility check.
+      const fillAlpha = player.isFrozen ? 0.15 : 0.35;
+      const strokeAlpha = player.isFrozen ? 0.4 : 0.9;
+      entry.body.circle(0, 0, PLAYER_RADIUS).fill({ color, alpha: fillAlpha }).stroke({ color, width: 3, alpha: strokeAlpha });
+    } else if (entry.body) {
+      app.stage.removeChild(entry.body);
+      entry.body.destroy();
+      entry.body = null;
     }
   }
 
@@ -195,6 +245,80 @@ function renderFrame(
     }
   }
 
+  // ── Status effect badges ─────────────────────────────────────────────────────
+  // Reuses the create-on-first-seen / cleanup-on-missing pattern from playerGraphics/
+  // enemyGraphics above — one generic badge per entity, differentiated by color only.
+  const badgeTargets = [
+    ...state.players.map(p => ({ id: p.id, x: p.x, y: p.y, radius: PLAYER_RADIUS, effects: p.statusEffects })),
+    ...state.enemies.filter(e => e.isAlive).map(e => ({ id: e.id, x: e.x, y: e.y, radius: ENEMY_RADIUS, effects: e.statusEffects })),
+  ];
+  const activeBadgeIds = new Set(badgeTargets.filter(t => t.effects.length > 0).map(t => t.id));
+  for (const [id, g] of statusBadgeGraphics) {
+    if (!activeBadgeIds.has(id)) {
+      app.stage.removeChild(g);
+      g.destroy();
+      statusBadgeGraphics.delete(id);
+    }
+  }
+  for (const target of badgeTargets) {
+    if (target.effects.length === 0) continue;
+    let g = statusBadgeGraphics.get(target.id);
+    if (!g) {
+      g = new Graphics();
+      app.stage.addChild(g);
+      statusBadgeGraphics.set(target.id, g);
+    }
+    g.position.set(target.x, target.y);
+    g.clear();
+    const badgeY = -(target.radius + 14);
+    target.effects.forEach((effect, i) => {
+      const offsetX = (i - (target.effects.length - 1) / 2) * 14;
+      g!.circle(offsetX, badgeY, STATUS_BADGE_RADIUS).fill({ color: STATUS_EFFECT_COLORS[effect.type] ?? 0xffffff });
+    });
+  }
+
+  // ── Projectiles ───────────────────────────────────────────────────────────────
+  const activeProjectileIds = new Set(state.projectiles.map(p => p.id));
+  for (const [id, g] of projectileGraphics) {
+    if (!activeProjectileIds.has(id)) {
+      app.stage.removeChild(g);
+      g.destroy();
+      projectileGraphics.delete(id);
+    }
+  }
+  for (const projectile of state.projectiles) {
+    let g = projectileGraphics.get(projectile.id);
+    if (!g) {
+      g = new Graphics();
+      app.stage.addChild(g);
+      projectileGraphics.set(projectile.id, g);
+    }
+    g.position.set(projectile.x, projectile.y);
+    g.clear();
+    g.circle(0, 0, 8).fill({ color: 0xffffff });
+  }
+
+  // ── Zones/Fields ──────────────────────────────────────────────────────────────
+  const activeZoneIds = new Set(state.zones.map(z => z.id));
+  for (const [id, g] of zoneGraphics) {
+    if (!activeZoneIds.has(id)) {
+      app.stage.removeChild(g);
+      g.destroy();
+      zoneGraphics.delete(id);
+    }
+  }
+  for (const zone of state.zones) {
+    let g = zoneGraphics.get(zone.id);
+    if (!g) {
+      g = new Graphics();
+      app.stage.addChildAt(g, 0); // below sprites, like bond tethers
+      zoneGraphics.set(zone.id, g);
+    }
+    g.position.set(zone.x, zone.y);
+    g.clear();
+    g.circle(0, 0, zone.radius).fill({ color: 0x9b59b6, alpha: 0.25 });
+  }
+
   // ── Essence flashes ───────────────────────────────────────────────────────────
   for (const [dropId, flash] of essenceFlashes) {
     const remaining = flash.deadline - now;
@@ -224,6 +348,9 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
   const enemyGraphicsRef = useRef<Map<string, EnemyEntry>>(new Map());
   const essenceFlashesRef = useRef<Map<string, EssenceFlash>>(new Map());
   const tetherGraphicsRef = useRef<Map<string, Graphics>>(new Map());
+  const statusBadgeGraphicsRef = useRef<Map<string, Graphics>>(new Map());
+  const projectileGraphicsRef = useRef<Map<string, Graphics>>(new Map());
+  const zoneGraphicsRef = useRef<Map<string, Graphics>>(new Map());
   const latestGameStateRef = useRef<GameState | null>(null);
   latestGameStateRef.current = gameState;
   const reviveDeadlinesRef = useRef<Map<string, ReviveDeadline>>(new Map());
@@ -273,6 +400,9 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
           essenceFlashesRef.current,
           tetherGraphicsRef.current,
           isPurifiedRef.current,
+          statusBadgeGraphicsRef.current,
+          projectileGraphicsRef.current,
+          zoneGraphicsRef.current,
         );
 
         // Boss sprite — managed in ticker to keep renderFrame signature stable
@@ -363,6 +493,7 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
       enemyGraphicsRef.current.clear();
       essenceFlashesRef.current.clear();
       tetherGraphicsRef.current.clear();
+      statusBadgeGraphicsRef.current.clear();
     };
   }, []);
 

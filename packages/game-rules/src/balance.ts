@@ -1,4 +1,4 @@
-import type { PlayerClass, BondType } from 'shared-types';
+import type { PlayerClass, BondType, ZoneEffectType, StatusEffectType } from 'shared-types';
 
 // ── Movement ──────────────────────────────────────────────────────────────────
 export const JOYSTICK_DEADBAND = 0.05;
@@ -32,16 +32,51 @@ export const SPIRIT_ABILITY_NAMES: Record<PlayerClass, string> = {
 export const ABILITY_COOLDOWNS_MS: Record<PlayerClass, readonly [number, number, number, number]> = {
   stonehide:    [2000, 4000, 6000, 1000],  // Stone Wall, Tremor Stomp, Iron Skin, Avalanche(AUTO)
   spiritcaller: [1500, 5000, 4000, 6000],  // Ancestor's Voice(AUTO), Spirit Nova, Soul Mend, Warding Cry
-  souldrinker:  [1000, 3000, 5000, 4000],  // Blood Draw(AUTO), Crimson Lash, Dark Pact, Void Pulse
+  souldrinker:  [1000, 3000, 5000, 4000],  // Blood Spike(AUTO), Crimson Lash, Dark Pact, Void Pulse
   stormcaller:  [1000, 3000, 5000, 2000],  // Lightning Arc(AUTO), Tempest Hurl, Thunder Clap, Storm Eye(AUTO)
 };
 
 // Base damage per ability per class (applied in Story 3.4; defined here for balance).
 export const ABILITY_DAMAGE: Record<PlayerClass, readonly [number, number, number, number]> = {
   stonehide:    [15, 35,  0, 50],  // Stone Wall(no dmg), Tremor AoE, Iron Skin(buff), Avalanche
-  spiritcaller: [ 0, 40,  0,  0],  // Ancestor's Voice(heal), Spirit Nova(burst heal), Soul Mend, Warding Cry(buff)
-  souldrinker:  [12, 30,  0, 25],  // Blood Draw drain, Crimson Lash, Dark Pact(debuff), Void Pulse
+  spiritcaller: [15, 40,  0,  0],  // Ancestor's Voice(mixed-faction), Spirit Nova(mixed-faction), Soul Mend, Warding Cry(buff)
+  souldrinker:  [12, 30,  0, 25],  // Blood Spike (lifesteal), Crimson Lash, Dark Pact(HP-drain, not this table), Void Pulse
   stormcaller:  [18, 40, 45,  0],  // Lightning Arc, Tempest Hurl, Thunder Clap AoE, Storm Eye(field)
+};
+
+// Heal value applied to allies for Spiritcaller's mixed-faction abilities (Story 3.17).
+// Soul Mend (slot 2) heals via full revive, not this table (Story 3.18); Warding Cry
+// (slot 3) shields, doesn't heal. All zero for every other class — no mixed-faction
+// ability exists outside Spiritcaller.
+export const ABILITY_HEAL_AMOUNT: Record<PlayerClass, readonly [number, number, number, number]> = {
+  stonehide:    [0, 0, 0, 0],
+  spiritcaller: [10, 30, 0, 0],
+  souldrinker:  [0, 0, 0, 0],
+  stormcaller:  [0, 0, 0, 0],
+};
+
+// ── Self-cost / HP-scaled damage / lifesteal ─────────────────────────────────
+// Story 3.19: Blood Spike (slot 0) pays HP on cast and lifesteals on hit;
+// Crimson Lash (slot 1) deals more damage the lower the caster's HP.
+export const ABILITY_SELF_COST_HP: Record<PlayerClass, readonly [number, number, number, number]> = {
+  stonehide:    [0, 0, 0, 0],
+  spiritcaller: [0, 0, 0, 0],
+  souldrinker:  [10, 0, 0, 0],
+  stormcaller:  [0, 0, 0, 0],
+};
+
+export const ABILITY_HP_SCALED_DAMAGE: Record<PlayerClass, readonly [number, number, number, number]> = {
+  stonehide:    [0, 0, 0, 0],
+  spiritcaller: [0, 0, 0, 0],
+  souldrinker:  [0, 1.0, 0, 0],
+  stormcaller:  [0, 0, 0, 0],
+};
+
+export const ABILITY_LIFESTEAL_PCT: Record<PlayerClass, readonly [number, number, number, number]> = {
+  stonehide:    [0, 0, 0, 0],
+  spiritcaller: [0, 0, 0, 0],
+  souldrinker:  [0.5, 0, 0, 0],
+  stormcaller:  [0, 0, 0, 0],
 };
 
 // ── Enemy AI ──────────────────────────────────────────────────────────────────
@@ -66,7 +101,7 @@ export const STOMP_COOLDOWN_TICKS = 240;      // 8 seconds at 30hz
 export const ABILITY_HIT_RANGE_PX: Record<PlayerClass, readonly [number, number, number, number]> = {
   stonehide:    [  0, 160,   0, 200],
   spiritcaller: [180,   0, 200,   0],
-  souldrinker:  [150, 180,   0,   0],
+  souldrinker:  [150, 180, 180,   0], // Dark Pact (slot 2) now aims a forward cone for its ally-target search (Story 3.19)
   stormcaller:  [160, 200,   0, 160],
 };
 
@@ -75,6 +110,124 @@ export const ABILITY_HIT_RADIUS_PX: Record<PlayerClass, readonly [number, number
   spiritcaller: [ 50, 90,  60,  90],
   souldrinker:  [ 50, 65,  80,  80],
   stormcaller:  [ 60, 70, 110,  80],
+};
+
+// ── Ability delivery type ────────────────────────────────────────────────────
+// Story 3.19: the first abilities to resolve via a spawned ProjectileState
+// (Story 3.13) instead of the default same-tick hit-scan. Declarative so
+// GameRoom branches on this table instead of special-casing any one ability.
+// Story 3.20: extended with 'zone' — Storm Eye places a ZoneState directly
+// (via createZoneBody in GameRoom's dispatch block) rather than through a
+// spawned ProjectileState like the 'projectile' abilities above.
+export type AbilityDeliveryType = 'hitscan' | 'projectile' | 'zone';
+
+export const ABILITY_DELIVERY: Record<PlayerClass, readonly [AbilityDeliveryType, AbilityDeliveryType, AbilityDeliveryType, AbilityDeliveryType]> = {
+  stonehide:    ['hitscan', 'hitscan', 'hitscan', 'hitscan'],
+  spiritcaller: ['hitscan', 'hitscan', 'hitscan', 'hitscan'],
+  souldrinker:  ['projectile', 'hitscan', 'hitscan', 'projectile'], // Blood Spike, Void Pulse
+  stormcaller:  ['hitscan', 'hitscan', 'hitscan', 'zone'], // Storm Eye
+};
+
+// ── Projectiles ───────────────────────────────────────────────────────────────
+export const PROJECTILE_SPEED_PX_S = 600;
+export const PROJECTILE_MAX_RANGE_PX = 800;
+
+// ── Declarative projectile→zone chaining ─────────────────────────────────────
+// Populated per-ability by Story 3.19 (Void Pulse); all-null until then so
+// GameRoom reads this table instead of special-casing any one ability.
+export interface ChainedZoneConfig {
+  effectType: ZoneEffectType;
+  radius: number;
+  tickIntervalMs: number;
+  durationMs: number;
+}
+
+export const ABILITY_CHAINED_ZONE: Record<PlayerClass, readonly [ChainedZoneConfig | null, ChainedZoneConfig | null, ChainedZoneConfig | null, ChainedZoneConfig | null]> = {
+  stonehide:    [null, null, null, null],
+  spiritcaller: [null, null, null, null],
+  souldrinker:  [null, null, null, { effectType: 'pull', radius: 150, tickIntervalMs: 500, durationMs: 2000 }], // Void Pulse
+  stormcaller:  [null, null, null, null],
+};
+
+// Void Pulse's chained pull zone (Story 3.19) — plain named constant, not a
+// per-class table, same rationale as Spirit Nova/Soul Mend's constants below:
+// it's the only ability in the full spec that spawns a 'pull' zone.
+export const VOID_PULSE_PULL_STRENGTH_PX = 50;
+
+// Dark Pact's ally-HP drain percentage (Story 3.19) — named rather than a
+// bare literal at the call site, matching this file's tunable-constant convention.
+export const DARK_PACT_DRAIN_PCT = 0.10;
+
+// ── Declarative per-ability status-effect application ───────────────────────
+// Populated per-ability by each kit-rework story (3.16 sets Stonehide; 3.17
+// adds Spiritcaller's Warding Cry). GameRoom reads this table instead of
+// special-casing any one ability by class/index.
+export type StatusEffectScope = 'self' | 'enemies-in-zone' | 'allies-in-zone';
+
+// ── Spirit Nova expanding-radius sweep (Story 3.17) ──────────────────────────
+// Plain named constants, not a per-class table — Spirit Nova is the only ability
+// in the full spec that uses this delivery type (see resolveExpandingRadius in
+// targeting.ts); a 4-tuple table would be mostly-unused ceremony for one consumer.
+export const SPIRIT_NOVA_DURATION_MS = 600;
+export const SPIRIT_NOVA_MAX_RADIUS_PX = 220;
+
+// ── Soul Mend hold-to-channel revive (Story 3.18) ────────────────────────────
+// Plain named constants, not a per-class table — Soul Mend is the only AIM_CAST
+// ability in the full spec, same rationale as Spirit Nova's constants above.
+export const SOUL_MEND_CHANNEL_DURATION_MS = 2500;
+// Fire-attempts arrive every 33ms (mobile's AUTO-style continuous-send interval)
+// while held; a few missed beats tolerates jitter without feeling laggy on release.
+export const SOUL_MEND_LIVENESS_MS = 150;
+
+// ── Storm Eye persistent zone + bonus strike (Story 3.20) ───────────────────
+// Plain named constants, not per-class tables — Storm Eye is the only 'zone'-
+// delivery ability in the full spec, same rationale as Spirit Nova/Soul Mend above.
+// STORM_EYE_TICK_DAMAGE is separate from ABILITY_DAMAGE's stormcaller[3]=0 entry:
+// that table is read by the hit-scan path only, which this ability's 'zone'
+// delivery never reaches (see GameRoom.ts's ABILITY_DELIVERY branch).
+export const STORM_EYE_ZONE_RADIUS_PX = 150;
+export const STORM_EYE_TICK_MS = 500;
+export const STORM_EYE_TICK_DAMAGE = 10;
+export const STORM_EYE_DURATION_MS = 5000;
+export const STORM_EYE_STRIKE_INTERVAL_MS = 1500; // longer than the steady STORM_EYE_TICK_MS cadence, per AC2
+export const STORM_EYE_STRIKE_DAMAGE = 30;
+
+export interface AbilityStatusEffectConfig {
+  effectType: StatusEffectType;
+  magnitude: number;
+  durationMs: number;
+  scope: StatusEffectScope;
+}
+
+export const ABILITY_STATUS_EFFECT: Record<PlayerClass, readonly [AbilityStatusEffectConfig | null, AbilityStatusEffectConfig | null, AbilityStatusEffectConfig | null, AbilityStatusEffectConfig | null]> = {
+  stonehide: [
+    null, // Stone Wall — displacement, not a status effect (see ABILITY_DISPLACEMENT_STRENGTH)
+    { effectType: 'slow', magnitude: 0.4, durationMs: 2000, scope: 'enemies-in-zone' }, // Tremor Stomp
+    { effectType: 'damageReduction', magnitude: 0.3, durationMs: 3000, scope: 'self' }, // Iron Skin
+    null, // Avalanche
+  ],
+  spiritcaller: [
+    null, // Ancestor's Voice — mixed-faction damage/heal, not a status effect
+    null, // Spirit Nova — mixed-faction damage/heal, not a status effect
+    null, // Soul Mend — Story 3.18
+    { effectType: 'shield', magnitude: 30, durationMs: 4000, scope: 'allies-in-zone' }, // Warding Cry
+  ],
+  souldrinker: [
+    null, // Blood Spike — lifesteal via ABILITY_LIFESTEAL_PCT, not a status effect
+    null, // Crimson Lash — HP-scaled damage via ABILITY_HP_SCALED_DAMAGE, not a status effect
+    { effectType: 'damageBuff', magnitude: 0.25, durationMs: 4000, scope: 'self' }, // Dark Pact — gated on drain target found, see GameRoom.ts
+    null, // Void Pulse — projectile + chained pull zone, not a status effect
+  ],
+  stormcaller:  [null, null, null, null],
+};
+
+// ── Declarative per-ability displacement strength ────────────────────────────
+// 0 = no displacement. Populated per-ability by each kit-rework story.
+export const ABILITY_DISPLACEMENT_STRENGTH: Record<PlayerClass, readonly [number, number, number, number]> = {
+  stonehide:    [40, 0, 0, 0], // Stone Wall pulls hit enemies toward the caster
+  spiritcaller: [0, 0, 0, 0],
+  souldrinker:  [0, 0, 0, 0],
+  stormcaller:  [0, 0, 0, 0],
 };
 
 // ── Spirit Essence ────────────────────────────────────────────────────────────

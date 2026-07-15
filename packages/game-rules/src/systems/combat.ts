@@ -1,6 +1,7 @@
 import type { EnemyState, EssenceDrop } from 'shared-types';
 import type { Result } from '../state/result.js';
 import { ESSENCE_DROP_AMOUNT } from '../balance.js';
+import { getStatusEffectMagnitude } from './status-effects.js';
 
 export interface DamageResult {
   enemy: EnemyState;
@@ -15,11 +16,14 @@ export function applyDamage(
   enemy: EnemyState,
   damage: number,
   dropId: string,
+  nowMs: number,
 ): Result<DamageResult, CombatError> {
   if (!enemy.isAlive) return { ok: false, error: { code: 'ENEMY_ALREADY_DEAD' } };
   if (damage < 0) return { ok: false, error: { code: 'NEGATIVE_DAMAGE', detail: String(damage) } };
 
-  const newHp = Math.max(0, enemy.hp - damage);
+  const damageReduction = getStatusEffectMagnitude(enemy, 'damageReduction', nowMs);
+  const mitigatedDamage = damage * (1 - damageReduction);
+  const newHp = Math.max(0, enemy.hp - mitigatedDamage);
   const killed = newHp === 0;
   const updatedEnemy: EnemyState = { ...enemy, hp: newHp, isAlive: !killed };
 

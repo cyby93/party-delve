@@ -29,6 +29,7 @@ function makeEnemy(isAlive: boolean): EnemyState {
     isAlive,
     fsmState: EnemyFSMState.IDLE,
     attackCooldownTicks: 0,
+    statusEffects: [],
   };
 }
 

@@ -15,13 +15,14 @@ function mockEnemy(overrides?: Partial<EnemyState>): EnemyState {
     isAlive: true,
     fsmState: EnemyFSMState.IDLE,
     attackCooldownTicks: 0,
+    statusEffects: [],
     ...overrides,
   };
 }
 
 describe('applyDamage', () => {
   it('reduces hp by damage amount', () => {
-    const result = applyDamage(mockEnemy(), 20, 'drop-1');
+    const result = applyDamage(mockEnemy(), 20, 'drop-1', 0);
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.value.enemy.hp).toBe(40);
@@ -31,7 +32,7 @@ describe('applyDamage', () => {
   });
 
   it('clamps hp to 0, sets killed=true, includes essenceDrop when damage >= hp', () => {
-    const result = applyDamage(mockEnemy({ hp: 15 }), 100, 'drop-2');
+    const result = applyDamage(mockEnemy({ hp: 15 }), 100, 'drop-2', 0);
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.value.enemy.hp).toBe(0);
@@ -43,20 +44,20 @@ describe('applyDamage', () => {
   });
 
   it('returns error for already-dead enemy', () => {
-    const result = applyDamage(mockEnemy({ isAlive: false, hp: 0 }), 10, 'drop-3');
+    const result = applyDamage(mockEnemy({ isAlive: false, hp: 0 }), 10, 'drop-3', 0);
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.code).toBe('ENEMY_ALREADY_DEAD');
   });
 
   it('returns error for negative damage', () => {
-    const result = applyDamage(mockEnemy(), -5, 'drop-4');
+    const result = applyDamage(mockEnemy(), -5, 'drop-4', 0);
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.code).toBe('NEGATIVE_DAMAGE');
   });
 
   it('does not mutate the original enemy object', () => {
     const enemy = mockEnemy();
-    applyDamage(enemy, 10, 'drop-5');
+    applyDamage(enemy, 10, 'drop-5', 0);
     expect(enemy.hp).toBe(60);
   });
 });

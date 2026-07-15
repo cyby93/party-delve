@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { serialize, deserialize, applyDelta, EventNames } from 'net-protocol';
-import type { SnapshotMsg, DeltaEventMsg, InputEventMsg, PlayerPoiEnteredDelta, PlayerPoiExitedDelta, AbilityFiredDelta, EnemyDamagedDelta, PlayerDownedDelta, BondNotificationMsg, ContinueMsg, BossDamagedDelta, BossPhaseChangedDelta, BossDefeatedDelta, RunVictoryMsg } from 'net-protocol';
-import type { GameState, PlayerState, RunReward } from 'shared-types';
+import type { SnapshotMsg, DeltaEventMsg, InputEventMsg, PlayerPoiEnteredDelta, PlayerPoiExitedDelta, AbilityFiredDelta, EnemyDamagedDelta, PlayerDownedDelta, BondNotificationMsg, ContinueMsg, BossDamagedDelta, BossPhaseChangedDelta, BossDefeatedDelta, RunVictoryMsg, StatusAppliedDelta, StatusExpiredDelta, ProjectileHitDelta, ProjectileExpiredDelta, ZoneTickDelta, ZoneExpiredDelta, ZoneStrikeDelta } from 'net-protocol';
+import type { GameState, PlayerState, RunReward, ProjectileState, ZoneState } from 'shared-types';
 import { PlayerClass, SessionColor, EnemyType, DifficultyTier, EnemyFSMState, BondType, BossPhase, GrasslandAchievement } from 'shared-types';
 
 function mockGameState(): GameState {
@@ -30,6 +30,8 @@ function mockGameState(): GameState {
     floorLayout: null,
     runProposal: null,
     boss: null,
+    projectiles: [],
+    zones: [],
   };
 }
 
@@ -58,6 +60,8 @@ describe('net-protocol contract tests', () => {
         nearPoiId: null,
         essenceTotal: 0,
         reviveTimerExpiresAt: 0,
+        statusEffects: [],
+        channelingAbility: null,
       });
       const msg: SnapshotMsg = { type: 'snapshot', state };
       expect(deserialize<SnapshotMsg>(serialize(msg))).toEqual(msg);
@@ -76,6 +80,7 @@ describe('net-protocol contract tests', () => {
         isAlive: true,
         fsmState: EnemyFSMState.CHASE,
         attackCooldownTicks: 0,
+        statusEffects: [],
       });
       const msg: SnapshotMsg = { type: 'snapshot', state };
       expect(deserialize<SnapshotMsg>(serialize(msg))).toEqual(msg);
@@ -113,6 +118,28 @@ describe('net-protocol contract tests', () => {
       const delta = { type: 'player:reconnected' as const, playerId: 'p1' } satisfies DeltaEventMsg;
       expect(deserialize<DeltaEventMsg>(serialize(delta))).toEqual(delta);
     });
+
+    it('cast:started survives serialize → deserialize (Story 3.18)', () => {
+      const delta = {
+        type: 'cast:started' as const,
+        casterId: 'p1',
+        targetPlayerId: 'p2',
+        abilityIndex: 2,
+        startedAt: 12345,
+        durationMs: 2500,
+      } satisfies DeltaEventMsg;
+      expect(deserialize<DeltaEventMsg>(serialize(delta))).toEqual(delta);
+    });
+
+    it('cast:cancelled survives serialize → deserialize (Story 3.18)', () => {
+      const delta = { type: 'cast:cancelled' as const, casterId: 'p1' } satisfies DeltaEventMsg;
+      expect(deserialize<DeltaEventMsg>(serialize(delta))).toEqual(delta);
+    });
+
+    it('cast:completed survives serialize → deserialize (Story 3.18 review fix)', () => {
+      const delta = { type: 'cast:completed' as const, casterId: 'p1' } satisfies DeltaEventMsg;
+      expect(deserialize<DeltaEventMsg>(serialize(delta))).toEqual(delta);
+    });
   });
 
   describe('applyDelta behavior', () => {
@@ -133,6 +160,8 @@ describe('net-protocol contract tests', () => {
         nearPoiId: null,
         essenceTotal: 0,
         reviveTimerExpiresAt: 0,
+        statusEffects: [],
+        channelingAbility: null,
         ...overrides,
       };
     }
@@ -174,6 +203,58 @@ describe('net-protocol contract tests', () => {
       const next = applyDelta(state, { type: 'player:reconnected', playerId: 'ghost' });
       expect(next).toBe(state);
     });
+
+    it('cast:started sets channelingAbility (including server startedAt) on the matching caster (Story 3.18)', () => {
+      const state: GameState = { ...mockGameState(), players: [mockPlayer()] };
+      const next = applyDelta(state, {
+        type: 'cast:started', casterId: 'p1', targetPlayerId: 'p2', abilityIndex: 2, startedAt: 5000, durationMs: 2500,
+      });
+      expect(next.players[0]?.channelingAbility).toMatchObject({ abilityIndex: 2, targetPlayerId: 'p2', startedAt: 5000, durationMs: 2500 });
+      expect(state.players[0]?.channelingAbility).toBeNull(); // original state must not be mutated
+    });
+
+    it('cast:cancelled clears channelingAbility on the matching caster (Story 3.18)', () => {
+      const state: GameState = {
+        ...mockGameState(),
+        players: [mockPlayer({ channelingAbility: { abilityIndex: 2, targetPlayerId: 'p2', startedAt: 0, durationMs: 2500 } })],
+      };
+      const next = applyDelta(state, { type: 'cast:cancelled', casterId: 'p1' });
+      expect(next.players[0]?.channelingAbility).toBeNull();
+    });
+
+    it('cast:completed clears channelingAbility on the matching caster (Story 3.18 review fix)', () => {
+      const state: GameState = {
+        ...mockGameState(),
+        players: [mockPlayer({ channelingAbility: { abilityIndex: 2, targetPlayerId: 'p2', startedAt: 0, durationMs: 2500 } })],
+      };
+      const next = applyDelta(state, { type: 'cast:completed', casterId: 'p1' });
+      expect(next.players[0]?.channelingAbility).toBeNull();
+    });
+
+    it('cast:started returns same reference for unknown casterId', () => {
+      const state: GameState = { ...mockGameState(), players: [] };
+      const next = applyDelta(state, { type: 'cast:started', casterId: 'ghost', targetPlayerId: 'p2', abilityIndex: 2, startedAt: 5000, durationMs: 2500 });
+      expect(next).toBe(state);
+    });
+
+    it('cast:cancelled returns same reference for unknown casterId', () => {
+      const state: GameState = { ...mockGameState(), players: [] };
+      const next = applyDelta(state, { type: 'cast:cancelled', casterId: 'ghost' });
+      expect(next).toBe(state);
+    });
+
+    it('cast:completed returns same reference for unknown casterId', () => {
+      const state: GameState = { ...mockGameState(), players: [] };
+      const next = applyDelta(state, { type: 'cast:completed', casterId: 'ghost' });
+      expect(next).toBe(state);
+    });
+
+    it('player:revived clears channelingAbility unconditionally (no-op when never set)', () => {
+      const state: GameState = { ...mockGameState(), players: [mockPlayer({ isDown: true, reviveTimerExpiresAt: 5000 })] };
+      const next = applyDelta(state, { type: 'player:revived', playerId: 'p1' });
+      expect(next.players[0]?.channelingAbility).toBeNull();
+      expect(next.players[0]?.isDown).toBe(false);
+    });
   });
 
   describe('PlayerPoiEnteredDelta round-trip', () => {
@@ -213,6 +294,8 @@ describe('net-protocol contract tests', () => {
         nearPoiId: null,
         essenceTotal: 0,
         reviveTimerExpiresAt: 0,
+        statusEffects: [],
+        channelingAbility: null,
         ...overrides,
       };
     }
@@ -274,6 +357,8 @@ describe('net-protocol contract tests', () => {
         nearPoiId: null,
         essenceTotal: 25,
         reviveTimerExpiresAt: 0,
+        statusEffects: [],
+        channelingAbility: null,
       });
       const msg: SnapshotMsg = { type: 'snapshot', state };
       expect(deserialize<SnapshotMsg>(serialize(msg))).toEqual(msg);
@@ -444,6 +529,86 @@ describe('net-protocol contract tests', () => {
     });
   });
 
+  describe('Story 3.21a: bodyX/bodyY schema and protocol contract', () => {
+    function mockPlayer(overrides?: Partial<PlayerState>): PlayerState {
+      return {
+        id: 'p1',
+        displayName: 'Test',
+        class: PlayerClass.STONEHIDE,
+        x: 0,
+        y: 0,
+        hp: 100,
+        maxHp: 100,
+        isFrozen: false,
+        isDown: false,
+        isSpirit: false,
+        sessionColor: SessionColor.RED,
+        downCount: 0,
+        nearPoiId: null,
+        essenceTotal: 0,
+        reviveTimerExpiresAt: 0,
+        statusEffects: [],
+        channelingAbility: null,
+        ...overrides,
+      };
+    }
+
+    it('player:downed delta with bodyX/bodyY survives serialize → deserialize', () => {
+      const delta = {
+        type: 'player:downed' as const, playerId: 'p1', downCount: 1, reviveWindowMs: 60000, bodyX: 500, bodyY: 300,
+      } satisfies PlayerDownedDelta;
+      expect(deserialize<DeltaEventMsg>(serialize(delta))).toEqual(delta);
+    });
+
+    it('applyDelta player:downed sets bodyX/bodyY from the delta when present', () => {
+      const state: GameState = { ...mockGameState(), players: [mockPlayer({ x: 500, y: 300 })] };
+      const next = applyDelta(state, {
+        type: 'player:downed', playerId: 'p1', downCount: 1, reviveWindowMs: 60000, bodyX: 500, bodyY: 300,
+      });
+      expect(next.players[0]?.bodyX).toBe(500);
+      expect(next.players[0]?.bodyY).toBe(300);
+    });
+
+    it('applyDelta player:downed falls back to the player\'s current x/y when the delta omits bodyX/bodyY (pre-3.21b sim traffic)', () => {
+      const state: GameState = { ...mockGameState(), players: [mockPlayer({ x: 700, y: 400 })] };
+      const next = applyDelta(state, { type: 'player:downed', playerId: 'p1', downCount: 1, reviveWindowMs: 60000 });
+      expect(next.players[0]?.bodyX).toBe(700);
+      expect(next.players[0]?.bodyY).toBe(400);
+    });
+
+    it('applyDelta player:downed falls back on both axes together when the delta supplies only one (never mixes fresh + stale)', () => {
+      const state: GameState = { ...mockGameState(), players: [mockPlayer({ x: 900, y: 600 })] };
+      const next = applyDelta(state, {
+        type: 'player:downed', playerId: 'p1', downCount: 1, reviveWindowMs: 60000, bodyX: 123,
+      });
+      expect(next.players[0]?.bodyX).toBe(900);
+      expect(next.players[0]?.bodyY).toBe(600);
+    });
+
+    it('applyDelta player:downed leaves a different player\'s bodyX/bodyY untouched', () => {
+      const state: GameState = {
+        ...mockGameState(),
+        players: [mockPlayer({ id: 'p1', x: 500, y: 300 }), mockPlayer({ id: 'p2', x: 10, y: 20 })],
+      };
+      const next = applyDelta(state, {
+        type: 'player:downed', playerId: 'p1', downCount: 1, reviveWindowMs: 60000, bodyX: 500, bodyY: 300,
+      });
+      expect(next.players.find(p => p.id === 'p2')?.bodyX).toBeUndefined();
+      expect(next.players.find(p => p.id === 'p2')?.bodyY).toBeUndefined();
+    });
+
+    it('a never-downed player has bodyX/bodyY undefined by default', () => {
+      const player = mockPlayer();
+      expect(player.bodyX).toBeUndefined();
+      expect(player.bodyY).toBeUndefined();
+    });
+
+    it('player:revived delta survives serialize → deserialize', () => {
+      const delta = { type: 'player:revived' as const, playerId: 'p1' } satisfies DeltaEventMsg;
+      expect(deserialize<DeltaEventMsg>(serialize(delta))).toEqual(delta);
+    });
+  });
+
   describe('Story 4.2 delta round-trips', () => {
     it('run:proposed delta survives serialize → deserialize', () => {
       const delta = {
@@ -602,6 +767,197 @@ describe('net-protocol contract tests', () => {
       const encoded = serialize(msg);
       const decoded = deserialize(encoded) as RunVictoryMsg;
       expect(decoded).toEqual(msg);
+    });
+  });
+
+  describe('Story 3.12 status-effect delta round-trips', () => {
+    function mockPlayer(overrides?: Partial<PlayerState>): PlayerState {
+      return {
+        id: 'p1',
+        displayName: 'Test',
+        class: PlayerClass.STONEHIDE,
+        x: 0,
+        y: 0,
+        hp: 100,
+        maxHp: 100,
+        isFrozen: false,
+        isDown: false,
+        isSpirit: false,
+        sessionColor: SessionColor.RED,
+        downCount: 0,
+        nearPoiId: null,
+        essenceTotal: 0,
+        reviveTimerExpiresAt: 0,
+        statusEffects: [],
+        channelingAbility: null,
+        ...overrides,
+      };
+    }
+
+    function mockEnemy() {
+      return {
+        id: 'e1',
+        type: EnemyType.GRUNT,
+        x: 100,
+        y: 100,
+        hp: 100,
+        maxHp: 100,
+        difficultyTier: DifficultyTier.EASY,
+        isAlive: true,
+        fsmState: EnemyFSMState.CHASE,
+        attackCooldownTicks: 0,
+        statusEffects: [] as PlayerState['statusEffects'],
+      };
+    }
+
+    it('StatusAppliedDelta survives serialize → deserialize', () => {
+      const delta: StatusAppliedDelta = {
+        type: 'status:applied',
+        targetId: 'p1',
+        effectType: 'slow',
+        magnitude: 0.5,
+        expiresAtMs: 5000,
+      };
+      expect(deserialize<DeltaEventMsg>(serialize(delta))).toEqual(delta);
+    });
+
+    it('StatusExpiredDelta survives serialize → deserialize', () => {
+      const delta: StatusExpiredDelta = {
+        type: 'status:expired',
+        targetId: 'p1',
+        effectType: 'slow',
+      };
+      expect(deserialize<DeltaEventMsg>(serialize(delta))).toEqual(delta);
+    });
+
+    it('applyDelta status:applied appends the effect on a matching player', () => {
+      const state: GameState = { ...mockGameState(), players: [mockPlayer()] };
+      const delta: DeltaEventMsg = { type: 'status:applied', targetId: 'p1', effectType: 'damageReduction', magnitude: 0.3, expiresAtMs: 5000 };
+      const next = applyDelta(state, delta);
+      expect(next.players[0]?.statusEffects).toEqual([{ type: 'damageReduction', magnitude: 0.3, expiresAtMs: 5000 }]);
+      expect(state.players[0]?.statusEffects).toEqual([]); // original not mutated
+    });
+
+    it('applyDelta status:applied appends the effect on a matching enemy', () => {
+      const state: GameState = { ...mockGameState(), enemies: [mockEnemy()] };
+      const delta: DeltaEventMsg = { type: 'status:applied', targetId: 'e1', effectType: 'slow', magnitude: 0.4, expiresAtMs: 3000 };
+      const next = applyDelta(state, delta);
+      expect(next.enemies[0]?.statusEffects).toEqual([{ type: 'slow', magnitude: 0.4, expiresAtMs: 3000 }]);
+    });
+
+    it('applyDelta status:applied replaces an existing effect of the same type', () => {
+      const player = mockPlayer({ statusEffects: [{ type: 'slow', magnitude: 0.5, expiresAtMs: 1000 }] });
+      const state: GameState = { ...mockGameState(), players: [player] };
+      const delta: DeltaEventMsg = { type: 'status:applied', targetId: 'p1', effectType: 'slow', magnitude: 0.8, expiresAtMs: 9000 };
+      const next = applyDelta(state, delta);
+      expect(next.players[0]?.statusEffects).toEqual([{ type: 'slow', magnitude: 0.8, expiresAtMs: 9000 }]);
+    });
+
+    it('applyDelta status:expired removes the matching effect from a player', () => {
+      const player = mockPlayer({ statusEffects: [{ type: 'slow', magnitude: 0.5, expiresAtMs: 1000 }] });
+      const state: GameState = { ...mockGameState(), players: [player] };
+      const delta: DeltaEventMsg = { type: 'status:expired', targetId: 'p1', effectType: 'slow' };
+      const next = applyDelta(state, delta);
+      expect(next.players[0]?.statusEffects).toEqual([]);
+    });
+
+    it('applyDelta status:applied returns same reference for unknown targetId', () => {
+      const state: GameState = mockGameState();
+      const delta: DeltaEventMsg = { type: 'status:applied', targetId: 'ghost', effectType: 'slow', magnitude: 0.5, expiresAtMs: 1000 };
+      expect(applyDelta(state, delta)).toBe(state);
+    });
+
+    it('applyDelta status:expired returns same reference for unknown targetId', () => {
+      const state: GameState = mockGameState();
+      const delta: DeltaEventMsg = { type: 'status:expired', targetId: 'ghost', effectType: 'slow' };
+      expect(applyDelta(state, delta)).toBe(state);
+    });
+  });
+
+  describe('Story 3.13 projectile/zone delta round-trips', () => {
+    function mockProjectile(overrides?: Partial<ProjectileState>): ProjectileState {
+      return {
+        id: 'proj-1',
+        ownerId: 'p1',
+        x: 100,
+        y: 100,
+        class: PlayerClass.SOULDRINKER,
+        abilityIndex: 3,
+        ...overrides,
+      };
+    }
+
+    function mockZone(overrides?: Partial<ZoneState>): ZoneState {
+      return {
+        id: 'zone-1',
+        ownerId: 'p1',
+        x: 100,
+        y: 100,
+        radius: 150,
+        effectType: 'damage',
+        tickIntervalMs: 1000,
+        expiresAtMs: 10_000,
+        ...overrides,
+      };
+    }
+
+    it('ProjectileHitDelta survives serialize → deserialize', () => {
+      const delta: ProjectileHitDelta = { type: 'projectile:hit', projectileId: 'proj-1', x: 120, y: 130 };
+      expect(deserialize<DeltaEventMsg>(serialize(delta))).toEqual(delta);
+    });
+
+    it('ProjectileExpiredDelta survives serialize → deserialize', () => {
+      const delta: ProjectileExpiredDelta = { type: 'projectile:expired', projectileId: 'proj-1' };
+      expect(deserialize<DeltaEventMsg>(serialize(delta))).toEqual(delta);
+    });
+
+    it('ZoneTickDelta survives serialize → deserialize', () => {
+      const delta: ZoneTickDelta = { type: 'zone:tick', zoneId: 'zone-1' };
+      expect(deserialize<DeltaEventMsg>(serialize(delta))).toEqual(delta);
+    });
+
+    it('ZoneExpiredDelta survives serialize → deserialize', () => {
+      const delta: ZoneExpiredDelta = { type: 'zone:expired', zoneId: 'zone-1' };
+      expect(deserialize<DeltaEventMsg>(serialize(delta))).toEqual(delta);
+    });
+
+    it('applyDelta projectile:hit removes the projectile from state', () => {
+      const state: GameState = { ...mockGameState(), projectiles: [mockProjectile()] };
+      const delta: DeltaEventMsg = { type: 'projectile:hit', projectileId: 'proj-1', x: 120, y: 130 };
+      const next = applyDelta(state, delta);
+      expect(next.projectiles).toEqual([]);
+      expect(state.projectiles).toHaveLength(1); // original not mutated
+    });
+
+    it('applyDelta projectile:expired removes the projectile from state', () => {
+      const state: GameState = { ...mockGameState(), projectiles: [mockProjectile()] };
+      const delta: DeltaEventMsg = { type: 'projectile:expired', projectileId: 'proj-1' };
+      const next = applyDelta(state, delta);
+      expect(next.projectiles).toEqual([]);
+    });
+
+    it('applyDelta zone:expired removes the zone from state', () => {
+      const state: GameState = { ...mockGameState(), zones: [mockZone()] };
+      const delta: DeltaEventMsg = { type: 'zone:expired', zoneId: 'zone-1' };
+      const next = applyDelta(state, delta);
+      expect(next.zones).toEqual([]);
+    });
+
+    it('applyDelta zone:tick is a no-op on state', () => {
+      const state: GameState = { ...mockGameState(), zones: [mockZone()] };
+      const delta: DeltaEventMsg = { type: 'zone:tick', zoneId: 'zone-1' };
+      expect(applyDelta(state, delta)).toBe(state);
+    });
+
+    it('ZoneStrikeDelta survives serialize → deserialize', () => {
+      const delta: ZoneStrikeDelta = { type: 'zone:strike', zoneId: 'zone-1', targetId: 'enemy-1', damage: 30 };
+      expect(deserialize<DeltaEventMsg>(serialize(delta))).toEqual(delta);
+    });
+
+    it('applyDelta zone:strike is a no-op on state (visual-only; HP change is a separate delta)', () => {
+      const state: GameState = { ...mockGameState(), zones: [mockZone()] };
+      const delta: DeltaEventMsg = { type: 'zone:strike', zoneId: 'zone-1', targetId: 'enemy-1', damage: 30 };
+      expect(applyDelta(state, delta)).toBe(state);
     });
   });
 });

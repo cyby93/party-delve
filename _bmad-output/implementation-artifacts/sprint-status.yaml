@@ -1,5 +1,5 @@
 # generated: 2026-06-22
-# last_updated: 2026-07-07
+# last_updated: 2026-07-13
 # project: party-delve
 # project_key: NOKEY
 # tracking_system: file-system
@@ -42,7 +42,158 @@
 # Phase2 legacy stories (old Phase-based keys) are tracked below under PHASE 2 STORIES.
 
 generated: 2026-06-22
-last_updated: 2026-07-07
+last_updated: 2026-07-15
+# 2026-07-15: created 3.22 (epic-3-post-321-deferred-hardening) — closes the Epic 3
+# deferred-work.md backlog that accumulated since 3.10 (Stories 3.11-3.21c never had a
+# hardening pass). Re-verified every candidate D-3.x entry against current source before
+# scoping: 6 real, actionable findings bundled in (D-3.16-A, D-3.17-A/B/C, D-3.20-A,
+# D-3.13-D); 2 dismissed on re-inspection as no longer matching the code (D-3.14-B's
+# "overwrite" premise — current applyDisplacementTo* already does `+=`, not assignment,
+# so concurrent pulls already sum) or as revisit-condition-still-unmet (D-3.13-A —
+# 3.19/3.20 never actually gave projectiles per-ability visual identity, the condition
+# this finding names to act on); D-3.18-A and the three Phase-5-scoped 3.21a/b findings
+# left deferred, unchanged, per their own explicit conditions. The main task reuses the
+# existing tests/e2e live-room harness (built for 4.6) to close a gap 4 separate code
+# reviews (3.16, 3.17 x2, 3.20) each flagged independently: no test anywhere fires a real
+# ability against a live GameRoom and asserts on the resulting deltas — full-run.test.ts
+# bypasses all combat via debug:kill-all/debug:kill-boss, and every game-room-*.test.ts
+# file mirrors GameRoom's logic in standalone functions rather than instantiating a room.
+# 2026-07-14: implemented 3.19 (pending code review) — Souldrinker's full kit
+# (Blood Spike projectile delivery + self-cost + 50% lifesteal, Crimson Lash
+# inverse-HP damage scaling, Dark Pact single-target ally drain + self
+# damageBuff, Void Pulse projectile impact + chained pull zone). First story
+# to wire a ProjectileState-spawning ability (added ABILITY_DELIVERY
+# declarative table) and the first to implement the zone-tick 'pull'
+# effectType (left as a stub since 3.13). No new net-protocol wire type
+# added for projectile spawn — reuses the existing 'add:spawned'-style full
+# SNAPSHOT broadcast precedent instead. Corrected two wrong assumptions
+# found by re-reading the current code rather than trusting the story text:
+# (1) self-cost HP was never actually applied by any GameRoom.ts caller
+# despite dispatchAbility computing it since 3.15 — added the missing
+# generic wiring; (2) Dark Pact's ABILITY_HIT_RANGE_PX was 0, which would
+# have made its ally-target search direction-independent — bumped to a
+# nonzero forward-aim range matching Soul Mend's (3.18) convention. Resolved
+# two previously-deferred findings at their first real call site:
+# D-3.14-A (player-side pull liveness guard) and D-3.15-A's remaining
+# caster-only case (Blood Spike lifesteal skips a downed/spirit caster).
+# D-3.14-B (no vector-summing for concurrent pull sources) remains open,
+# noted but not needed by any current caller. Updated 2 pre-existing tests
+# (3.11/3.16) that asserted blanket all-zero balance tables, now stale for
+# Souldrinker's slots. Full suite: typecheck 0 errors; vitest 459 passed, 12
+# pre-existing skips, 0 failed at the test level (3 e2e test files errored
+# on EADDRINUSE from concurrent other-agent worktree sessions competing for
+# fixed ports on this machine — confirmed unrelated to this story).
+# 2026-07-14: correct-course ran against TODO.md (sprint-change-proposal-2026-07-14.md,
+# approved). Reopened epic-2, epic-4, epic-6 — none were new scope: 2.8 supersedes
+# Story 2.4's training-dummy-only ability gate; 4.12/4.13 are net-new asks (HP restore,
+# vote button state) with no prior AC; 6.7/6.8 are regressions against Story 6.1/6.3's
+# already-approved AC (boss:damaged protocol/host code exists but was never wired —
+# every hit-resolution loop in GameRoom.ts only checked gameState.enemies, never
+# gameState.boss). Appended 3.21a/b/c to epic-3 (already in-progress, no reopen) — the
+# body/spirit entity split, split by ownership (Protocol Architect/Simulation
+# Engineer/Host Experience Engineer) per CLAUDE.md, sequenced a->b->c; 3.21b must
+# regression-test Soul Mend (3.18) once body and spirit positions diverge. Added
+# dev-2/dev-3/dev-4 to the no-epic bucket (rotation lock, fullscreen toggle, debug
+# god-mode), same category as dev-1. Excluded the placeholder-VFX TODO.md item —
+# sentence is incomplete/unscoped, needs the user to clarify before it can be triaged.
+# 2026-07-14: completed 3.18 (done) — hold-to-channel Soul Mend, replaces
+# 3.11's temporary AIM_CAST bridge. New PlayerState.channelingAbility field +
+# cast:started/cast:cancelled/cast:completed deltas (contract-change hook
+# triggered). Code review found 6 patch findings (missing cast:completed
+# signal, channelingAbility leak through resetToHub, CLASS_SELECT mid-channel
+# corrupting range/cooldown lookups, no caster-incapacitation check, client-
+# clock startedAt skew, misleading comment) — all fixed. 1 finding deferred
+# (D-3.18-A: no tie-break when two casters target the same downed ally —
+# self-corrects, no invalid state, just an unfair join order).
+# 2026-07-14: completed 3.17 — code review found 2 patch findings (Spirit Nova
+# sweep missing the Bond proximity-damage buff Ancestor's Voice already has;
+# Spirit Nova sweep missing a dungeon-phase guard, unlike every sibling
+# per-tick combat block), both fixed. 1 finding escalated to a decision
+# (Warding Cry's shield status effect applies but its damage-absorption
+# consumption isn't wired — outside Allowed paths, absorption model
+# undecided) — user chose to defer to a follow-up rather than expand scope
+# (deferred-work.md D-3.17-A). 4 more findings deferred as pre-existing/
+# batch-wide/minor (D-3.17-B..E: no GameRoom integration tests — same gap as
+# D-3.16-A; a unit test that validates a reimplementation instead of the
+# shipped sweep logic; activeSpiritNovas cleared without a completion event
+# on level transition; resolveExpandingRadius's unreachable divide-by-zero).
+# 8 findings dismissed (false-premise or by-design, incl. one Blind-Hunter
+# claim disproven by checking the pre-existing Avalanche ability). Full suite
+# re-run clean after patches: 473 passed, 0 regressions. Outcome: Approved.
+# 2026-07-14: implemented 3.17 (pending code review) — Spiritcaller's full kit
+# (Ancestor's Voice mixed-faction cone, Spirit Nova expanding-radius
+# mixed-faction sweep, Warding Cry allies-in-zone shield status effect). Added
+# GameRoom.ts#gatherPlayersInHitZone — the first query in the codebase to
+# gather nearby PLAYERS for a hit zone (every prior ability only targeted
+# enemies) — reused by all three abilities. Resolved deferred-work.md
+# D-3.15-A/D-3.15-B at the call site (gather query excludes downed/spirit/
+# frozen players and dead enemies before resolveMixedFactionTargets/
+# healPlayer ever see them; neither function itself changed). One judgment
+# call: ABILITY_DAMAGE.spiritcaller[0] bumped 0→15 (was an inert placeholder
+# — AC1 requires enemies actually take damage). One deliberate scope
+# boundary: Warding Cry's shield status effect applies but its damage-
+# absorption consumption is NOT wired (packages/game-rules/src/systems/
+# player-health.ts is outside this story's Allowed paths; logged as
+# deferred-work.md D-3.17-A rather than silently expanding scope). 10 tests
+# added (5 tests/unit/targeting.test.ts, 5 tests/unit/abilities.test.ts); full
+# suite (excl. pre-existing e2e tests needing live Docker/Redis) 473 passed,
+# 0 regressions.
+# 2026-07-13: completed 3.16 — Stonehide's full kit (Iron Skin self-scope
+# damageReduction, Tremor Stomp AoE damage+slow, Stone Wall damage+pull via
+# ABILITY_STATUS_EFFECT/ABILITY_DISPLACEMENT_STRENGTH declarative tables in
+# balance.ts; Avalanche unchanged). Verified during implementation that
+# status:applied's existing shape covers both player/enemy targets, so no
+# packages/net-protocol/** change was needed — narrower footprint than the
+# story header's "Multi-context" caveat allowed for (Simulation Engineer
+# only). Code review: 1 patch fixed (Stone Wall's enemy displacement wasn't
+# broadcast to clients — applyDisplacementToEnemy now mirrors
+# applyDisplacementToPlayer's body-reposition + broadcast), 1 minor test
+# patch, 1 finding deferred (deferred-work.md D-3.16-A, GameRoom.ts
+# integration test coverage — batch-wide gap, not unique to this story),
+# rest dismissed. 6 tests total added to tests/unit/abilities.test.ts; full
+# suite (excl. pre-existing e2e tests needing live Docker/Redis) 462
+# passed, 0 regressions.
+# 2026-07-13: completed 3.15 — self-cost HP mechanism, inverse-HP damage
+# scaling, lifesteal helpers, mixed-faction target resolution. All zero-value
+# until 3.19 (self-cost/HP-scaling/lifesteal) and 3.17 (mixed-faction) wire
+# actual abilities. One scope exception: the additive AbilityDispatchContext
+# fields broke a pre-existing dispatchAbility call in GameRoom.ts (outside
+# this story's allowed paths) — user approved a minimal 2-line fix to keep
+# it compiling; no new behavior wired there. Code review: 1 patch fixed
+# (calculateHpScaledDamage divide-by-zero guard), 2 findings deferred
+# (deferred-work.md D-3.15-A healPlayer downed-state guard, D-3.15-B
+# resolveMixedFactionTargets dead/downed filtering) — both unreachable until
+# 3.17/3.19 wire an actual caller, 7 other findings dismissed as by-design
+# or environmental noise.
+# 2026-07-13: started work on 3.15.
+# 2026-07-13: completed 3.14 — code review found 3 patch findings (epsilon
+# guard for near-zero displacement distance, an overclaiming comment about
+# same-tick enemy body sync, an unconditional zero-displacement broadcast),
+# all fixed; 2 findings deferred to deferred-work.md (D-3.14-A liveness/state
+# guard, D-3.14-B concurrent-source accumulation) — both belong to 3.16/3.19
+# once an actual ability wires a caller. body.setPosition bypassing collision
+# was raised but dismissed as spec-mandated (AC4).
+# 2026-07-13: completed 3.12 — code review found 3 patch findings (magnitude
+# validation, status:applied wire payload missing magnitude, redundant
+# Date.now() calls), all fixed; 2 minor findings deferred to deferred-work.md
+# (D-3.12-A, D-3.12-B).
+# 2026-07-13: started work on 3.12.
+# 2026-07-11: created 3.12-3.20 in one batch, completing the "Ability
+# Mechanics Rework" extension started by 3.11 (epics.md Stories 3.11-3.20).
+# Dependency order: 3.11 -> {3.12,3.13,3.14,3.15 in any order, all shared
+# engine capability, no visible gameplay change} -> 3.16 -> 3.17 -> 3.18 ->
+# 3.19 -> 3.20 (kit-rework stories are sequenced; each reuses tables/helpers
+# the previous ones introduced — see each story's Dev Notes for exact
+# cross-story dependencies). Several stories carry corrections to epics.md's
+# literal AC wording where it didn't match the current codebase (wrong file
+# path in 3.11 carried forward as a pattern-check; 3.14's displacement must
+# NOT use body.applyLinearImpulse — verified inert in this architecture,
+# use direct position mutation instead — see 3.14's Context section).
+# 2026-07-11: epic-3 reopened to in-progress (again) — new scope, not deferred
+# hardening: the 2026-07-08 brainstorming session designed the "Ability Mechanics
+# Rework" extension (epics.md, Stories 3.11-3.20) fixing 7 placeholder/no-op
+# abilities and 1 mislabeled one. Created 3.11, the first of 5 shared-engine-
+# capability stories the kit reworks (3.16-3.20) depend on.
 # 2026-07-07: epic-1 reopened to in-progress — 2 deferred findings from the
 # 1.8 code review (deferred-work.md) had no follow-up story; created 1.9 to close them.
 # 2026-07-07: epic-2 reopened to in-progress — D-2.4-A from the 2.4 code review
@@ -83,7 +234,7 @@ development_status:
   # Players explore the tribe village hub, interact with POIs (class selection,
   # training dummy), browse and select a class, and confirm their choice.
   # FRs: FR5, FR11 (4 alpha classes defined), FR12, FR13
-  epic-2: done
+  epic-2: in-progress
   2-1-hub-world-poi-layout-and-interact-button: done
   2-2-class-selection-flow-card-browse-and-selection: done
   2-3-class-confirmation-and-hub-controller-transition: done
@@ -91,6 +242,7 @@ development_status:
   2-5-server-persistent-joystick-vector: done
   2-6-epic-2-deferred-hardening: done
   2-7-epic-2-post-26-deferred-hardening: done
+  2-8-hub-ability-use-outside-training-dummy-poi: backlog
   epic-2-retrospective: optional
 
   # ─── E3: Core Combat — 4 Alpha Classes ──────────────────────────────────────
@@ -98,7 +250,7 @@ development_status:
   # dungeon combat. Players use abilities, go down, get revived, enter spirit
   # form. "Clear" objective type is operational.
   # FRs: FR9(Clear), FR11, FR12, FR13, FR17, FR18, FR19, FR20, FR21, FR22, FR23
-  epic-3: done
+  epic-3: in-progress
   3-1-xoshiro128-prng-and-planckjs-physics-world: done
   3-2-enemy-ai-base-fsm-and-layered-difficulty-behaviors: done
   3-3-4-alpha-class-implementations-abilities-and-input-types: done
@@ -109,16 +261,41 @@ development_status:
   3-8-login-flow-update: done
   3-9-epic-3-deferred-hardening: done
   3-10-epic-3-post-39-deferred-hardening: done
+  # Epic 3 Extension: Ability Mechanics Rework (scoped from the 2026-07-08
+  # brainstorming session, not new PRD FRs) — 3.11-3.15 build shared engine
+  # capabilities, 3.16-3.20 apply them per class. Sequenced so no story
+  # depends on a later one.
+  3-11-ability-input-taxonomy-expansion-and-type-corrections: done
+  3-12-status-effect-engine-buffs-debuffs-with-duration: done
+  3-13-projectile-physics-and-zone-field-entities: done
+  3-14-displacement-pull-physics-primitive: done
+  3-15-self-cost-resource-and-mixed-faction-target-resolution: done
+  3-16-stonehide-kit-rework: done
+  3-17-spiritcaller-kit-rework-ancestors-voice-spirit-nova-warding-cry: done
+  3-18-soul-mend-ranged-spirit-targeting-revive: done
+  3-19-souldrinker-kit-rework-blood-spike-crimson-lash-dark-pact-void-pulse: done
+  3-20-stormcaller-storm-eye-rework: done
+  # Epic 3 Correction: Downed Player Body/Spirit Entity Split (correct-course,
+  # 2026-07-14, sprint-change-proposal-2026-07-14.md) — sequenced a->b->c
+  3-21a-body-spirit-position-schema-and-protocol-contract: done
+  3-21b-body-spirit-movement-and-revive-targeting-logic: done
+  3-21c-host-rendering-distinct-body-and-spirit-entities: done
+  # Post-3.21 hardening: closes deferred-work.md backlog accumulated by 3.11-3.21c
+  # (never had its own hardening pass, unlike 3.1-3.9 which got 3.9/3.10)
+  3-22-epic-3-post-321-deferred-hardening: done
   epic-3-retrospective: optional
 
   # ─── Dev infra fixes (no epic) ──────────────────────────────────────────────
   dev-1-mobile-controller-network-binding: done
+  dev-2-controller-rotation-lock-enforcement: backlog
+  dev-3-controller-fullscreen-toggle: backlog
+  dev-4-debug-invincible-high-damage-mode: backlog
 
   # ─── E4: Procedural Dungeon & Full Run Structure ────────────────────────────
   # Vote to start a run, 3 procedural levels, deterministic seed system,
   # Survive the Waves objective, post-run summary.
   # FRs: FR6, FR7, FR8, FR9 (Survive Waves), FR10, FR19, FR29, FR30, FR34
-  epic-4: done
+  epic-4: in-progress
   4-1-deterministic-seed-system-and-floor-layout-generator: done
   4-2-dungeon-entrance-vote-and-run-initialisation: done
   4-3-3-level-run-structure-and-level-transitions: done
@@ -130,6 +307,8 @@ development_status:
   4-9-epic-4-deferred-hardening: done
   4-10-epic-4-post-49-deferred-hardening: done
   4-11-epic-4-post-410-deferred-hardening: done
+  4-12-full-hp-restore-on-level-transition: backlog
+  4-13-vote-accept-button-submitted-state: backlog
   epic-4-retrospective: optional
 
   # ─── E5: Spirit Bond System ─────────────────────────────────────────────────
@@ -151,13 +330,15 @@ development_status:
   # Behavior-tiered boss (Easy/Normal/Hard), synthesizes E3 mechanics, purification
   # pulse, reward reveal, biome achievements.
   # FRs: FR21 (boss tiers), FR24 (reward reveal), FR35 (Grassland boss + achievements), FR36
-  epic-6: done
+  epic-6: in-progress
   6-1-grassland-boss-shared-types-and-protocol-contracts: done
   6-2-grassland-boss-fsm-phase-system-and-difficulty-tiered-behaviors: done
   6-3-boss-arena-handcrafted-level-physics-geometry-and-host-rendering: done
   6-4-boss-defeat-sequence-purification-pulse-and-reward-reveal: done
   6-5-grassland-biome-achievements: done
   6-6-epic-6-deferred-hardening: done
+  6-7-boss-combat-resolution-wiring: backlog
+  6-8-floating-damage-numbers-regular-enemies: backlog
   epic-6-retrospective: optional
 
   # ─── E7: Progression & Persistent Meta ──────────────────────────────────────

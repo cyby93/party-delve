@@ -41,10 +41,15 @@ export function createBossState(runSeed: number): BossState {
   };
 }
 
-function buildBossContext(boss: BossState, state: GameState): EnemyContext {
+function buildBossContext(boss: BossState, state: GameState, nowMs: number): EnemyContext {
+  // nowMs is unused today — BossState has no statusEffects (out of scope per 3.12's
+  // Non-goals), so the boss never reads a slow multiplier off this context. Threaded
+  // through as the real tick timestamp anyway (not a hardcoded 0) so a future boss
+  // slow-effect wiring through this same context builder doesn't silently read every
+  // effect as permanently active.
   const alivePlayers = state.players.filter(p => !p.isDown && !p.isSpirit);
   if (alivePlayers.length === 0) {
-    return { nearestPlayerPos: null, nearestPlayerDistance: Infinity, dt: 1 / 30 };
+    return { nearestPlayerPos: null, nearestPlayerDistance: Infinity, dt: 1 / 30, nowMs };
   }
   let nearest = alivePlayers[0]!;
   let minDist = Infinity;
@@ -54,7 +59,7 @@ function buildBossContext(boss: BossState, state: GameState): EnemyContext {
     const d = Math.sqrt(dx * dx + dy * dy);
     if (d < minDist) { minDist = d; nearest = p; }
   }
-  return { nearestPlayerPos: { x: nearest.x, y: nearest.y }, nearestPlayerDistance: minDist, dt: 1 / 30 };
+  return { nearestPlayerPos: { x: nearest.x, y: nearest.y }, nearestPlayerDistance: minDist, dt: 1 / 30, nowMs };
 }
 
 function computeRunReward(state: GameState): RunReward {
@@ -145,6 +150,7 @@ export function tickBoss(
   state: GameState,
   difficulty: DifficultyTier,
   spawnPoints: ReadonlyArray<{ x: number; y: number }>,
+  nowMs: number,
 ): Result<BossEvent[], GameError> {
   if (boss.isDefeated) return { ok: true, value: [] };
 
@@ -154,7 +160,7 @@ export function tickBoss(
     return { ok: true, value: [{ type: 'boss:defeated', bossId: boss.id, reward }] };
   }
 
-  const ctx = buildBossContext(boss, state);
+  const ctx = buildBossContext(boss, state, nowMs);
   if (ctx.nearestPlayerPos === null) return { ok: true, value: [] };
 
   const phaseEvents: BossEvent[] = [];

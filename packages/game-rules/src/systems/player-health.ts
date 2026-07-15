@@ -1,6 +1,7 @@
 import type { PlayerState } from 'shared-types';
 import type { Result } from '../state/result.js';
 import { REVIVE_WINDOWS_MS } from '../balance.js';
+import { getStatusEffectMagnitude } from './status-effects.js';
 
 export interface PlayerDamageResult {
   player: PlayerState;
@@ -13,6 +14,7 @@ export type HealthError = { code: string; detail?: string };
 export function applyPlayerDamage(
   player: PlayerState,
   damage: number,
+  nowMs: number,
 ): Result<PlayerDamageResult, HealthError> {
   if (player.isDown || player.isSpirit) {
     return { ok: false, error: { code: 'PLAYER_NOT_DAMAGEABLE' } };
@@ -24,16 +26,32 @@ export function applyPlayerDamage(
     return { ok: false, error: { code: 'NEGATIVE_DAMAGE', detail: String(damage) } };
   }
 
-  const newHp = Math.max(0, player.hp - damage);
+  const damageReduction = getStatusEffectMagnitude(player, 'damageReduction', nowMs);
+  const mitigatedDamage = damage * (1 - damageReduction);
+  const shieldMagnitude = getStatusEffectMagnitude(player, 'shield', nowMs);
+  const absorbed = Math.min(shieldMagnitude, mitigatedDamage);
+  const hpDamage = mitigatedDamage - absorbed;
+  const newHp = Math.max(0, player.hp - hpDamage);
   const downed = newHp === 0;
   const newDownCount = downed ? player.downCount + 1 : player.downCount;
   const reviveWindowMs = downed ? getReviveWindowMs(newDownCount) : undefined;
 
+  // shield depletes by the absorbed amount; write the new magnitude back onto
+  // statusEffects (Result<T,E> rule — depletion is returned, never mutated in place).
+  const statusEffects = absorbed > 0
+    ? player.statusEffects.map(e => e.type === 'shield' ? { ...e, magnitude: shieldMagnitude - absorbed } : e)
+    : player.statusEffects;
+
+  // bodyX/bodyY fix the revive target at the down location (Story 3.21b). Conditional
+  // spread, not a ternary: exactOptionalPropertyTypes rejects explicitly assigning
+  // `player.bodyX` (number | undefined) to the optional field even when downed is false.
   const updatedPlayer: PlayerState = {
     ...player,
     hp: newHp,
+    statusEffects,
     isDown: downed,
     downCount: newDownCount,
+    ...(downed ? { bodyX: player.x, bodyY: player.y } : {}),
   };
 
   const result: PlayerDamageResult = { player: updatedPlayer, downed };
@@ -43,4 +61,12 @@ export function applyPlayerDamage(
 
 export function getReviveWindowMs(downCount: number): number {
   return REVIVE_WINDOWS_MS[Math.min(Math.max(downCount, 1), REVIVE_WINDOWS_MS.length) - 1] ?? 2000;
+}
+
+export function healPlayer(player: PlayerState, amount: number): PlayerState {
+  return { ...player, hp: Math.min(player.maxHp, player.hp + Math.max(amount, 0)) };
+}
+
+export function calculateLifesteal(damageDealt: number, pct: number): number {
+  return damageDealt * pct;
 }

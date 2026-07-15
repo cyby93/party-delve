@@ -3,6 +3,38 @@ import { Circle } from 'planck';
 import type { PhysicsBodyData } from './world.js';
 import { CAT_BOND_SENSOR, CAT_PLAYER } from './world.js';
 
+export interface ProjectileEnemyContactEvent {
+  projectileId: string;
+  enemyId: string;
+}
+
+/** Whole-body sensor contact — both bodies carry their own PhysicsBodyData, no fixture-level tag needed. */
+export function extractProjectileEnemyContact(contact: Contact): ProjectileEnemyContactEvent | null {
+  const dataA = contact.getFixtureA().getBody().getUserData() as PhysicsBodyData | null;
+  const dataB = contact.getFixtureB().getBody().getUserData() as PhysicsBodyData | null;
+  const projectileData = dataA?.type === 'projectile' ? dataA : dataB?.type === 'projectile' ? dataB : null;
+  const enemyData = dataA?.type === 'enemy' ? dataA : dataB?.type === 'enemy' ? dataB : null;
+  if (!projectileData || !enemyData) return null;
+  return { projectileId: projectileData.projectileId, enemyId: enemyData.enemyId };
+}
+
+export interface ZoneContactEvent {
+  zoneId: string;
+  targetId: string;
+  targetType: 'enemy' | 'player';
+}
+
+export function extractZoneContact(contact: Contact): ZoneContactEvent | null {
+  const dataA = contact.getFixtureA().getBody().getUserData() as PhysicsBodyData | null;
+  const dataB = contact.getFixtureB().getBody().getUserData() as PhysicsBodyData | null;
+  const zoneData = dataA?.type === 'zone' ? dataA : dataB?.type === 'zone' ? dataB : null;
+  if (!zoneData) return null;
+  const otherData = dataA?.type === 'zone' ? dataB : dataA;
+  if (otherData?.type === 'enemy') return { zoneId: zoneData.zoneId, targetId: otherData.enemyId, targetType: 'enemy' };
+  if (otherData?.type === 'player') return { zoneId: zoneData.zoneId, targetId: otherData.playerId, targetType: 'player' };
+  return null;
+}
+
 /** Stored as fixture.getUserData() on bond sensor fixtures. */
 export interface BondSensorFixtureData {
   type: 'bond-sensor';

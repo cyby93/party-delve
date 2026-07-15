@@ -21,16 +21,41 @@ export {
   WAVE_ENEMY_SCALE,
   BOSS_ADD_HP,
   BOSS_STOMP_DAMAGE,
+  PROJECTILE_SPEED_PX_S,
+  PROJECTILE_MAX_RANGE_PX,
+  ABILITY_CHAINED_ZONE,
+  ABILITY_SELF_COST_HP,
+  ABILITY_HP_SCALED_DAMAGE,
+  ABILITY_LIFESTEAL_PCT,
+  ABILITY_STATUS_EFFECT,
+  ABILITY_DISPLACEMENT_STRENGTH,
+  ABILITY_HEAL_AMOUNT,
+  ABILITY_DELIVERY,
+  VOID_PULSE_PULL_STRENGTH_PX,
+  DARK_PACT_DRAIN_PCT,
+  SPIRIT_NOVA_DURATION_MS,
+  SPIRIT_NOVA_MAX_RADIUS_PX,
+  SOUL_MEND_CHANNEL_DURATION_MS,
+  SOUL_MEND_LIVENESS_MS,
+  STORM_EYE_ZONE_RADIUS_PX,
+  STORM_EYE_TICK_MS,
+  STORM_EYE_TICK_DAMAGE,
+  STORM_EYE_DURATION_MS,
+  STORM_EYE_STRIKE_INTERVAL_MS,
+  STORM_EYE_STRIKE_DAMAGE,
 } from './balance.js';
-export { applyPlayerDamage, getReviveWindowMs } from './systems/player-health.js';
+export type { ChainedZoneConfig, AbilityStatusEffectConfig, StatusEffectScope, AbilityDeliveryType } from './balance.js';
+export { applyPlayerDamage, getReviveWindowMs, healPlayer, calculateLifesteal } from './systems/player-health.js';
 export type { PlayerDamageResult, HealthError } from './systems/player-health.js';
+export { resolveMixedFactionTargets, resolveExpandingRadius, pickRandomIndex } from './systems/targeting.js';
+export type { MixedFactionSplit } from './systems/targeting.js';
 export { applyDamage, isInHitZone } from './systems/combat.js';
 export type { DamageResult, CombatError } from './systems/combat.js';
 export { tickEnemy, tickBaseFSM, createEasyLayers, createNormalLayers, createHardLayers } from './systems/ai/fsm.js';
 export type { EnemyContext, BehaviorLayer, EnemyAIEvent } from './systems/ai/fsm.js';
 export { ChargeLayer } from './systems/ai/layers/charge.js';
 export { StompLayer } from './systems/ai/layers/stomp.js';
-export { dispatchAbility } from './systems/abilities.js';
+export { dispatchAbility, calculateSelfCostHp, calculateHpScaledDamage } from './systems/abilities.js';
 export type { AbilityDispatchContext, AbilityFiredEvent, AbilityGameError } from './systems/abilities.js';
 export { assignBond, selectBondPair, selectBondType, bondKey, getProximityBuffedPlayers, getFateBuffedPlayers, getFateBondWipeTargets, getProximityDrainTargets } from './systems/bonds.js';
 export type { BondAssignedEvt, BondError, ProximityDrainTarget } from './systems/bonds.js';
@@ -38,3 +63,10 @@ export { BOND_TYPE_COLORS, BOND_PROXIMITY_RANGE_PX, BOND_DRAIN_THRESHOLD_S, BOND
 export { createBossState, tickBoss } from './entities/grassland-boss.js';
 export type { BossEvent, BossAddSpawnedEvent, BossStompedEvent } from './entities/grassland-boss.js';
 export { evaluateGrasslandAchievements } from './systems/achievements.js';
+export { applyStatusEffect, tickStatusEffects, getStatusEffectMagnitude } from './systems/status-effects.js';
+export type { StatusEffectTarget, StatusEffectError } from './systems/status-effects.js';
+export { resolveProjectileHit, isProjectileExpired } from './systems/projectiles.js';
+export type { ProjectileError } from './systems/projectiles.js';
+export { shouldZoneTick, isZoneExpired } from './systems/zones.js';
+export { applyDisplacement } from './systems/displacement.js';
+export { findSoulMendTarget, shouldCancelSoulMendChannel, reviveBySoulMend } from './systems/soul-mend.js';

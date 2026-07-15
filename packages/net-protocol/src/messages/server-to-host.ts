@@ -1,4 +1,4 @@
-import type { GameState, BondType, EssenceDrop, PlayerClass, DifficultyTier, BossPhase, RunReward } from 'shared-types';
+import type { GameState, BondType, EssenceDrop, PlayerClass, DifficultyTier, BossPhase, RunReward, StatusEffectType } from 'shared-types';
 
 export interface SnapshotMsg {
   type: 'snapshot';
@@ -17,6 +17,10 @@ export type PlayerDownedDelta = {
   playerId: string;
   downCount: number;
   reviveWindowMs: number;
+  // Story 3.21: optional until 3.21b's sim-side down-transitions populate them —
+  // see PlayerState.bodyX/bodyY for why these must stay optional.
+  bodyX?: number;
+  bodyY?: number;
 };
 
 export type PlayerReviveDelta = {
@@ -197,6 +201,20 @@ export type BossAddSpawnedDelta = {
   y: number;
 };
 
+export type StatusAppliedDelta = {
+  type: 'status:applied';
+  targetId: string;
+  effectType: StatusEffectType;
+  magnitude: number;
+  expiresAtMs: number;
+};
+
+export type StatusExpiredDelta = {
+  type: 'status:expired';
+  targetId: string;
+  effectType: StatusEffectType;
+};
+
 export type BossDamagedDelta = {
   type: 'boss:damaged';
   bossId: string;
@@ -213,6 +231,57 @@ export type BossDefeatedDelta = {
   type: 'boss:defeated';
   bossId: string;
   reward: RunReward;
+};
+
+export type ProjectileHitDelta = {
+  type: 'projectile:hit';
+  projectileId: string;
+  x: number;
+  y: number;
+};
+
+export type ProjectileExpiredDelta = {
+  type: 'projectile:expired';
+  projectileId: string;
+};
+
+export type ZoneTickDelta = {
+  type: 'zone:tick';
+  zoneId: string;
+};
+
+export type ZoneExpiredDelta = {
+  type: 'zone:expired';
+  zoneId: string;
+};
+
+// Storm Eye's periodic bonus lightning strike (Story 3.20) — visual-only, distinct
+// from the steady zone:tick. The actual HP change is broadcast separately via
+// enemy:damaged/enemy:killed for the struck target.
+export type ZoneStrikeDelta = {
+  type: 'zone:strike';
+  zoneId: string;
+  targetId: string;
+  damage: number;
+};
+
+export type CastStartedDelta = {
+  type: 'cast:started';
+  casterId: string;
+  targetPlayerId: string;
+  abilityIndex: number;
+  startedAt: number; // server-epoch ms — clients must not substitute their own clock
+  durationMs: number;
+};
+
+export type CastCancelledDelta = {
+  type: 'cast:cancelled';
+  casterId: string;
+};
+
+export type CastCompletedDelta = {
+  type: 'cast:completed';
+  casterId: string;
 };
 
 export type DeltaEventMsg =
@@ -249,4 +318,14 @@ export type DeltaEventMsg =
   | BossDefeatedDelta
   | BossMovedDelta
   | BossStompedDelta
-  | BossAddSpawnedDelta;
+  | BossAddSpawnedDelta
+  | StatusAppliedDelta
+  | StatusExpiredDelta
+  | ProjectileHitDelta
+  | ProjectileExpiredDelta
+  | ZoneTickDelta
+  | ZoneExpiredDelta
+  | ZoneStrikeDelta
+  | CastStartedDelta
+  | CastCancelledDelta
+  | CastCompletedDelta;

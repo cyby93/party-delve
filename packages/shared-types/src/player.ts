@@ -1,3 +1,5 @@
+import type { StatusEffect } from './status-effect.js';
+
 export enum PlayerClass {
   STONEHIDE = 'stonehide',
   SPIRITCALLER = 'spiritcaller',
@@ -22,6 +24,11 @@ export interface PlayerState {
   class: PlayerClass | null;
   x: number;
   y: number;
+  // Story 3.21: fixed body position, set once when isDown first becomes true.
+  // Optional (not required) so apps/simulation-server's existing PlayerState/
+  // player:downed object literals keep typechecking until 3.21b populates them.
+  bodyX?: number;
+  bodyY?: number;
   hp: number;
   maxHp: number;
   isFrozen: boolean;
@@ -32,5 +39,6 @@ export interface PlayerState {
   nearPoiId: string | null;  // null = not near any interactive POI
   essenceTotal: number;
   reviveTimerExpiresAt: number;  // server-epoch ms; 0 = not downed or expired
-  stompedUntil?: number;         // host-epoch ms; absent or ≤ now = not slowed
+  statusEffects: StatusEffect[];
+  channelingAbility: { abilityIndex: number; targetPlayerId: string; startedAt: number; durationMs: number } | null;
 }

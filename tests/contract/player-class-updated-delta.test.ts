@@ -30,6 +30,8 @@ function mockGameState(): GameState {
     floorLayout: null,
     runProposal: null,
     boss: null,
+    projectiles: [],
+    zones: [],
   };
 }
 
@@ -50,6 +52,8 @@ function mockPlayer(overrides?: Partial<PlayerState>): PlayerState {
     nearPoiId: null,
     essenceTotal: 0,
     reviveTimerExpiresAt: 0,
+    statusEffects: [],
+    channelingAbility: null,
     ...overrides,
   };
 }

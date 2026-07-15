@@ -1,7 +1,7 @@
 import type { PlayerClass, AbilityInputType } from 'shared-types';
 import { CLASS_DEFINITIONS } from 'shared-types';
 import type { Result } from '../state/result.js';
-import { ABILITY_COOLDOWNS_MS, ABILITY_DAMAGE } from '../balance.js';
+import { ABILITY_COOLDOWNS_MS, ABILITY_DAMAGE, ABILITY_SELF_COST_HP, ABILITY_HP_SCALED_DAMAGE } from '../balance.js';
 
 export interface AbilityDispatchContext {
   playerClass: PlayerClass;
@@ -10,6 +10,8 @@ export interface AbilityDispatchContext {
   directionY: number;
   cooldownExpiresAt: number;
   nowMs: number;
+  casterHp: number;
+  casterMaxHp: number;
 }
 
 export interface AbilityFiredEvent {
@@ -18,9 +20,21 @@ export interface AbilityFiredEvent {
   directionX: number;
   directionY: number;
   damage: number;
+  selfCostHpApplied: number;
 }
 
 export type AbilityGameError = { code: string; detail?: string };
+
+// 1-HP safety floor: caps the cost rather than blocking the cast.
+export function calculateSelfCostHp(selfCostHp: number, casterHp: number): number {
+  return Math.min(selfCostHp, Math.max(casterHp - 1, 0));
+}
+
+// scaleCoef === 0 means no scaling (every ability until Story 3.19 sets one).
+export function calculateHpScaledDamage(baseDamage: number, scaleCoef: number, casterHp: number, casterMaxHp: number): number {
+  if (scaleCoef <= 0 || casterMaxHp <= 0) return baseDamage;
+  return baseDamage * (1 + scaleCoef * (1 - casterHp / casterMaxHp));
+}
 
 // Pure — no Colyseus, no planck, no I/O.
 export function dispatchAbility(ctx: AbilityDispatchContext): Result<AbilityFiredEvent, AbilityGameError> {
@@ -40,7 +54,13 @@ export function dispatchAbility(ctx: AbilityDispatchContext): Result<AbilityFire
 
   const idx = ctx.abilityIndex as 0 | 1 | 2 | 3;
   const cooldownMs = ABILITY_COOLDOWNS_MS[ctx.playerClass][idx];
-  const damage = ABILITY_DAMAGE[ctx.playerClass][idx];
+  const damage = calculateHpScaledDamage(
+    ABILITY_DAMAGE[ctx.playerClass][idx],
+    ABILITY_HP_SCALED_DAMAGE[ctx.playerClass][idx],
+    ctx.casterHp,
+    ctx.casterMaxHp,
+  );
+  const selfCostHpApplied = calculateSelfCostHp(ABILITY_SELF_COST_HP[ctx.playerClass][idx], ctx.casterHp);
 
   const inputType: AbilityInputType = ability.inputType;
   const dirX = inputType === 'TAP' ? 0 : ctx.directionX;
@@ -54,6 +74,7 @@ export function dispatchAbility(ctx: AbilityDispatchContext): Result<AbilityFire
       directionX: dirX,
       directionY: dirY,
       damage,
+      selfCostHpApplied,
     },
   };
 }

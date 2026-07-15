@@ -1,11 +1,6 @@
 import type { GameState } from 'shared-types';
 import type { DeltaEventMsg } from './messages/server-to-host.js';
 
-// Local Party Mode has exactly one host renderer per session — this is a single-consumer
-// cosmetic value, not a multi-client-synced one. It only needs to expire before the next
-// periodic snapshot (SNAPSHOT_INTERVAL_S) reconciles player state from the server.
-const STOMP_VISUAL_SLOW_MS = 3000;
-
 export function applyDelta(state: GameState, evt: DeltaEventMsg): GameState {
   switch (evt.type) {
     case 'player:moved': {
@@ -63,11 +58,22 @@ export function applyDelta(state: GameState, evt: DeltaEventMsg): GameState {
     }
     case 'player:downed': {
       if (!state.players.some(p => p.id === evt.playerId)) return state;
+      // bodyX/bodyY fall back together (both-or-neither), never one fresh + one
+      // stale — a delta carrying only one axis would otherwise mix coordinates.
+      // (Narrowing must stay inline per-field — hoisting the check into a shared
+      // boolean loses TS's connection to evt.bodyX/evt.bodyY's own narrowing.)
       return {
         ...state,
         players: state.players.map(p =>
           p.id === evt.playerId
-            ? { ...p, isDown: true, downCount: evt.downCount, reviveTimerExpiresAt: Date.now() + evt.reviveWindowMs }
+            ? {
+                ...p,
+                isDown: true,
+                bodyX: evt.bodyX !== undefined && evt.bodyY !== undefined ? evt.bodyX : p.x,
+                bodyY: evt.bodyX !== undefined && evt.bodyY !== undefined ? evt.bodyY : p.y,
+                downCount: evt.downCount,
+                reviveTimerExpiresAt: Date.now() + evt.reviveWindowMs,
+              }
             : p
         ),
       };
@@ -77,7 +83,7 @@ export function applyDelta(state: GameState, evt: DeltaEventMsg): GameState {
       return {
         ...state,
         players: state.players.map(p =>
-          p.id === evt.playerId ? { ...p, isDown: false, reviveTimerExpiresAt: 0 } : p
+          p.id === evt.playerId ? { ...p, isDown: false, reviveTimerExpiresAt: 0, channelingAbility: null } : p
         ),
       };
     }
@@ -122,19 +128,8 @@ export function applyDelta(state: GameState, evt: DeltaEventMsg): GameState {
         ),
       };
     }
-    case 'enemy:stomped': {
-      const stompedUntil = Date.now() + STOMP_VISUAL_SLOW_MS;
-      return {
-        ...state,
-        players: state.players.map(p => {
-          const dx = p.x - evt.x;
-          const dy = p.y - evt.y;
-          return dx * dx + dy * dy <= evt.radius * evt.radius
-            ? { ...p, stompedUntil }
-            : p;
-        }),
-      };
-    }
+    case 'enemy:stomped':
+      return state;  // ponytail: event still fires from StompLayer but has no host visual today (pre-existing — DungeonScreen never rendered it); no-op like ability:fired
     case 'enemy:moved': {
       if (!state.enemies.some(e => e.id === evt.enemyId)) return state;
       const enemies = state.enemies.map(e =>
@@ -191,6 +186,106 @@ export function applyDelta(state: GameState, evt: DeltaEventMsg): GameState {
       return state;  // ponytail: visual only; DungeonScreen reads raw delta
     case 'add:spawned':
       return state;  // ponytail: GrasslandAdds arrive via snapshot broadcast
+    case 'status:applied': {
+      if (state.players.some(p => p.id === evt.targetId)) {
+        return {
+          ...state,
+          players: state.players.map(p =>
+            p.id === evt.targetId
+              ? {
+                  ...p,
+                  statusEffects: [
+                    ...p.statusEffects.filter(se => se.type !== evt.effectType),
+                    { type: evt.effectType, magnitude: evt.magnitude, expiresAtMs: evt.expiresAtMs },
+                  ],
+                }
+              : p
+          ),
+        };
+      }
+      if (state.enemies.some(e => e.id === evt.targetId)) {
+        return {
+          ...state,
+          enemies: state.enemies.map(e =>
+            e.id === evt.targetId
+              ? {
+                  ...e,
+                  statusEffects: [
+                    ...e.statusEffects.filter(se => se.type !== evt.effectType),
+                    { type: evt.effectType, magnitude: evt.magnitude, expiresAtMs: evt.expiresAtMs },
+                  ],
+                }
+              : e
+          ),
+        };
+      }
+      return state;
+    }
+    case 'status:expired': {
+      if (state.players.some(p => p.id === evt.targetId)) {
+        return {
+          ...state,
+          players: state.players.map(p =>
+            p.id === evt.targetId
+              ? { ...p, statusEffects: p.statusEffects.filter(se => se.type !== evt.effectType) }
+              : p
+          ),
+        };
+      }
+      if (state.enemies.some(e => e.id === evt.targetId)) {
+        return {
+          ...state,
+          enemies: state.enemies.map(e =>
+            e.id === evt.targetId
+              ? { ...e, statusEffects: e.statusEffects.filter(se => se.type !== evt.effectType) }
+              : e
+          ),
+        };
+      }
+      return state;
+    }
+    case 'projectile:hit': {
+      return { ...state, projectiles: state.projectiles.filter(p => p.id !== evt.projectileId) };
+    }
+    case 'projectile:expired': {
+      return { ...state, projectiles: state.projectiles.filter(p => p.id !== evt.projectileId) };
+    }
+    case 'zone:tick':
+      return state;  // ponytail: effect reapplication comes via separate player:hp-updated/enemy:damaged deltas
+    case 'zone:expired': {
+      return { ...state, zones: state.zones.filter(z => z.id !== evt.zoneId) };
+    }
+    case 'zone:strike':
+      return state;  // ponytail: visual-only, HP change comes via a separate enemy:damaged/enemy:killed delta
+    case 'cast:started': {
+      if (!state.players.some(p => p.id === evt.casterId)) return state;
+      return {
+        ...state,
+        players: state.players.map(p =>
+          p.id === evt.casterId
+            ? { ...p, channelingAbility: { abilityIndex: evt.abilityIndex, targetPlayerId: evt.targetPlayerId, startedAt: evt.startedAt, durationMs: evt.durationMs } }
+            : p
+        ),
+      };
+    }
+    case 'cast:cancelled': {
+      if (!state.players.some(p => p.id === evt.casterId)) return state;
+      return {
+        ...state,
+        players: state.players.map(p =>
+          p.id === evt.casterId ? { ...p, channelingAbility: null } : p
+        ),
+      };
+    }
+    case 'cast:completed': {
+      if (!state.players.some(p => p.id === evt.casterId)) return state;
+      return {
+        ...state,
+        players: state.players.map(p =>
+          p.id === evt.casterId ? { ...p, channelingAbility: null } : p
+        ),
+      };
+    }
     default: {
       // Exhaustiveness guard: adding a new DeltaEventMsg variant without a case here causes a TS error.
       const _exhaustive: never = evt;

@@ -41,6 +41,8 @@ function createEmptyGameState(roomId: string): GameState {
     floorLayout: null,
     runProposal: null,
     boss: null,
+    projectiles: [],
+    zones: [],
   };
 }
 
@@ -80,6 +82,8 @@ function simulateOnJoin(
     nearPoiId: null,
     essenceTotal: 0,
     reviveTimerExpiresAt: 0,
+    statusEffects: [],
+    channelingAbility: null,
   });
   gameState.session.playerCount = gameState.players.length;
   const snapshot: SnapshotMsg = { type: 'snapshot', state: gameState };
@@ -224,6 +228,8 @@ function makePlayer(id: string): PlayerState {
     nearPoiId: null,
     essenceTotal: 0,
     reviveTimerExpiresAt: 0,
+    statusEffects: [],
+    channelingAbility: null,
   };
 }
 

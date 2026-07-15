@@ -5,6 +5,8 @@ import type { SessionState } from './session.js';
 import type { FloorLayout } from './floor-layout.js';
 import type { RunProposal } from './run-proposal.js';
 import type { BossState } from './boss.js';
+import type { ProjectileState } from './projectile.js';
+import type { ZoneState } from './zone.js';
 
 export interface EssenceDrop {
   id: string;
@@ -23,4 +25,6 @@ export interface GameState {
   floorLayout: FloorLayout | null;
   runProposal: RunProposal | null;
   boss: BossState | null;
+  projectiles: ProjectileState[];
+  zones: ZoneState[];
 }

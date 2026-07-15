@@ -1,3 +1,5 @@
+import type { StatusEffect } from './status-effect.js';
+
 export enum EnemyFSMState {
   IDLE = 'idle',
   CHASE = 'chase',
@@ -29,4 +31,5 @@ export interface EnemyState {
   isAlive: boolean;
   fsmState: EnemyFSMState;
   attackCooldownTicks: number;
+  statusEffects: StatusEffect[];
 }

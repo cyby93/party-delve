@@ -25,7 +25,7 @@ function makeState(playerCount: number): GameState {
       isFrozen: false, isDown: false, isSpirit: false,
       sessionColor: SessionColor.RED,
       downCount: 0, nearPoiId: null, essenceTotal: 0,
-      reviveTimerExpiresAt: 0,
+      reviveTimerExpiresAt: 0, statusEffects: [], channelingAbility: null,
     })),
     enemies: [],
     activeBonds: [],
@@ -34,6 +34,8 @@ function makeState(playerCount: number): GameState {
     floorLayout: null,
     runProposal: null,
     boss: null,
+    projectiles: [],
+    zones: [],
   };
 }
 
