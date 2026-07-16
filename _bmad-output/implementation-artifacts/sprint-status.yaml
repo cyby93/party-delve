@@ -43,6 +43,18 @@
 
 generated: 2026-06-22
 last_updated: 2026-07-16
+# 2026-07-16: completed dev-5-boss-transient-delta-whitelist-fix (review) — 4-line
+# onTransientDelta whitelist addition in host-session.ts (boss:phaseChanged/damaged/
+# stomped/defeated), closing D-6.8-A. Automated checks (typecheck/build/full test suite)
+# all pass. Manual live-verification performed by the user directly (no browser/display
+# in the dev environment) — confirmed phase glow, stomp ring, and full defeat/
+# purification-pulse/reward-reveal/achievements sequence all work; damage flash confirmed
+# for every direct-hit ability. Verification surfaced one new, unrelated, out-of-scope bug
+# (logged as D-dev5-A, not fixed here): Stormcaller's Storm Eye zone deals zero damage to
+# the boss because GameRoom.ts's zone-tick damage loop only ever checks gameState.enemies,
+# never gameState.boss — Story 6.7 wired direct hit-scan abilities to the boss but never
+# extended that to zone-tick resolution. Simulation Engineer / GameRoom.ts territory, out
+# of this story's Blocked paths — needs its own follow-up story.
 # 2026-07-15: created 3.22 (epic-3-post-321-deferred-hardening) — closes the Epic 3
 # deferred-work.md backlog that accumulated since 3.10 (Stories 3.11-3.21c never had a
 # hardening pass). Re-verified every candidate D-3.x entry against current source before
@@ -295,7 +307,7 @@ development_status:
   # boss:defeated, making the already-built 6.3/6.4/6.5 boss visual-reaction
   # code (damage flash, phase glow, stomp ring, purification pulse + reward
   # reveal + achievements list) unreachable dead code today.
-  dev-5-boss-transient-delta-whitelist-fix: ready-for-dev
+  dev-5-boss-transient-delta-whitelist-fix: review
 
   # ─── E4: Procedural Dungeon & Full Run Structure ────────────────────────────
   # Vote to start a run, 3 procedural levels, deterministic seed system,

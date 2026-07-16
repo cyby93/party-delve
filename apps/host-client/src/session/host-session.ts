@@ -56,7 +56,11 @@ export async function createHostSession(
         delta.type === 'run:failed' ||
         delta.type === 'level:complete' ||
         delta.type === 'run:complete' ||
-        delta.type === 'bond:assigned'
+        delta.type === 'bond:assigned' ||
+        delta.type === 'boss:phaseChanged' ||
+        delta.type === 'boss:damaged' ||
+        delta.type === 'boss:stomped' ||
+        delta.type === 'boss:defeated'
       )) {
         onTransientDelta(delta);
       }
