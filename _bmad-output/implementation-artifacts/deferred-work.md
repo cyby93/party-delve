@@ -4,6 +4,16 @@ Items surfaced during reviews that are real findings but pre-exist the triggerin
 
 ---
 
+## Deferred from: code review of 6-7-boss-combat-resolution-wiring (2026-07-16)
+
+**D1 — One-tick defeat-detection lag lets a redundant `boss:damaged` (`newHp: 0`) fire after the killing hit**
+The boss-tick phase (which flips `isDefeated` when `hp <= 0`) runs before ability-hit-resolution in `GameRoom.ts`'s per-tick sequence, and the three new boss-damage branches (Story 6.7) guard on `!isDefeated`, not `hp > 0`. So a hit landing in the same tick that already zeroed `hp` (or a stray extra hit before the next boss-tick) can still fire `boss.hp = Math.max(0, hp - damage)` and rebroadcast `boss:damaged` with `newHp: 0`. Harmless (hp stays clamped, `boss:defeated` still fires exactly once from `tickBoss`), and explicitly accepted as a deliberate tradeoff in 6.7's own Dev Notes — matches `debug:kill-boss`'s pre-existing one-tick lag. Revisit only if a future story needs the boss-defeat and last-damage broadcasts to be atomic within one tick.
+
+**D2 — New e2e position-tracking listener isn't unsubscribed on the timeout path**
+`tests/e2e/full-run.test.ts`'s `trackPlayerAndBossPositions` helper (added by Story 6.7) returns `stop()` to unsubscribe its `player:moved`/`boss:moved` listener, but `stop()` is only reached on the happy path — if `fineTuneToDistanceBand` or `waitForDelta` throws on timeout, the subscription leaks for the rest of that `host`'s lifetime. Mirrors the identical pattern already in `tests/e2e/ability-dispatch.test.ts`'s `trackPositions`/`stop()` (pre-existing, not introduced by 6.7). Test-only, negligible impact. Fix (if ever prioritized): wrap the movement/assertion steps in `try/finally` in both files.
+
+---
+
 ## Deferred from: code review of 1-8-epic-1-post-17-deferred-hardening (2026-07-06)
 
 **D1 — Stale `?session=` URL param pre-fills session-entry on all paths where `initialCode=undefined`** — RESOLVED by 1-9-epic-1-post-18-deferred-hardening (2026-07-07)

@@ -1,5 +1,5 @@
 # generated: 2026-06-22
-# last_updated: 2026-07-15 (4-13-vote-accept-button-submitted-state → done)
+# last_updated: 2026-07-16 (6-7-boss-combat-resolution-wiring → done)
 # project: party-delve
 # project_key: NOKEY
 # tracking_system: file-system
@@ -42,7 +42,7 @@
 # Phase2 legacy stories (old Phase-based keys) are tracked below under PHASE 2 STORIES.
 
 generated: 2026-06-22
-last_updated: 2026-07-15
+last_updated: 2026-07-16
 # 2026-07-15: created 3.22 (epic-3-post-321-deferred-hardening) — closes the Epic 3
 # deferred-work.md backlog that accumulated since 3.10 (Stories 3.11-3.21c never had a
 # hardening pass). Re-verified every candidate D-3.x entry against current source before
@@ -337,7 +337,7 @@ development_status:
   6-4-boss-defeat-sequence-purification-pulse-and-reward-reveal: done
   6-5-grassland-biome-achievements: done
   6-6-epic-6-deferred-hardening: done
-  6-7-boss-combat-resolution-wiring: ready-for-dev
+  6-7-boss-combat-resolution-wiring: done
   6-8-floating-damage-numbers-regular-enemies: ready-for-dev
   epic-6-retrospective: optional
 

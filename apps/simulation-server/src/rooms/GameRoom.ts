@@ -2163,6 +2163,19 @@ export class GameRoom extends Room {
             }
           }
 
+          // Story 6.7: boss hit-scan for the mixed-faction cone — same pattern as Task 1.
+          if (this.gameState.boss && !this.gameState.boss.isDefeated &&
+              isInHitZone(casterX, casterY, normDirX, normDirY,
+                this.gameState.boss.position.x, this.gameState.boss.position.y,
+                hitRadius, hitRange, isDirectional)) {
+            this.gameState.boss.hp = Math.max(0, this.gameState.boss.hp - damage);
+            this.broadcast(EventNames.DELTA, {
+              type: 'boss:damaged' as const,
+              bossId: this.gameState.boss.id,
+              newHp: this.gameState.boss.hp,
+            } satisfies DeltaEventMsg);
+          }
+
           for (const ally of allies) {
             const pi = this.gameState.players.findIndex(p => p.id === ally.id);
             if (pi === -1) continue;
@@ -2232,6 +2245,23 @@ export class GameRoom extends Room {
             this.essenceSensorBodies.set(drop.id, sensor);
           }
         }
+
+        // Story 6.7: boss hit-scan — closes D-6.3-0. Mirrors applyDamage's core math
+        // directly (not a call to applyDamage() itself — BossState has no isAlive/x/y/
+        // statusEffects; see this story's Non-goals for why). No essence drop, no
+        // status-effect/displacement application — boss defeat/phase transitions are
+        // handled entirely by tickBoss reading boss.hp on its own next tick.
+        if (this.gameState.boss && !this.gameState.boss.isDefeated &&
+            isInHitZone(player.x, player.y, normDirX, normDirY,
+              this.gameState.boss.position.x, this.gameState.boss.position.y,
+              hitRadius, hitRange, isDirectional)) {
+          this.gameState.boss.hp = Math.max(0, this.gameState.boss.hp - damage);
+          this.broadcast(EventNames.DELTA, {
+            type: 'boss:damaged' as const,
+            bossId: this.gameState.boss.id,
+            newHp: this.gameState.boss.hp,
+          } satisfies DeltaEventMsg);
+        }
       }
 
       logger.debug({ roomId: this.roomId, clientId, abilityIndex, dirX, dirY }, 'ability fired');
@@ -2255,8 +2285,15 @@ export class GameRoom extends Room {
           isInHitZone(nova.x, nova.y, 0, 0, e.x, e.y, currentRadius, 0, false));
         const alliesInRing = this.gatherPlayersInHitZone(nova.x, nova.y, 0, 0, currentRadius, 0, false, nova.casterId)
           .filter(p => !nova.hitIds.has(p.id));
+        // Story 6.7: boss participates in this sweep's once-per-activation hit tracking too.
+        // Computed here (not inside the `if` below) so a boss-only ring — zero enemies,
+        // zero allies — still enters the block and computes novaDamage.
+        const bossInRing = this.gameState.boss !== null && !this.gameState.boss.isDefeated &&
+          !nova.hitIds.has(this.gameState.boss.id) &&
+          isInHitZone(nova.x, nova.y, 0, 0,
+            this.gameState.boss.position.x, this.gameState.boss.position.y, currentRadius, 0, false);
 
-        if (enemiesInRing.length > 0 || alliesInRing.length > 0) {
+        if (enemiesInRing.length > 0 || alliesInRing.length > 0 || bossInRing) {
           const { allies, enemies } = resolveMixedFactionTargets(nova.casterId, [...enemiesInRing, ...alliesInRing]);
           const rawNovaDamage = ABILITY_DAMAGE[PlayerClass.SPIRITCALLER][1];
           // Same Bond proximity-damage-buff treatment as every other damaging ability
@@ -2307,6 +2344,17 @@ export class GameRoom extends Room {
               const sensor = createEssenceSensorBody(this.physicsWorld, drop.id, drop.x, drop.y);
               this.essenceSensorBodies.set(drop.id, sensor);
             }
+          }
+
+          // Story 6.7: boss hit — placed after the enemy loop, before the ally heal loop.
+          if (bossInRing) {
+            nova.hitIds.add(this.gameState.boss!.id);
+            this.gameState.boss!.hp = Math.max(0, this.gameState.boss!.hp - novaDamage);
+            this.broadcast(EventNames.DELTA, {
+              type: 'boss:damaged' as const,
+              bossId: this.gameState.boss!.id,
+              newHp: this.gameState.boss!.hp,
+            } satisfies DeltaEventMsg);
           }
 
           for (const ally of allies) {
