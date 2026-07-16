@@ -563,6 +563,7 @@ interface VotePopupProps {
 }
 
 function VotePopup({ proposal, onAccept, onDecline }: VotePopupProps) {
+  const [hasAccepted, setHasAccepted] = useState(false);
   const difficultyLabel: Record<string, string> = { easy: 'Easy', normal: 'Normal', hard: 'Hard' };
   return (
     <div style={{ position: 'absolute', inset: 0, background: 'rgba(15,14,16,0.85)', zIndex: 60,
@@ -584,13 +585,21 @@ function VotePopup({ proposal, onAccept, onDecline }: VotePopupProps) {
           Decline
         </button>
         <button
-          onPointerDown={e => { e.preventDefault(); onAccept(); }}
+          onPointerDown={e => {
+            if (hasAccepted) return;
+            e.preventDefault();
+            setHasAccepted(true);
+            onAccept();
+          }}
           style={{ flex: 1, minHeight: 56, borderRadius: 8, border: 'none',
-            background: 'var(--interactive)', color: 'var(--bg-base)',
+            background: hasAccepted ? 'var(--bg-surface)' : 'var(--interactive)',
+            color: hasAccepted ? 'var(--text-secondary)' : 'var(--bg-base)',
             fontFamily: 'var(--font-body)', fontWeight: 700, fontSize: 'var(--text-sm)',
-            cursor: 'pointer', touchAction: 'manipulation', boxShadow: '0 0 16px rgba(110,168,216,0.4)' }}
+            cursor: hasAccepted ? 'default' : 'pointer', touchAction: 'manipulation',
+            opacity: hasAccepted ? 0.5 : 1, pointerEvents: hasAccepted ? 'none' : 'auto',
+            boxShadow: hasAccepted ? 'none' : '0 0 16px rgba(110,168,216,0.4)' }}
         >
-          Accept
+          {hasAccepted ? 'Waiting...' : 'Accept'}
         </button>
       </div>
     </div>
