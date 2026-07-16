@@ -43,6 +43,13 @@
 
 generated: 2026-06-22
 last_updated: 2026-07-16
+# 2026-07-16: code review passed for dev-5-boss-transient-delta-whitelist-fix (done) — 0
+# decision_needed, 1 patch, 4 defer, 9 dismissed as noise. Patch applied: Task 2's test
+# checkbox reworded to state the actual 34/37-file result instead of an unqualified "full
+# suite green" claim. 4 defer findings logged as D-dev5-B..E in deferred-work.md
+# (single-slot transient-delta state can drop a delta under same-tick collisions, no
+# runtime payload validation, whitelist-pattern structural fragility, and a reproduction
+# of the already-tracked D7 story-template Allowed-paths gap — none block this story).
 # 2026-07-16: completed dev-5-boss-transient-delta-whitelist-fix (review) — 4-line
 # onTransientDelta whitelist addition in host-session.ts (boss:phaseChanged/damaged/
 # stomped/defeated), closing D-6.8-A. Automated checks (typecheck/build/full test suite)
@@ -307,7 +314,7 @@ development_status:
   # boss:defeated, making the already-built 6.3/6.4/6.5 boss visual-reaction
   # code (damage flash, phase glow, stomp ring, purification pulse + reward
   # reveal + achievements list) unreachable dead code today.
-  dev-5-boss-transient-delta-whitelist-fix: review
+  dev-5-boss-transient-delta-whitelist-fix: done
 
   # ─── E4: Procedural Dungeon & Full Run Structure ────────────────────────────
   # Vote to start a run, 3 procedural levels, deterministic seed system,

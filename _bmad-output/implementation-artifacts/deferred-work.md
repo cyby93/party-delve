@@ -4,6 +4,22 @@ Items surfaced during reviews that are real findings but pre-exist the triggerin
 
 ---
 
+## Deferred from: code review of dev-5-boss-transient-delta-whitelist-fix (2026-07-16)
+
+**D-dev5-B — Single-slot `latestTransientDelta` state can silently drop a delta** [`apps/host-client/src/session/host-session.ts:46-66`, feeding `App.tsx`/`DungeonScreen.tsx` effects keyed on `latestTransientDelta`]
+If two whitelisted deltas land within the same render cycle (e.g. `boss:damaged` immediately followed by `boss:defeated`), React's single-slot derived state only surfaces the last one — the earlier delta's UI reaction never fires. Pre-existing pattern shared by all 13 previously-whitelisted delta types (e.g. `enemy:killed`+`essence:dropped` already broadcast back-to-back synchronously today, same risk); this story's 4-line whitelist addition just routes 4 more types through the same existing choke point, it doesn't introduce the pattern. Revisit if this ever causes an observed missed reaction — likely fix is a small per-tick queue instead of a single ref/state slot.
+
+**D-dev5-C — No runtime validation of delta payload fields before use** [`apps/host-client/src/session/host-session.ts:19-21` `decode<T>()`, feeding `DungeonScreen.tsx:589` (`boss:damaged.newHp`) and `App.tsx:45`/`DungeonScreen.tsx:606` (`boss:defeated.reward`)]
+Malformed or missing fields on a `boss:damaged`/`boss:defeated` payload would flow through unvalidated (`NaN` damage flash, or a throwing unguarded `.reward.essenceTotal` access outside `host-session.ts`'s own try/catch). Matches this codebase's existing trust-boundary convention everywhere else in this whitelist — the server broadcasts payloads typed via `satisfies DeltaEventMsg` at each call site, and the client never runtime-validates any of them. Not unique to this story's addition. Revisit only if the trust boundary between simulation-server and host-client is ever tightened project-wide.
+
+**D-dev5-D — Hardcoded `||`-chain whitelist is structurally fragile** [`apps/host-client/src/session/host-session.ts:46-66`]
+This is the 2nd "missing whitelist entries" bug found in this exact OR-chain (D-6.8-A was the 1st, for the same 4 boss deltas plus `enemy:damaged`). No structural safeguard was added to prevent a 3rd occurrence — e.g. deriving the forwarded-type set from the `DeltaEventMsg` union with an exhaustiveness check, rather than a manually maintained list that silently drops unlisted types. Out of scope for a 4-line dev-infra fix. Revisit as a dedicated hardening story if a 3rd instance of this bug class ever surfaces.
+
+**D-dev5-E — Commit touches files outside the story's declared "Allowed paths"** [`_bmad-output/implementation-artifacts/deferred-work.md`, `sprint-status.yaml`, the story file itself]
+The story's CLAUDE.md task header lists only `apps/host-client/src/session/host-session.ts` as an Allowed path, but the commit also modifies `deferred-work.md`, `sprint-status.yaml`, and the story file itself — required by the story's own Task 2 and by the standard dev-story completion workflow, but not reflected in the header. This reproduces the exact contradiction already tracked as `D7` (from Story 6.8's own code review: "story's Allowed paths never lists `deferred-work.md`, but Tasks mandate editing it... flag for the Orchestrator/Protocol Architect to tighten future story templates"). The template fix D7 called for was never applied, so every subsequent story (including this one) keeps reproducing it. Orchestrator-owned meta-work, out of scope for individual dev stories to self-correct. Revisit by fixing the story-header template itself, not by patching individual stories.
+
+---
+
 ## Deferred from: manual verification of dev-5-boss-transient-delta-whitelist-fix (2026-07-16)
 
 **D-dev5-A — Storm Eye's zone-tick damage never reaches the boss** [`apps/simulation-server/src/rooms/GameRoom.ts`, zone `damage`-effectType tick loop (~line 1492) and the Storm Eye bonus-strike loop (~line 1543)]

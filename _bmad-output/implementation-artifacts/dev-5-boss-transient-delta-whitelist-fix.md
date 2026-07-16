@@ -4,7 +4,7 @@ baseline_commit: 1f9b932
 
 # Story dev-5: Boss Transient-Delta Whitelist Fix
 
-Status: review
+Status: done
 
 ## CLAUDE.md Required Task Header
 
@@ -249,9 +249,17 @@ so that boss combat feels as responsive and legible as the rest of the run, and 
 - [x] Task 2 — Verify (AC: 1, 2, 3, 4, 5)
   - [x] `npm run typecheck` (repo root) — 0 errors.
   - [x] `npm run build --workspace=apps/host-client` — succeeds.
-  - [x] `npm run test` (repo root, vitest run) — full suite green, no regressions (this story touches no code any existing test exercises).
+  - [x] `npm run test` (repo root, vitest run) — 426 passed, 9 pre-existing skips, 34/37 files passed. 3 e2e files (`reconnect.test.ts`, `ability-dispatch.test.ts`, `full-run.test.ts`) failed on "simulation-server did not start within 60s"; re-running `full-run.test.ts` in isolation with and without this story's diff produced two different failure modes each time, confirming pre-existing timing flakiness unrelated to this change (this story touches no code any of the 3 failing files exercises — none import `host-session.ts`). No regressions caused by this story's diff.
   - [x] Manual check per Client-UX hook: performed by the user (Cyby) directly. Confirmed: (1) phase glow ring/eye-glow renders (subtle — boss is placeholder art, a solid-color circle, so the glow is a same-color translucent ring; working as coded, not a defect of this story), (2) damage flash fires for every direct-hit ability (melee/cone/nova) at its existing top-of-screen position (unchanged, pre-existing Story 6.4 design), (3) stomp ring fires correctly, (4) full defeat sequence fires: purification tint (intentional light-blue background swap per AC4) → pulse → reward-reveal → achievements list populated on `PostRunSummaryScreen`. One gap found during verification: Stormcaller's Storm Eye zone shows no damage number against the boss — root-caused to a pre-existing, out-of-scope `GameRoom.ts` bug (zone-tick damage never targets `gameState.boss`, unrelated to this story's whitelist fix) — logged as `D-dev5-A` in deferred-work.md rather than fixed here (Blocked path).
   - [x] Updated `_bmad-output/implementation-artifacts/deferred-work.md`'s `D-6.8-A` entry: marked `— RESOLVED by dev-5-boss-transient-delta-whitelist-fix (2026-07-16)` with a resolution summary, per the file's existing convention. Also logged the new `D-dev5-A` finding (Storm Eye-vs-boss zone damage gap) surfaced during this story's manual verification.
+
+### Review Findings
+
+- [x] [Review][Patch] Task 2's checkbox claims "full suite green, no regressions" without noting the 3 e2e failures the Debug Log References themselves document (investigated and correctly attributed to pre-existing timing flakiness, but the checkbox wording overstates the result against CLAUDE.md's literal merge-gate bar of "related tests are green") [_bmad-output/implementation-artifacts/dev-5-boss-transient-delta-whitelist-fix.md:252] — fixed: checkbox reworded to state the actual 34/37 result and the flakiness investigation.
+- [x] [Review][Defer] Single-slot `latestTransientDelta` state can silently drop a delta if two whitelisted deltas land within the same render cycle (e.g. `boss:damaged` immediately followed by `boss:defeated`) — pre-existing pattern shared by all 13 previously-whitelisted delta types (e.g. `enemy:killed`+`essence:dropped` already broadcast back-to-back today), not introduced by this diff [apps/host-client/src/session/host-session.ts:46-66] — deferred, pre-existing
+- [x] [Review][Defer] No runtime validation of `boss:damaged`/`boss:defeated` payload fields (`newHp`, `reward`) before use downstream — matches this codebase's existing trust-boundary convention for every other delta type in the whitelist (server payloads are typed via `satisfies DeltaEventMsg` at the broadcast site, client never runtime-validates) [apps/host-client/src/session/host-session.ts:19-21] — deferred, pre-existing
+- [x] [Review][Defer] The hardcoded `||`-chain whitelist pattern itself is structurally fragile — this is the 2nd "missing whitelist entries" bug found in it (D-6.8-A was the 1st); no structural safeguard (e.g. deriving forwarded types from the delta-type union) was added. Worth a hardening story if a 3rd instance ever surfaces [apps/host-client/src/session/host-session.ts:46-66] — deferred, pre-existing
+- [x] [Review][Defer] Commit touches files outside this story's declared "Allowed paths" (`deferred-work.md`, `sprint-status.yaml`, the story file itself) — reproduces the exact story-template contradiction already tracked as `D7` in `deferred-work.md` (from Story 6.8's own review); Orchestrator-owned template fix, not something this story should self-correct [_bmad-output/implementation-artifacts/dev-5-boss-transient-delta-whitelist-fix.md] — deferred, pre-existing
 
 ## Dev Notes
 
@@ -413,3 +421,9 @@ Claude Sonnet 5
   Found and root-caused one out-of-scope pre-existing bug during verification (Storm Eye zone damage never
   reaches the boss — `GameRoom.ts` zone-tick loop only checks `gameState.enemies`) — logged as `D-dev5-A`
   rather than fixed here (Blocked path). D-6.8-A marked resolved. Story moved to `review`.
+- 2026-07-16: Code review (Blind Hunter + Edge Case Hunter + Acceptance Auditor) ran against the last commit.
+  0 decision_needed, 1 patch, 4 defer, 9 dismissed as noise. Patch applied: Task 2's test checkbox reworded to
+  state the actual 34/37-file result and the flakiness investigation instead of an unqualified "full suite
+  green" claim. 4 defer findings logged as `D-dev5-B` through `D-dev5-E` in `deferred-work.md` (single-slot
+  transient-delta state can drop a delta, no runtime payload validation, whitelist-pattern fragility, and a
+  reproduction of the already-tracked `D7` story-template Allowed-paths gap). Story moved to `done`.
