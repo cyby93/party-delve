@@ -1,5 +1,5 @@
 # generated: 2026-06-22
-# last_updated: 2026-07-16 (6-7-boss-combat-resolution-wiring → done)
+# last_updated: 2026-07-16 (dev-5-boss-transient-delta-whitelist-fix created, ready-for-dev)
 # project: party-delve
 # project_key: NOKEY
 # tracking_system: file-system
@@ -290,6 +290,12 @@ development_status:
   dev-2-controller-rotation-lock-enforcement: ready-for-dev
   dev-3-controller-fullscreen-toggle: ready-for-dev
   dev-4-debug-invincible-high-damage-mode: ready-for-dev
+  # Closes D-6.8-A (deferred-work.md): host-session.ts's onTransientDelta
+  # whitelist is missing boss:phaseChanged/boss:damaged/boss:stomped/
+  # boss:defeated, making the already-built 6.3/6.4/6.5 boss visual-reaction
+  # code (damage flash, phase glow, stomp ring, purification pulse + reward
+  # reveal + achievements list) unreachable dead code today.
+  dev-5-boss-transient-delta-whitelist-fix: ready-for-dev
 
   # ─── E4: Procedural Dungeon & Full Run Structure ────────────────────────────
   # Vote to start a run, 3 procedural levels, deterministic seed system,
@@ -338,7 +344,7 @@ development_status:
   6-5-grassland-biome-achievements: done
   6-6-epic-6-deferred-hardening: done
   6-7-boss-combat-resolution-wiring: done
-  6-8-floating-damage-numbers-regular-enemies: ready-for-dev
+  6-8-floating-damage-numbers-regular-enemies: done
   epic-6-retrospective: optional
 
   # ─── E7: Progression & Persistent Meta ──────────────────────────────────────

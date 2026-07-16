@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Application, Graphics, Assets } from 'pixi.js';
+import { Application, Graphics, Assets, Text, TextStyle } from 'pixi.js';
 import type { GameState, PlayerState, StatusEffectType } from 'shared-types';
 import { SessionColor, CLASS_DEFINITIONS, PlayerClass, BossPhase, PURIFICATION_PULSE_DURATION_MS, REWARD_REVEAL_DURATION_MS } from 'shared-types';
 import type { HostSession } from '../session/host-session';
@@ -31,6 +31,9 @@ const SPIRIT_ABILITY_FLASH_MS = 200;
 const KILL_FADE_MS = 300;
 const ESSENCE_FLASH_MS = 400;
 const STATUS_BADGE_RADIUS = 6;
+const DAMAGE_NUMBER_DURATION_MS = 700;
+const DAMAGE_NUMBER_RISE_PX = 30;
+const DAMAGE_NUMBER_Y_OFFSET = ENEMY_RADIUS + 24; // clears the health bar at -32
 
 // One generic badge shape for all status effects — differentiated by color only.
 const STATUS_EFFECT_COLORS: Record<StatusEffectType, number> = {
@@ -55,6 +58,12 @@ interface EnemyEntry {
 interface EssenceFlash {
   g: Graphics;
   deadline: number;
+}
+
+interface DamageNumberEntry {
+  text: Text;
+  spawnTime: number;
+  startY: number;
 }
 
 interface PurificationPulse {
@@ -83,6 +92,7 @@ function renderFrame(
   statusBadgeGraphics: Map<string, Graphics>,
   projectileGraphics: Map<string, Graphics>,
   zoneGraphics: Map<string, Graphics>,
+  damageNumberGraphics: Map<string, DamageNumberEntry>,
 ): void {
   app.stage.scale.set(app.screen.width / VIRTUAL_W, app.screen.height / VIRTUAL_H);
 
@@ -333,6 +343,20 @@ function renderFrame(
     const alpha = Math.sin(Math.PI * progress);
     flash.g.alpha = alpha;
   }
+
+  // ── Damage numbers ───────────────────────────────────────────────────────────
+  for (const [id, entry] of damageNumberGraphics) {
+    const elapsed = now - entry.spawnTime;
+    if (elapsed >= DAMAGE_NUMBER_DURATION_MS) {
+      app.stage.removeChild(entry.text);
+      entry.text.destroy();
+      damageNumberGraphics.delete(id);
+      continue;
+    }
+    const t = elapsed / DAMAGE_NUMBER_DURATION_MS;
+    entry.text.position.set(entry.text.position.x, entry.startY - t * DAMAGE_NUMBER_RISE_PX);
+    entry.text.alpha = 1 - t;
+  }
 }
 
 interface ReviveDeadline {
@@ -351,6 +375,8 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
   const statusBadgeGraphicsRef = useRef<Map<string, Graphics>>(new Map());
   const projectileGraphicsRef = useRef<Map<string, Graphics>>(new Map());
   const zoneGraphicsRef = useRef<Map<string, Graphics>>(new Map());
+  const damageNumberGraphicsRef = useRef<Map<string, DamageNumberEntry>>(new Map());
+  const damageNumberIdCounterRef = useRef(0);
   const latestGameStateRef = useRef<GameState | null>(null);
   latestGameStateRef.current = gameState;
   const reviveDeadlinesRef = useRef<Map<string, ReviveDeadline>>(new Map());
@@ -403,6 +429,7 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
           statusBadgeGraphicsRef.current,
           projectileGraphicsRef.current,
           zoneGraphicsRef.current,
+          damageNumberGraphicsRef.current,
         );
 
         // Boss sprite — managed in ticker to keep renderFrame signature stable
@@ -494,6 +521,7 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
       essenceFlashesRef.current.clear();
       tetherGraphicsRef.current.clear();
       statusBadgeGraphicsRef.current.clear();
+      damageNumberGraphicsRef.current.clear();
     };
   }, []);
 
@@ -529,6 +557,24 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
     } else if (latestTransientDelta.type === 'enemy:killed') {
       const entry = enemyGraphicsRef.current.get(latestTransientDelta.enemyId);
       if (entry && entry.deadUntil === 0) entry.deadUntil = Date.now() + KILL_FADE_MS;
+    } else if (latestTransientDelta.type === 'enemy:damaged' && app) {
+      const enemy = gameState?.enemies.find(e => e.id === latestTransientDelta.enemyId);
+      if (enemy) {
+        const text = new Text({
+          text: `-${latestTransientDelta.damage}`,
+          style: new TextStyle({ fontFamily: 'Lora, serif', fontSize: 18, fontWeight: 'bold', fill: 0xffffff }),
+        });
+        const startY = enemy.y - DAMAGE_NUMBER_Y_OFFSET;
+        text.anchor.set(0.5, 1);
+        text.position.set(enemy.x, startY);
+        app.stage.addChild(text);
+        const key = `dn-${damageNumberIdCounterRef.current++}`;
+        damageNumberGraphicsRef.current.set(key, {
+          text,
+          spawnTime: Date.now(),
+          startY,
+        });
+      }
     } else if (latestTransientDelta.type === 'essence:dropped' && app) {
       const { drop } = latestTransientDelta;
       const g = new Graphics();

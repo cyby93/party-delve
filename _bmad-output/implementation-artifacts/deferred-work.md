@@ -4,6 +4,38 @@ Items surfaced during reviews that are real findings but pre-exist the triggerin
 
 ---
 
+## Deferred from: dev implementation of 6-8-floating-damage-numbers-regular-enemies (2026-07-16)
+
+**D-6.8-A — `host-session.ts`'s `onTransientDelta` whitelist is also missing `boss:damaged`/`boss:phaseChanged`/`boss:stomped`/`boss:defeated`** [`apps/host-client/src/session/host-session.ts`, `onTransientDelta` whitelist inside `room.onMessage(EventNames.DELTA, ...)`]
+While fixing this story's own whitelist gap (`enemy:damaged` was missing, added by this story), a direct read of the file confirmed the same class of gap exists for 4 boss-lifecycle delta types: `boss:damaged`, `boss:phaseChanged`, `boss:stomped`, `boss:defeated`. `DungeonScreen.tsx`/`App.tsx` already have handler branches for all 4 (from Stories 6.3/6.4), but none of them are reachable — the deltas update `GameState` correctly via `applyDelta`, but never reach `latestTransientDelta`, so the boss damage-flash, phase-change reaction, stomp ring, and defeat/purification-pulse/reward-reveal sequence are all currently dead code paths. Confirmed pre-existing (predates this story) and not introduced by it. Deferred rather than fixed here because it is out of this story's title scope ("regular enemies") and touching those 4 entries pulls in re-verifying the entire boss defeat/reward-reveal/purification-pulse visual sequence (Story 6.4's scope) — a materially bigger surface than the one-line whitelist fix looks like. Revisit as a dedicated follow-up story: add all 4 entries to the whitelist and manually re-verify the full boss defeat/reward-reveal sequence end-to-end.
+
+---
+
+## Deferred from: code review of 6-8-floating-damage-numbers-regular-enemies (2026-07-16)
+
+**D1 — No sanitization of the `damage` value before display** [`apps/host-client/src/screens/DungeonScreen.tsx:566`]
+`` `-${latestTransientDelta.damage}` `` is rendered as-is. A `0`-damage event (e.g. a fully absorbed/blocked hit) would show a nonsensical "-0"; a non-integer damage value would show an unrounded float. No evidence today's combat paths can ever emit `0` or fractional damage — every existing `enemy:damaged` broadcast site computes a positive integer. Revisit if a future ability introduces variable/fractional/zero damage.
+
+**D2 — `DAMAGE_NUMBER_Y_OFFSET` coupled to the health bar's `-32` offset only by a comment, no shared constant** [`apps/host-client/src/screens/DungeonScreen.tsx:34-36`]
+`DAMAGE_NUMBER_Y_OFFSET = ENEMY_RADIUS + 24` clears the health bar (rendered at `-32`) but the two values aren't tied by any shared constant — only a comment. Matches this file's existing convention of standalone magic-number layout constants (e.g. the status-badge `-(radius+14)` offset). Revisit only if a shared layout-constant system is ever introduced.
+
+**D3 — Damage number text has no stroke/outline for contrast** [`apps/host-client/src/screens/DungeonScreen.tsx:568-570`]
+Flat white fill with no outline/shadow could become hard to read against light backgrounds. Matches the boss's existing `bossDamageFlash` convention (also flat-color, no outline) — not a regression, just an existing convention. Revisit in a future visual-polish pass.
+
+**D4 — No guard against a duplicate damage-number spawn on effect re-invocation** [`apps/host-client/src/screens/DungeonScreen.tsx:560-576`]
+If the transient-delta effect re-runs for the same delta object (e.g. React StrictMode double-invoke in dev), a duplicate number would spawn. Pre-existing class of risk shared by every other branch in this same effect (`ability:fired`, `essence:dropped`, etc.) — not unique to this story's addition.
+
+**D5 — `enemy:damaged` arriving before Pixi's async `app.init()` resolves is silently dropped** [`apps/host-client/src/screens/DungeonScreen.tsx:560`]
+The `&& app` guard short-circuits with no queue/retry if the delta arrives before `pixiAppRef.current` is set. Narrow race with no practical reachability today — combat cannot start before Pixi init resolves, since class-select/hub-navigation/level-load all take longer than the async init promise.
+
+**D6 — Damage number can clip above the visible viewport for enemies hit near the top edge** [`apps/host-client/src/screens/DungeonScreen.tsx:36`]
+An enemy at `y < 44` (virtual-canvas space) would spawn/rise a number above `y=0`. Cosmetic edge case; level layouts keep enemy spawn margins from the canvas edge in practice.
+
+**D7 — Spec-authoring inconsistency: story's "Allowed paths" never lists `deferred-work.md`, but Tasks 1/6 mandate editing it**
+Story 6.8's header "Allowed paths" section enumerates only the two host-client source files, yet Task 1 and Task 6 both require appending a finding to `deferred-work.md`. Internal contradiction in the story spec itself (not a code defect) — flag for the Orchestrator/Protocol Architect to tighten future story templates so Allowed-paths always includes any file a Task mandates editing.
+
+---
+
 ## Deferred from: code review of 6-7-boss-combat-resolution-wiring (2026-07-16)
 
 **D1 — One-tick defeat-detection lag lets a redundant `boss:damaged` (`newHp: 0`) fire after the killing hit**

@@ -4,7 +4,7 @@ baseline_commit: 1f9b932
 
 # Story 6.8: Floating Damage Numbers for Regular Enemies
 
-Status: ready-for-dev
+Status: done
 
 ## CLAUDE.md Required Task Header
 
@@ -193,8 +193,8 @@ so that combat feedback is consistent across all enemy types.
 
 ## Tasks / Subtasks
 
-- [ ] Task 1 — Fix the `host-session.ts` whitelist gap (AC: 1; this is the required root-cause fix, not optional)
-  - [ ] In `apps/host-client/src/session/host-session.ts`, locate the `onTransientDelta` whitelist inside `room.onMessage(EventNames.DELTA, ...)` (~line 46-58):
+- [x] Task 1 — Fix the `host-session.ts` whitelist gap (AC: 1; this is the required root-cause fix, not optional)
+  - [x] In `apps/host-client/src/session/host-session.ts`, locate the `onTransientDelta` whitelist inside `room.onMessage(EventNames.DELTA, ...)` (~line 46-58):
     ```typescript
     if (onTransientDelta && (
       delta.type === 'ability:fired' ||
@@ -211,16 +211,16 @@ so that combat feedback is consistent across all enemy types.
       delta.type === 'bond:assigned'
     )) {
     ```
-  - [ ] Add `delta.type === 'enemy:damaged' ||` to this list (anywhere in the chain — order doesn't matter, but placing it next to `'enemy:killed'` keeps the two enemy-lifecycle deltas visually adjacent). Without this, the delta reaches `GameState` (HP updates correctly via `applyDelta`, enemy health bars keep working) but never reaches `DungeonScreen`'s `latestTransientDelta` prop — the handler added in Task 4 would be unreachable.
-  - [ ] Do NOT add `'boss:damaged'`/`'boss:phaseChanged'`/`'boss:stomped'`/`'boss:defeated'` here — see Non-goals. Instead, append a new finding to `_bmad-output/implementation-artifacts/deferred-work.md` (follow that file's existing entry format, e.g. `D-6.8-A`) describing exactly this gap for those 4 delta types, citing this story's Context section, so it isn't lost.
+  - [x] Add `delta.type === 'enemy:damaged' ||` to this list (anywhere in the chain — order doesn't matter, but placing it next to `'enemy:killed'` keeps the two enemy-lifecycle deltas visually adjacent). Without this, the delta reaches `GameState` (HP updates correctly via `applyDelta`, enemy health bars keep working) but never reaches `DungeonScreen`'s `latestTransientDelta` prop — the handler added in Task 4 would be unreachable.
+  - [x] Do NOT add `'boss:damaged'`/`'boss:phaseChanged'`/`'boss:stomped'`/`'boss:defeated'` here — see Non-goals. Instead, append a new finding to `_bmad-output/implementation-artifacts/deferred-work.md` (follow that file's existing entry format, e.g. `D-6.8-A`) describing exactly this gap for those 4 delta types, citing this story's Context section, so it isn't lost.
 
-- [ ] Task 2 — Add `Text`/`TextStyle` imports and a damage-number entry type (AC: 1)
-  - [ ] In `DungeonScreen.tsx`'s import line (~line 2), change
+- [x] Task 2 — Add `Text`/`TextStyle` imports and a damage-number entry type (AC: 1)
+  - [x] In `DungeonScreen.tsx`'s import line (~line 2), change
     `import { Application, Graphics, Assets } from 'pixi.js';`
     to
     `import { Application, Graphics, Assets, Text, TextStyle } from 'pixi.js';`
     (matches the exact convention already used in `apps/host-client/src/screens/HubWorldScreen.tsx` ~line 2).
-  - [ ] Near the existing `EssenceFlash` interface (~line 55-58), add:
+  - [x] Near the existing `EssenceFlash` interface (~line 55-58), add:
     ```typescript
     interface DamageNumberEntry {
       text: Text;
@@ -228,22 +228,22 @@ so that combat feedback is consistent across all enemy types.
       startY: number;
     }
     ```
-  - [ ] Add three constants near the other duration constants (~line 29-33, alongside `ESSENCE_FLASH_MS` etc.):
+  - [x] Add three constants near the other duration constants (~line 29-33, alongside `ESSENCE_FLASH_MS` etc.):
     ```typescript
     const DAMAGE_NUMBER_DURATION_MS = 700;
     const DAMAGE_NUMBER_RISE_PX = 30;
     const DAMAGE_NUMBER_Y_OFFSET = ENEMY_RADIUS + 24; // clears the health bar at -32
     ```
 
-- [ ] Task 3 — Thread a new Map through `renderFrame` and component refs (AC: 1, 2)
-  - [ ] Add `damageNumberGraphics: Map<string, DamageNumberEntry>,` as a new final parameter to `renderFrame`'s signature (~line 75-86, after the existing `zoneGraphics: Map<string, Graphics>,` param).
-  - [ ] Add `const damageNumberGraphicsRef = useRef<Map<string, DamageNumberEntry>>(new Map());` alongside the other `*Ref` declarations in `DungeonScreen` (~line 347-353, next to `projectileGraphicsRef`/`zoneGraphicsRef`).
-  - [ ] Add `const damageNumberIdCounterRef = useRef(0);` next to it — used in Task 4 to generate a collision-free key per damage number (two enemies can be hit in the same millisecond; `Date.now()` alone is not a safe Map key).
-  - [ ] Pass `damageNumberGraphicsRef.current` as the new final argument at the `renderFrame(...)` call site inside the ticker (~line 395-406).
-  - [ ] Add `damageNumberGraphicsRef.current.clear();` to the unmount cleanup block (~line 492-497), alongside the existing `playerGraphicsRef.current.clear(); enemyGraphicsRef.current.clear(); ...` lines — matches the existing pattern (the Pixi objects themselves are already destroyed by the preceding `app.destroy(true, { children: true })`; `.clear()` only empties the JS Map).
+- [x] Task 3 — Thread a new Map through `renderFrame` and component refs (AC: 1, 2)
+  - [x] Add `damageNumberGraphics: Map<string, DamageNumberEntry>,` as a new final parameter to `renderFrame`'s signature (~line 75-86, after the existing `zoneGraphics: Map<string, Graphics>,` param).
+  - [x] Add `const damageNumberGraphicsRef = useRef<Map<string, DamageNumberEntry>>(new Map());` alongside the other `*Ref` declarations in `DungeonScreen` (~line 347-353, next to `projectileGraphicsRef`/`zoneGraphicsRef`).
+  - [x] Add `const damageNumberIdCounterRef = useRef(0);` next to it — used in Task 4 to generate a collision-free key per damage number (two enemies can be hit in the same millisecond; `Date.now()` alone is not a safe Map key).
+  - [x] Pass `damageNumberGraphicsRef.current` as the new final argument at the `renderFrame(...)` call site inside the ticker (~line 395-406).
+  - [x] Add `damageNumberGraphicsRef.current.clear();` to the unmount cleanup block (~line 492-497), alongside the existing `playerGraphicsRef.current.clear(); enemyGraphicsRef.current.clear(); ...` lines — matches the existing pattern (the Pixi objects themselves are already destroyed by the preceding `app.destroy(true, { children: true })`; `.clear()` only empties the JS Map).
 
-- [ ] Task 4 — Spawn a damage number on `enemy:damaged` (AC: 1, 2)
-  - [ ] In the "Handle transient delta visuals" effect (~line 508-577), add a new `else if` branch. Placement: anywhere in the chain is functionally fine, but put it next to the existing `else if (latestTransientDelta.type === 'enemy:killed')` branch (~line 529-531) since both are enemy-lifecycle deltas:
+- [x] Task 4 — Spawn a damage number on `enemy:damaged` (AC: 1, 2)
+  - [x] In the "Handle transient delta visuals" effect (~line 508-577), add a new `else if` branch. Placement: anywhere in the chain is functionally fine, but put it next to the existing `else if (latestTransientDelta.type === 'enemy:killed')` branch (~line 529-531) since both are enemy-lifecycle deltas:
     ```typescript
     } else if (latestTransientDelta.type === 'enemy:damaged' && app) {
       const enemy = gameState?.enemies.find(e => e.id === latestTransientDelta.enemyId);
@@ -263,11 +263,11 @@ so that combat feedback is consistent across all enemy types.
         });
       }
     ```
-  - [ ] Use the enemy's position **at the moment the delta arrives** (read from `gameState`, the effect's own closure variable — same convention already used by the `bond:assigned` branch a few lines up, which reads `gameState?.players.find(...)`). Do not try to track a separate "enemy position at hit time" from the delta itself — `EnemyDamagedDelta` carries no position, only `{ enemyId, damage, remainingHp }` (confirmed in `packages/net-protocol/src/messages/server-to-host.ts` ~line 93-98), and the enemy hasn't moved meaningfully within one tick, so `gameState`'s current position is the correct and only available anchor.
-  - [ ] If `enemy` is not found (already dead/removed from `gameState.enemies` by the time this effect runs — a narrow race, since `enemy:killed` typically arrives as a distinct, later delta), silently skip spawning a number. Do not throw or log.
+  - [x] Use the enemy's position **at the moment the delta arrives** (read from `gameState`, the effect's own closure variable — same convention already used by the `bond:assigned` branch a few lines up, which reads `gameState?.players.find(...)`). Do not try to track a separate "enemy position at hit time" from the delta itself — `EnemyDamagedDelta` carries no position, only `{ enemyId, damage, remainingHp }` (confirmed in `packages/net-protocol/src/messages/server-to-host.ts` ~line 93-98), and the enemy hasn't moved meaningfully within one tick, so `gameState`'s current position is the correct and only available anchor.
+  - [x] If `enemy` is not found (already dead/removed from `gameState.enemies` by the time this effect runs — a narrow race, since `enemy:killed` typically arrives as a distinct, later delta), silently skip spawning a number. Do not throw or log.
 
-- [ ] Task 5 — Animate rise + fade, then clean up (AC: 1)
-  - [ ] In `renderFrame`, add a new section at the very end of the function, after the existing `// ── Essence flashes ──` loop (~line 322-335) and before the function's closing `}` (~line 336):
+- [x] Task 5 — Animate rise + fade, then clean up (AC: 1)
+  - [x] In `renderFrame`, add a new section at the very end of the function, after the existing `// ── Essence flashes ──` loop (~line 322-335) and before the function's closing `}` (~line 336):
     ```typescript
     // ── Damage numbers ───────────────────────────────────────────────────────────
     for (const [id, entry] of damageNumberGraphics) {
@@ -283,14 +283,25 @@ so that combat feedback is consistent across all enemy types.
       entry.text.alpha = 1 - t;
     }
     ```
-  - [ ] This mirrors the existing essence-flash loop's structure exactly (iterate map, compute elapsed/remaining against `now` — already computed at the top of `renderFrame` — remove+destroy+delete on expiry, otherwise update a visual property). No new animation infrastructure is introduced; this is the same loop shape repeated for a fourth time in this file (essence flashes, purification particles in the ticker, and now this).
+  - [x] This mirrors the existing essence-flash loop's structure exactly (iterate map, compute elapsed/remaining against `now` — already computed at the top of `renderFrame` — remove+destroy+delete on expiry, otherwise update a visual property). No new animation infrastructure is introduced; this is the same loop shape repeated for a fourth time in this file (essence flashes, purification particles in the ticker, and now this).
 
-- [ ] Task 6 — Verify (AC: 1, 2)
-  - [ ] `npm run typecheck` (repo root) — 0 errors.
-  - [ ] `npm run build --workspace=apps/host-client` — succeeds.
-  - [ ] `npm run test` (repo root, vitest run) — full suite green, no regressions (this story touches no code any existing test exercises, so this is a regression-safety check, not a new-coverage check).
-  - [ ] Manual check per Client-UX hook: run the app, enter a dungeon level with regular enemies, hit one with an ability, confirm a "-N" number appears above the enemy and fades within ~0.7s; kill an enemy and confirm its existing fade-out is unchanged (still 300ms, still on the circle+health bar, not affected by any in-flight damage number).
-  - [ ] Append the `D-6.8-A` finding to `deferred-work.md` per Task 1's instruction (the boss-delta whitelist gap), regardless of whether Tasks 1-5 above are otherwise complete — this is a documentation step, not a code change, and must not be skipped.
+- [x] Task 6 — Verify (AC: 1, 2)
+  - [x] `npm run typecheck` (repo root) — 0 errors.
+  - [x] `npm run build --workspace=apps/host-client` — succeeds.
+  - [x] `npm run test` (repo root, vitest run) — full suite run twice per two-strike QA; both runs showed different, non-overlapping failures confirmed as pre-existing e2e flakiness unrelated to this story's diff (see Debug Log for full isolation-run evidence). Accepted per user decision after review of the diagnosis.
+  - [x] Manual check per Client-UX hook: verified end-to-end against the real running app (dev stack + headless-browser-driven host-client + a scripted live player via the real Colyseus protocol). Confirmed a "-15" floating damage number appears above the hit enemy immediately after an `enemy:damaged` delta, rises and fades out fully within ~0.7-1s, and that killing an enemy afterward (`debug:kill-all`) still shows the existing alpha kill-fade unaffected. See Completion Notes for details.
+  - [x] Append the `D-6.8-A` finding to `deferred-work.md` per Task 1's instruction (the boss-delta whitelist gap), regardless of whether Tasks 1-5 above are otherwise complete — this is a documentation step, not a code change, and must not be skipped.
+
+### Review Findings
+
+- [x] [Review][Patch] `enemy.y - DAMAGE_NUMBER_Y_OFFSET` computed twice (inline for `text.position.set` and again for `startY`) instead of once — extract to a local variable [apps/host-client/src/screens/DungeonScreen.tsx:568-574]
+- [x] [Review][Defer] No sanitization of the `damage` value before display (a `0` or fractional damage would render as "-0" or an unrounded float) [apps/host-client/src/screens/DungeonScreen.tsx:566] — deferred, no evidence today's damage values can be 0/fractional (existing combat paths always emit positive integer damage); revisit if a future ability introduces variable/fractional damage.
+- [x] [Review][Defer] `DAMAGE_NUMBER_Y_OFFSET = ENEMY_RADIUS + 24` is coupled only by a comment to the health bar's hardcoded `-32` offset elsewhere in the file, with no shared constant tying them together [apps/host-client/src/screens/DungeonScreen.tsx:34-36] — deferred, matches this file's existing convention of standalone magic-number layout constants (e.g. badge `-(radius+14)`); revisit only if a future refactor introduces a shared layout-constant system.
+- [x] [Review][Defer] Damage number text has no stroke/outline for contrast against light backgrounds [apps/host-client/src/screens/DungeonScreen.tsx:568-570] — deferred, matches the boss's existing `bossDamageFlash` convention (also flat-color, no outline); revisit in a future visual-polish pass.
+- [x] [Review][Defer] No guard against a duplicate spawn if the transient-delta effect re-runs for the same delta (e.g. React StrictMode double-invoke) [apps/host-client/src/screens/DungeonScreen.tsx:560-576] — deferred, pre-existing class of risk shared by every other branch in this same effect (`ability:fired`, `essence:dropped`, etc.), not unique to this diff.
+- [x] [Review][Defer] `enemy:damaged` arriving before the async Pixi `app.init()` resolves would be silently dropped (`app` is null, the `&&` guard short-circuits) with no queue/retry [apps/host-client/src/screens/DungeonScreen.tsx:560] — deferred, narrow race with no practical reachability (combat cannot start before Pixi init resolves, since class-select/hub/level-load all take longer).
+- [x] [Review][Defer] An enemy hit near the top edge of the virtual canvas (y < 44) would spawn/rise a damage number above y=0, clipping outside the visible viewport [apps/host-client/src/screens/DungeonScreen.tsx:36] — deferred, cosmetic edge case, low practical impact given level layouts keep spawn margins from the canvas edge.
+- [x] [Review][Defer] Spec-authoring inconsistency: Task 1/Task 6 mandate editing `deferred-work.md`, but this story's own "Allowed paths" section never lists that file — an internal contradiction in the story spec itself, not a code defect. Flagged for the Orchestrator/Protocol Architect to fix in future story templates, not actionable as a code patch here.
 
 ## Dev Notes
 
@@ -372,8 +383,27 @@ so that combat feedback is consistent across all enemy types.
 
 ### Agent Model Used
 
+Claude Sonnet 5
+
 ### Debug Log References
+
+- `npm run typecheck` (repo root) — 0 errors, all 10 workspace tsconfigs pass.
+- `npm run build --workspace=apps/host-client` — `tsc --noEmit && vite build` succeeded (813 modules, 58.77s).
+- `npm run test` (repo root, vitest run) — run twice per the two-strike QA rule; **both runs failed**, but with different, non-overlapping failures each time, and none in files this story touches:
+  - Run 1: 3 e2e suites failed with `simulation-server did not start within 60s` (`ability-dispatch.test.ts`, `hub-ability-use.test.ts`, `reconnect.test.ts`); `full-run.test.ts` failed a bond-count assertion (`expected 2 to be 3`).
+  - Run 2: `full-run.test.ts` failed with `EADDRINUSE :::2568` then `simulation-server did not start within 60s`; `ability-dispatch.test.ts` failed a DoT-timing assertion (`expected 50 to be >= 100`). 432 of 435 tests passed.
+  - Root-cause diagnosis: this story's diff touches only `apps/host-client/src/screens/DungeonScreen.tsx` and `apps/host-client/src/session/host-session.ts` — neither file is imported or exercised by any of the failing e2e suites (confirmed via grep). The failure signatures (port contention starting the simulation-server process, wall-clock timing assertions on ability/DoT damage windows) match a documented pre-existing environmental flakiness class in this repo: Story 6-7's Debug Log (`6-7-boss-combat-resolution-wiring.md`) records the identical `EADDRINUSE`/`did not start within 60s` symptom and traces it to concurrent e2e runs contending for hardcoded test ports (`2568`, `18765`), confirmed there by an isolated pre-story `git stash` run showing the same flakiness. Re-ran the specific failing suites in isolation here (`npx vitest run --config vitest.config.ts` from `tests/`, one/few files at a time, bypassing whatever was contending for ports): `full-run.test.ts` passed clean (2/2), `ability-dispatch.test.ts`/`hub-ability-use.test.ts`/`reconnect.test.ts` passed 6/8 with the 2 remaining failures being the same DoT-timing assertion (`ability-dispatch.test.ts:217`, `expect(heal.hp).toBeGreaterThanOrEqual(allyStart.hp)`) — a race the test's own inline comment already acknowledges ("rule out an incidental enemy-melee-damage delta landing on the ally within the wait window instead of the heal"), pre-existing and unrelated to host-client rendering.
+  - Per the two-strike QA rule ("if the second run also fails, HALT... never attempt a third retry"): HALTed and presented the full diagnosis to the user. User reviewed and explicitly accepted the pre-existing-flakiness diagnosis, directing the story to proceed to completion (2026-07-16).
+  - Manual Client-UX verification: ran the real dev stack (`npm run dev` — simulation-server + host-client + mobile-controller), drove a headless Chromium (Playwright) against the real host-client at `localhost:5173` to create a live lobby, and used a scripted raw-Colyseus-SDK "phone" client (mirroring the existing `ability-dispatch.test.ts` helper pattern — join, class-select, navigate to dungeon entrance, propose+vote, move into ability range) to fire a real Spiritcaller ability at a live enemy through the real server. Confirmed via screenshots: a "-15" white damage number appears above the hit enemy immediately after the `enemy:damaged` delta (t+200ms), is fully faded and gone by t+600-1000ms (matches `DAMAGE_NUMBER_DURATION_MS = 700`), and a subsequent `debug:kill-all` still produces the pre-existing enemy alpha kill-fade unaffected. Two environment issues were hit and resolved during this check, both environmental, not code defects: (1) headless Chromium required system shared libs (`libglib-2.0` etc.) installed via `sudo playwright install-deps chromium` — done by the user; (2) Vite's dev-server file watcher did not pick up edits on this WSL2/Windows-mounted (`/mnt/c/`) path (a known class of issue per `feedback_wsl2_zombie_processes` memory) — worked around by fully restarting the dev-client process (kill by PID + relaunch) after each edit, which forces a fresh disk read. Confidence: 95% — both ACs were directly observed end-to-end against the real running app and real server-broadcast delta, not inferred from code reading alone.
 
 ### Completion Notes List
 
+- Tasks 1-5 implemented exactly per spec: `enemy:damaged` added to `host-session.ts`'s `onTransientDelta` whitelist; `Text`/`TextStyle` imports, `DamageNumberEntry` interface, and duration/rise/offset constants added to `DungeonScreen.tsx`; `damageNumberGraphics` Map threaded through `renderFrame`'s signature, refs, ticker call site, and unmount cleanup; a spawn branch added to the transient-delta effect (guards on enemy still present in `gameState`); a rise+fade+cleanup loop added at the end of `renderFrame`, mirroring the existing essence-flash loop shape.
+- `D-6.8-A` (boss-delta whitelist gap, non-goal per this story) appended to `deferred-work.md`.
+- Task 6 (Verify) is complete: typecheck (0 errors), build (succeeds), deferred-work.md entry (`D-6.8-A` appended), and the full test-suite gate (accepted per user decision after two-strike QA HALT and diagnosis review — pre-existing e2e flakiness unrelated to this story's diff) are all done. Manual Client-UX verification was performed end-to-end against the real running app (dev stack + real browser + real scripted player over the live Colyseus protocol) — both ACs directly observed via screenshots, not just inferred from code.
+
 ### File List
+
+- `apps/host-client/src/session/host-session.ts` (modified — added `'enemy:damaged'` to the `onTransientDelta` whitelist)
+- `apps/host-client/src/screens/DungeonScreen.tsx` (modified — `Text`/`TextStyle` import, `DamageNumberEntry` interface, 3 new constants, `damageNumberGraphics` Map threaded through `renderFrame`/refs/cleanup, spawn branch in transient-delta effect, rise+fade animation loop in `renderFrame`)
+- `_bmad-output/implementation-artifacts/deferred-work.md` (modified — appended `D-6.8-A` finding)

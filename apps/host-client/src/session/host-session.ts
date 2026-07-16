@@ -47,6 +47,7 @@ export async function createHostSession(
         delta.type === 'ability:fired' ||
         delta.type === 'spirit-ability:fired' ||
         delta.type === 'enemy:killed' ||
+        delta.type === 'enemy:damaged' ||
         delta.type === 'essence:dropped' ||
         delta.type === 'player:downed' ||
         delta.type === 'player:revived' ||
