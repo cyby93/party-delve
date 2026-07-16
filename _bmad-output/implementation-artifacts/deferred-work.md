@@ -4,6 +4,16 @@ Items surfaced during reviews that are real findings but pre-exist the triggerin
 
 ---
 
+## Deferred from: code review of dev-2-controller-rotation-lock-enforcement (2026-07-16)
+
+**D-dev2-A — `window.matchMedia` called unguarded in a `useState` initializer at the top of `App()`** [`apps/mobile-controller/src/App.tsx:86`]
+Deferred, pre-existing convention: `matchMedia` was already used unguarded inside `OrientationPromptScreen.tsx`'s `useEffect`. This story widens the same unguarded call from screen-local (only reachable when that one screen mounted) to app-wide (runs on every mount, every screen). No guard added given universal `matchMedia` support across this project's actual mobile-browser targets (project-context.md scopes the mobile controller to "mobile web browser (phone)" — no SSR, no legacy-browser target). Revisit only if a target platform without `matchMedia` support is ever added.
+
+**D-dev2-B — No fallback to the legacy `mq.addListener`/`removeListener` API for older Safari** [`apps/mobile-controller/src/App.tsx:104-109`]
+Deferred, pre-existing convention already used unguarded in `OrientationPromptScreen.tsx`; this story's new App-level effect mirrors that same existing pattern rather than introducing a new one. Revisit only if analytics ever show a meaningful fraction of players on Safari versions old enough to lack `addEventListener` on `MediaQueryList`.
+
+---
+
 ## Deferred from: code review of dev-5-boss-transient-delta-whitelist-fix (2026-07-16)
 
 **D-dev5-B — Single-slot `latestTransientDelta` state can silently drop a delta** [`apps/host-client/src/session/host-session.ts:46-66`, feeding `App.tsx`/`DungeonScreen.tsx` effects keyed on `latestTransientDelta`]

@@ -4,7 +4,7 @@ baseline_commit: 1f9b932
 
 # Story dev-2: Controller Rotation Lock Enforcement
 
-Status: ready-for-dev
+Status: done
 
 ## CLAUDE.md Required Task Header
 
@@ -120,17 +120,20 @@ so that the controller layout has the space it needs and I'm not playing in a cr
 
 ## Tasks / Subtasks
 
-- [ ] T1: `apps/mobile-controller/src/App.tsx` — add a persistent portrait/landscape guard
-  - [ ] T1.1: Add an `isPortrait` state, initialized from `!window.matchMedia('(orientation: landscape)').matches`, with a `useEffect` (mounted once, empty deps) that subscribes an `mq.addEventListener('change', ...)` listener for the lifetime of the app and cleans up on unmount. This lives at the top of `App()`, alongside the other top-level state.
-  - [ ] T1.2: At the single call site that renders `<ControllerScreen .../>` (the final fallback `return` in `App()`, currently ~line 334), branch: if `isPortrait`, render `<OrientationPromptScreen onDismiss={() => {}} />` instead (the guard's own listener will flip `isPortrait` and re-render — `onDismiss` can be a no-op since dismissal is now driven by the media query, not a screen transition).
-  - [ ] T1.3: Remove `'orientation-prompt'` from the `AppScreen` union type and delete its dedicated `if (screen === 'orientation-prompt')` branch (~line 262-264).
-  - [ ] T1.4: In the `class-select-forced` screen's `onPickClass` handler (~line 255-259), change `setScreen('orientation-prompt')` to `setScreen('controller')` directly — the guard added in T1.2 now handles showing the prompt if needed at that point, so the intermediate state is redundant.
-  - [ ] T1.5: Remove the now-unused `handleOrientationDismiss` callback (~line 187-189) — no longer referenced after T1.3/T1.4.
-- [ ] T2: `apps/mobile-controller/vite.config.ts` — change `manifest.orientation` from `'portrait'` to `'landscape'` (line 17).
+- [x] T1: `apps/mobile-controller/src/App.tsx` — add a persistent portrait/landscape guard
+  - [x] T1.1: Add an `isPortrait` state, initialized from `!window.matchMedia('(orientation: landscape)').matches`, with a `useEffect` (mounted once, empty deps) that subscribes an `mq.addEventListener('change', ...)` listener for the lifetime of the app and cleans up on unmount. This lives at the top of `App()`, alongside the other top-level state.
+  - [x] T1.2: At the single call site that renders `<ControllerScreen .../>` (the final fallback `return` in `App()`, currently ~line 334), branch: if `isPortrait`, render `<OrientationPromptScreen onDismiss={() => {}} />` instead (the guard's own listener will flip `isPortrait` and re-render — `onDismiss` can be a no-op since dismissal is now driven by the media query, not a screen transition).
+  - [x] T1.3: Remove `'orientation-prompt'` from the `AppScreen` union type and delete its dedicated `if (screen === 'orientation-prompt')` branch (~line 262-264).
+  - [x] T1.4: In the `class-select-forced` screen's `onPickClass` handler (~line 255-259), change `setScreen('orientation-prompt')` to `setScreen('controller')` directly — the guard added in T1.2 now handles showing the prompt if needed at that point, so the intermediate state is redundant.
+  - [x] T1.5: Remove the now-unused `handleOrientationDismiss` callback (~line 187-189) — no longer referenced after T1.3/T1.4.
+- [x] T2: `apps/mobile-controller/vite.config.ts` — change `manifest.orientation` from `'portrait'` to `'landscape'` (line 17).
 
 ### Review Findings
 
-_(populated by code-review after implementation)_
+- [x] [Review][Decision] "Got it, my screen is locked" button is now a dead no-op — Resolved (2026-07-16, Cyby): remove the dead button. Per Dev Notes T1.2, `onDismiss` is intentionally a no-op since dismissal is now driven by the `matchMedia` listener, not a screen transition, but the button was still rendered and tappable while doing nothing — a stale escape hatch for OS-level-portrait-locked players that no longer worked. Fixed by removing the button from `OrientationPromptScreen.tsx` (overrides the story's original Non-goal on that file, by explicit user direction); the component's own auto-dismiss effect (`onDismiss()` called when `matchMedia` reports landscape) is unchanged. [apps/mobile-controller/src/screens/OrientationPromptScreen.tsx:52-67]
+- [x] [Review][Patch] App-level orientation effect doesn't re-check `mq.matches` before subscribing — Fixed (2026-07-16): added `setIsPortrait(!mq.matches);` as the first line of the effect, mirroring `OrientationPromptScreen.tsx`'s own mount-time check, closing the narrow race between the `useState` initializer's read and the effect mounting the `change` listener. [apps/mobile-controller/src/App.tsx:104-110]
+- [x] [Review][Defer] `window.matchMedia` called unguarded in a `useState` initializer at the top of `App()` — deferred, pre-existing convention (matchMedia already used unguarded in `OrientationPromptScreen.tsx`); this diff just widens the blast radius to app-wide instead of screen-local. No guard needed given universal `matchMedia` support across this project's actual mobile-browser targets. [apps/mobile-controller/src/App.tsx:86]
+- [x] [Review][Defer] No fallback to the legacy `mq.addListener`/`removeListener` API for older Safari — deferred, pre-existing convention already used unguarded in `OrientationPromptScreen.tsx`; this diff extends the same convention, does not introduce it. [apps/mobile-controller/src/App.tsx:104-109]
 
 ## Dev Notes
 
@@ -246,12 +249,57 @@ regardless.
 
 ### Agent Model Used
 
+Claude Sonnet 5
+
 ### Debug Log References
+
+None — no failures during implementation or QA (typecheck clean on first run, no regressions).
 
 ### Completion Notes List
 
+- Replaced the one-shot `'orientation-prompt'` screen state with a persistent
+  `isPortrait` guard (mq listener mounted once in `App()`, checked at the
+  single `ControllerScreen` render call site). This covers first-join (AC1),
+  mid-session rotation (AC2), and reconnect (AC3) with one check, since all
+  three paths already funnel through that one render call site — matches the
+  story's root-cause analysis exactly, no separate reconnect-path fix needed.
+- Auto-dismiss (AC4) is unchanged: `OrientationPromptScreen`'s own
+  `matchMedia` listener still flips it away instantly, and the app-level
+  listener independently flips `isPortrait` to re-render `ControllerScreen`
+  — no extra tap.
+- `vite.config.ts` manifest orientation flipped to `'landscape'` (AC5).
+- Verified no other screen branch was touched — auth-choice, session-entry,
+  class-select-forced, reconnect, post-run, and the victory screen all
+  return before the new guard, satisfying AC6.
+- Removed the now-dead `'orientation-prompt'` `AppScreen` variant and
+  `handleOrientationDismiss` callback; confirmed via repo-wide grep no
+  references remained.
+- QA: `apps/mobile-controller` has no test infra (no `*.test.*` files, no
+  `@testing-library` dep) — same precedent as dev-1, so no test file was
+  added; AC1-AC6 are the manual/visual acceptance checks the story specifies.
+  Full monorepo `npm run typecheck` passes with 0 errors (10/10 project
+  refs). `vitest run` in mobile-controller correctly reports "No test files
+  found" (expected, not a regression).
+- Confidence: 92% — the guard logic and manifest fix are simple, well-scoped,
+  and typecheck-verified; the only untested surface is the browser-only
+  `matchMedia`/orientation behavior itself (AC1-AC4), which requires a real
+  device or devtools responsive mode per the story's own test plan.
+
 ### File List
+
+- `apps/mobile-controller/src/App.tsx` (MODIFY)
+- `apps/mobile-controller/vite.config.ts` (MODIFY)
+- `apps/mobile-controller/src/screens/OrientationPromptScreen.tsx` (MODIFY — code review fix, removed dead dismiss button)
 
 ## Change Log
 
 - 2026-07-15: Story created (Cyby)
+- 2026-07-16: Implemented — persistent orientation guard replaces one-shot
+  screen state; PWA manifest orientation corrected. Status: review.
+- 2026-07-16: Code review (Blind Hunter + Edge Case Hunter + Acceptance
+  Auditor) — 0 AC violations, 9 findings dismissed as noise, 2 deferred
+  (pre-existing matchMedia/Safari conventions), 1 decision resolved (removed
+  now-dead "Got it" button from OrientationPromptScreen.tsx per user
+  direction), 1 patch applied (mount-time mq.matches re-check closes a race
+  in the App-level orientation effect). Full monorepo typecheck: 0 errors.
+  Status: done.

@@ -14,7 +14,7 @@ export interface CooldownState {
   expiresAt: number;
 }
 
-type AppScreen = 'auth-choice' | 'session-entry' | 'class-select-forced' | 'orientation-prompt' | 'controller' | 'reconnect';
+type AppScreen = 'auth-choice' | 'session-entry' | 'class-select-forced' | 'controller' | 'reconnect';
 
 // CloseCode.CONSENTED = 4000 (Colyseus intentional leave — do not show reconnect screen)
 const CLOSE_CONSENTED = 4000;
@@ -83,6 +83,7 @@ export function App() {
   const [inBondMoment, setInBondMoment] = useState(false);
   const [reconnectRoomId, setReconnectRoomId] = useState<string>('');
   const [sessionEntryInitialCode, setSessionEntryInitialCode] = useState<string | undefined>(undefined);
+  const [isPortrait, setIsPortrait] = useState(() => !window.matchMedia('(orientation: landscape)').matches);
   // Ref keeps handleDelta dep-free while always reading the live playerId.
   // The callback is wired into room.onMessage once at join time — a closure
   // over `session` state would capture null and never update.
@@ -99,6 +100,14 @@ export function App() {
   }, [session]);
 
   useEffect(() => { gameStateRef.current = gameState; }, [gameState]);
+
+  useEffect(() => {
+    const mq = window.matchMedia('(orientation: landscape)');
+    setIsPortrait(!mq.matches);
+    const handler = (e: MediaQueryListEvent) => { setIsPortrait(!e.matches); };
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
 
   useEffect(() => {
     if (gameState?.session.phase === 'hub') {
@@ -184,10 +193,6 @@ export function App() {
     }
   }, [handleDelta, handleCooldownUpdate, handleBondNotification, handleRunVictory, handleDisconnect]);
 
-  const handleOrientationDismiss = useCallback(() => {
-    setScreen('controller');
-  }, []);
-
   const handleReconnect = useCallback(async () => {
     const persisted = getPersistedSession();
     if (!persisted) throw new Error('no session data');
@@ -254,13 +259,10 @@ export function App() {
         }}
         onPickClass={(classId) => {
           session?.sendClassSelect({ type: 'class:select', classId });
-          setScreen('orientation-prompt');
+          setScreen('controller');
         }}
       />
     );
-  }
-  if (screen === 'orientation-prompt') {
-    return <OrientationPromptScreen onDismiss={handleOrientationDismiss} />;
   }
   if (screen === 'reconnect') {
     return (
@@ -330,6 +332,9 @@ export function App() {
         </button>
       </div>
     );
+  }
+  if (isPortrait) {
+    return <OrientationPromptScreen onDismiss={() => {}} />;
   }
   return <ControllerScreen session={session} gameState={gameState} cooldowns={cooldowns} bondNotification={bondNotification} inBondMoment={inBondMoment} onContinue={handleContinue} />;
 }
