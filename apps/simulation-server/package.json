@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "predev": "pid=$(ss -ltnp 2>/dev/null | grep ':2567 ' | grep -oP 'pid=\\K[0-9]+' | head -1); [ -n \"$pid\" ] && kill -9 \"$pid\" || true",
     "dev": "cross-env NODEJS_CLI_WATCH_POLLING_INTERVAL=500 tsx watch src/index.ts",
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/index.js",
