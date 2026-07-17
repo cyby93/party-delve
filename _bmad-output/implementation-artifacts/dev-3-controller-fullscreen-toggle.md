@@ -4,7 +4,7 @@ baseline_commit: 1f9b932
 
 # Story dev-3: Controller Fullscreen Toggle
 
-Status: ready-for-dev
+Status: done
 
 ## CLAUDE.md Required Task Header
 
@@ -157,34 +157,48 @@ Telemetry impact: None — this is a display-mode convenience toggle, not a
 ## Story
 
 As a player on my phone,
-I want the controller to go fullscreen automatically and have a toggle to turn it on or off,
+I want a toggle to turn the controller's fullscreen mode on or off,
 so that I have as much screen space as possible for the joystick and ability grid.
+
+> **2026-07-17 revision:** Auto-activation on join/reconnect (originally AC1-3, AC7) was
+> implemented, code-reviewed, and then explicitly descoped by the user after live testing —
+> on desktop Chrome (used for dev/QA), calling `requestFullscreen()` at those points caused
+> the page to render blank instead of expanding to fill the screen; phone behavior was fine,
+> but the risk/inconsistency wasn't worth it for an automatic action. The manual toggle
+> (AC4-6, T3) is unaffected and remains the sole way to enter/exit fullscreen. See Change Log.
 
 ## Acceptance Criteria
 
-1. **Given** a player joins a session and picks a class for the first time, **when** the controller UI is about to load, **then** the app automatically requests fullscreen via the Fullscreen API, called synchronously inside the class-pick button's gesture handler.
-2. **Given** a player reconnects after a disconnect, **when** they tap "Rejoin Session", **then** the app also automatically requests fullscreen, called synchronously as the first step of the reconnect handler (before the async network round-trip).
-3. The fullscreen request is best-effort: rejection (unsupported browser, user/OS denial) is swallowed and never blocks the join/reconnect flow.
+1. ~~Auto-request fullscreen on first join.~~ **Removed 2026-07-17** — see revision note above.
+2. ~~Auto-request fullscreen on reconnect.~~ **Removed 2026-07-17** — see revision note above.
+3. ~~Auto-request fullscreen is best-effort or blocks nothing.~~ **Removed 2026-07-17** — moot, no auto-request remains.
 4. A toggle button is visible in the controller UI (top-of-screen overlay, 44×44 min touch target) whenever the Fullscreen API is supported (`document.fullscreenEnabled`), and hidden entirely otherwise.
 5. Tapping the toggle exits fullscreen if currently active, or re-enters it otherwise.
 6. The toggle's displayed state tracks real fullscreen state via `fullscreenchange`, even if fullscreen was exited by a non-button means (OS back-gesture, Esc key).
-7. The mid-session class-reselect overlay does not re-trigger an automatic fullscreen request — only first-join and reconnect do.
+7. ~~Mid-session class-reselect must not auto-trigger fullscreen.~~ **Removed 2026-07-17** — moot, no auto-request remains anywhere.
+8. `apps/mobile-controller/vite.config.ts` is unchanged by this story. (unchanged, still applies)
+9. **Added 2026-07-17.** On iOS Safari opened as a regular tab (`navigator.standalone === false`), where the Fullscreen API is permanently unsupported, the same top-right slot shows a small tap-to-reveal "ⓘ" hint instead of the (dead) toggle, telling the player to use Share → Add to Home Screen — which activates the manifest's existing `display: 'fullscreen'` on next launch. Not shown on Android/desktop (`navigator.standalone` is `undefined` there, so the condition is `undefined === false` → `false`) or once already installed to the Home Screen (`navigator.standalone === true` → same condition is `false`) — see Dev Notes.
 
 ## Tasks / Subtasks
 
-- [ ] T1: `apps/mobile-controller/src/App.tsx` — auto-request fullscreen on first join (AC1, AC3, AC7)
-  - [ ] T1.1: In the `class-select-forced` screen's `onPickClass` handler (~line 255-259), add `document.documentElement.requestFullscreen?.().catch(() => {})` alongside the existing `session?.sendClassSelect(...)` / `setScreen(...)` calls — all still synchronous within the button's `onPointerDown` gesture chain.
-  - [ ] T1.2: Do NOT touch the other `onPickClass` implementation (the mid-session re-pick one defined inline in `ControllerScreen.tsx` around line 1352-1358) — confirms AC7.
-- [ ] T2: `apps/mobile-controller/src/screens/ReconnectScreen.tsx` — auto-request fullscreen on reconnect (AC2, AC3)
-  - [ ] T2.1: In `handleRejoin` (~line 14), add `document.documentElement.requestFullscreen?.().catch(() => {})` as the first statement, before `setStatus('connecting')` and before `await onReconnect()` — preserves the click's transient user activation across the `await`.
-- [ ] T3: `apps/mobile-controller/src/screens/ControllerScreen.tsx` — fullscreen toggle button (AC4, AC5, AC6)
-  - [ ] T3.1: Add `isFullscreen` state initialized from `document.fullscreenElement !== null`, with a mount-once `useEffect` that subscribes `document.addEventListener('fullscreenchange', handler)` (handler re-reads `document.fullscreenElement !== null` and updates state), cleaning up on unmount.
-  - [ ] T3.2: Add a `toggleFullscreen` callback: `document.fullscreenElement ? document.exitFullscreen().catch(() => {}) : document.documentElement.requestFullscreen().catch(() => {})`.
-  - [ ] T3.3: Render the toggle only when `document.fullscreenEnabled` is `true`, as an absolute-positioned overlay (top-right, `top: env(safe-area-inset-top, 0px)`, min 44×44 touch target, `touchAction: 'manipulation'`), following the same styling/positioning convention as `InteractButton` (defined near the top of this same file). Use a simple icon/glyph (e.g. `⛶`) — no new asset needed.
+- [x] ~~T1: `apps/mobile-controller/src/App.tsx` — auto-request fullscreen on first join (AC1, AC3, AC7)~~ **Reverted 2026-07-17** — see revision note above. `onPickClass` no longer calls `requestFullscreen()`.
+  - [x] ~~T1.1~~ reverted
+  - [x] ~~T1.2~~ moot (no longer applicable now that no `onPickClass` gets the call)
+- [x] ~~T2: `apps/mobile-controller/src/screens/ReconnectScreen.tsx` — auto-request fullscreen on reconnect (AC2, AC3)~~ **Reverted 2026-07-17** — see revision note above. `handleRejoin` no longer calls `requestFullscreen()`.
+  - [x] ~~T2.1~~ reverted
+- [x] T3: `apps/mobile-controller/src/screens/ControllerScreen.tsx` — fullscreen toggle button (AC4, AC5, AC6)
+  - [x] T3.1: Add `isFullscreen` state initialized from `document.fullscreenElement !== null`, with a mount-once `useEffect` that subscribes `document.addEventListener('fullscreenchange', handler)` (handler re-reads `document.fullscreenElement !== null` and updates state), cleaning up on unmount.
+  - [x] T3.2: Add a `toggleFullscreen` callback: `document.fullscreenElement ? document.exitFullscreen().catch(() => {}) : document.documentElement.requestFullscreen().catch(() => {})`.
+  - [x] T3.3: Render the toggle only when `document.fullscreenEnabled` is `true`, as an absolute-positioned overlay (top-right, `top: env(safe-area-inset-top, 0px)`, min 44×44 touch target, `touchAction: 'manipulation'`), following the same styling/positioning convention as `InteractButton` (defined near the top of this same file). Use a simple icon/glyph (e.g. `⛶`) — no new asset needed.
+- [x] T4: `apps/mobile-controller/src/screens/ControllerScreen.tsx` — iOS Safari "Add to Home Screen" hint (AC9, added 2026-07-17)
+  - [x] T4.1: Add module-level `IS_IOS_SAFARI_TAB = (navigator as Navigator & { standalone?: boolean }).standalone === false` — detects "iOS Safari, running as a regular tab" specifically (undefined on every other browser, `true` once already installed).
+  - [x] T4.2: Add `showIosHint` state (default `false`). In the same top-right slot used by the toggle, when `!document.fullscreenEnabled && IS_IOS_SAFARI_TAB`, render a small "ⓘ" tap target (44×44) that toggles `showIosHint`, and a small popover (shown when `showIosHint` is true) with the instruction text, dismissed by tapping it again.
 
 ### Review Findings
 
-_(populated by code-review after implementation)_
+- [x] [Review][Patch] `toggleFullscreen`'s `exitFullscreen()`/`requestFullscreen()` calls lack the optional-chaining guard (`?.`) used at the two other call sites in this same diff (App.tsx, ReconnectScreen.tsx) — inconsistent defensive style. Not currently reachable (the button only renders when `document.fullscreenEnabled` is true, which implies these methods exist), but the guard is free and matches the story's own established pattern. [apps/mobile-controller/src/screens/ControllerScreen.tsx:~1003-1007] — fixed, `?.` added to both calls.
+- [x] [Review][Defer] Toggle button is a bare `<div onPointerDown>` with no `aria-label`/`role="button"`/keyboard affordance — real accessibility gap, but it exactly mirrors the pre-existing `InteractButton` convention in the same file (which the Dev Notes explicitly instructed this story to follow), so it isn't a regression introduced here. A broader accessibility pass across all `div`-as-button controls in this file is out of this story's scope. [apps/mobile-controller/src/screens/ControllerScreen.tsx:~1206-1223] — deferred, pre-existing
+- [x] [Review][Defer] No explicit `exitFullscreen()` call when navigating away from `ControllerScreen` to other `App.tsx` screens (PostRun/victory) — whether fullscreen should persist across those transitions or reset is an unspecified product decision, not covered by any AC in this story. Current behavior (persist) is plausibly the desired one (avoids flicker, matches "maximize screen space" intent) but is worth a deliberate call in a future story if it proves wrong. [apps/mobile-controller/src/App.tsx] — deferred, pre-existing
 
 ## Dev Notes
 
@@ -294,12 +308,110 @@ touch it here regardless of implementation order between the two stories.
 
 ### Agent Model Used
 
+Claude Sonnet 5
+
 ### Debug Log References
+
+- `npx tsc --noEmit` — 0 errors, consistently, at every checkpoint including after the
+  iOS-hint addition. This is the reliable signal for this story.
+- `npm run lint` — **correction, 2026-07-17:** earlier entries in this log claimed this was
+  clean (0 errors). That was wrong — the `rtk` CLI proxy this environment routes shell
+  commands through was serving cached/stale output for repeated `npm run lint` invocations
+  (confirmed via `rtk gain --history`, which showed `-100%` cache hits on prior `lint`
+  calls). Bypassing the cache (`rtk proxy npx eslint . --max-warnings=0`, and separately a
+  fresh background `npm run lint` run) both show the true state: **308 errors across 37
+  files, repo-wide** — `apps/*`, `packages/*`, `tests/*`, and `_bmad/wds/scripts/*` are all
+  affected. Root cause: `eslint.config.mjs` never sets `languageOptions.globals` anywhere,
+  so `no-undef` (enabled by `js.configs.recommended`) fires on every standard global
+  reference (`document`, `window`, `navigator`, `console`, `setTimeout`/`setInterval`,
+  `process`, `require`, `React`, etc.) in every file that touches the DOM or Node APIs.
+  Confirmed pre-existing and unrelated to this story via `git stash` — the same class of
+  error was already present on baseline before any dev-3 changes (originally spot-checked
+  against 3 files only, 23 errors; the full-repo number is 308). This story's new code
+  (`navigator.standalone` on the new `IS_IOS_SAFARI_TAB` line, plus the pre-existing
+  `document`/`window` calls) adds more instances of the exact same pre-existing pattern,
+  not a new category of error. Fixing the config gap itself is out of this story's scope
+  (root-level shared tooling file, not under Mobile Controller Engineer's ownership per
+  CLAUDE.md, and the blast radius spans every app/package) — logged as its own deferred
+  item in deferred-work.md for a dedicated follow-up story.
 
 ### Completion Notes List
 
+- T1 (App.tsx): added `document.documentElement.requestFullscreen?.().catch(() => {})` as the
+  first statement of the `class-select-forced` screen's `onPickClass` handler, synchronous
+  within the "Pick Selected Class" button's gesture chain (AC1, AC3). The mid-session
+  re-pick `onPickClass` inside `ControllerScreen.tsx` was left untouched (AC7).
+- T2 (ReconnectScreen.tsx): added the same best-effort `requestFullscreen()` call as the
+  literal first line of `handleRejoin`, before `setStatus('connecting')` and before
+  `await onReconnect()`, preserving transient activation across the await (AC2, AC3).
+- T3 (ControllerScreen.tsx): added `isFullscreen` state (initialized from
+  `document.fullscreenElement !== null`), a mount-once `fullscreenchange` listener effect
+  that keeps it in sync (AC6), a `toggleFullscreen` callback using `exitFullscreen()` /
+  `requestFullscreen()` (AC5), and a top-right absolute-positioned 44×44 overlay button
+  (`⛶` glyph, `top: env(safe-area-inset-top, 0px)`) rendered only when
+  `document.fullscreenEnabled` is true (AC4). The glyph's color reflects `isFullscreen`
+  state (accent when active) so the toggle visibly tracks external fullscreen exits.
+  Positioned top-right, clear of the left joystick zone and layered above (but not
+  intruding into) the ability grid, matching the `InteractButton`/HP-strip overlay
+  convention already in the file.
+- No changes to `vite.config.ts` (AC8) — confirmed via `git status` at completion, only the
+  three Allowed-paths files were touched.
+- No automated tests added, per the story's `Required tests: None` — matches dev-1/dev-2
+  precedent (no component-test infra in this app; Fullscreen API needs a real user gesture
+  and is unreliable in headless/jsdom). AC1-AC8 are manual/visual acceptance criteria.
+- Confidence: 90% — implementation matches every AC and Dev Note literally (correct hook
+  placement relative to the gesture/await boundary, correct `onPickClass` disambiguation,
+  visibility gated on `fullscreenEnabled`). Not verified on a real device/browser in this
+  session (no display available in this dev environment) — Client-UX hook's manual checks
+  (AC2 reconnect-while-not-fullscreen, AC3 denied-in-iframe, joystick/grid non-overlap)
+  still need a human pass on a real phone or DevTools responsive mode per the story's
+  Required hooks section.
+
 ### File List
+
+- apps/mobile-controller/src/App.tsx (MODIFY)
+- apps/mobile-controller/src/screens/ReconnectScreen.tsx (MODIFY)
+- apps/mobile-controller/src/screens/ControllerScreen.tsx (MODIFY)
 
 ## Change Log
 
 - 2026-07-15: Story created (Cyby)
+- 2026-07-17: Implemented T1-T3 (auto-fullscreen on join/reconnect, toggle button with
+  fullscreenchange sync). Typecheck and repo-wide lint clean. Status → review.
+- 2026-07-17: User live-tested on desktop Chrome (dev/QA browser) — auto-`requestFullscreen()`
+  on join/reconnect rendered a blank page instead of expanding to fill the screen (phone
+  behavior was fine). User decided the automatic activation wasn't worth the risk and
+  descoped it. Reverted T1/T2 (removed the `requestFullscreen()` calls from `App.tsx`'s
+  `onPickClass` and `ReconnectScreen.tsx`'s `handleRejoin`); the manual toggle (T3, AC4-6)
+  is unaffected. AC1-3 and AC7 struck as removed. Re-typechecked clean. Root cause of the
+  Chrome blank-page symptom was not investigated further since the feature was withdrawn
+  rather than fixed — worth revisiting if auto-fullscreen is ever reconsidered.
+- 2026-07-17: Code review (Blind Hunter + Edge Case Hunter + Acceptance Auditor, parallel
+  layers) — 0 decision_needed, 1 patch, 2 defer, 19 dismissed as noise. Patch applied:
+  `toggleFullscreen`'s exit/request calls now use `?.` guards, matching the other two call
+  sites. Both defers logged in deferred-work.md (bare-div toggle a11y gap — mirrors the
+  pre-existing InteractButton convention; fullscreen persistence across screen transitions
+  — unspecified, current behavior plausibly correct). No AC violations found. Status → done.
+- 2026-07-17: User reported the toggle doesn't work on iPhone. Confirmed this is a genuine
+  iOS Safari platform restriction, not a bug — WebKit has never implemented the Fullscreen
+  API for arbitrary DOM elements (only `<video>` gets `webkitEnterFullscreen`), so
+  `document.fullscreenEnabled` is always `false` there and the toggle correctly hides
+  itself per AC4. The only real chrome-free path on iPhone is installing the PWA to the
+  Home Screen (the manifest's `display: 'fullscreen'` already covers that, untouched).
+  Presented 4 options to the user; chose "Add-to-Home-Screen hint". Added T4: a
+  `navigator.standalone === false` check (Apple-only, non-standard — reliably detects "iOS
+  Safari, plain tab") swaps the dead toggle for a tap-to-reveal "ⓘ" hint pointing at
+  Share → Add to Home Screen, in the same top-right slot. New AC9. Typecheck clean.
+- 2026-07-17: **Correction.** Every earlier "lint clean" claim in this log (review status,
+  the two entries above referencing "repo-wide lint clean") was wrong — the `rtk` CLI proxy
+  this environment routes shell commands through was silently serving cached/stale
+  `npm run lint` output instead of re-running it. The real, verified result: `npm run lint`
+  fails with 308 pre-existing errors across 37 files, repo-wide, root-caused by
+  `eslint.config.mjs` never configuring `languageOptions.globals` (so `no-undef` fires on
+  every `document`/`window`/`process`/etc. reference in the entire codebase) — confirmed
+  unrelated to and predating this story via `git stash`. This story's code adds no new
+  error category, only more instances of the same pre-existing pattern. `tsc --noEmit`
+  (unaffected by the caching issue) remains the reliable signal and stayed clean throughout.
+  Logged as D3 in deferred-work.md for a dedicated follow-up fix. Status remains `done` —
+  the fix required is a shared root-config change, out of this story's ownership/scope, not
+  a defect in this story's own diff.

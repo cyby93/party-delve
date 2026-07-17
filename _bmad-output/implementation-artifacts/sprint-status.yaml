@@ -42,7 +42,26 @@
 # Phase2 legacy stories (old Phase-based keys) are tracked below under PHASE 2 STORIES.
 
 generated: 2026-06-22
-last_updated: 2026-07-16
+last_updated: 2026-07-17
+# 2026-07-17: dev-3-controller-fullscreen-toggle (done) — auto-fullscreen on first join and
+# reconnect (T1/T2, later reverted after live-test — see below) and fullscreen toggle button
+# with fullscreenchange sync (T3) in ControllerScreen.tsx. Typecheck clean throughout ("lint
+# clean" claimed at the time was wrong — rtk was serving stale cached lint output; the real
+# repo-wide lint state has 308 pre-existing errors from a missing eslint globals config,
+# logged as D3 in deferred-work.md, unrelated to this story). Code review (3 parallel layers):
+# 0 decision_needed, 1 patch (applied — `?.` guards added to toggleFullscreen's exit/request
+# calls), 2 defer (bare-div toggle a11y gap mirrors pre-existing InteractButton convention;
+# fullscreen persistence across screen transitions is an unspecified, plausibly-correct
+# default), 19 dismissed as noise. No AC violations. No automated tests (Fullscreen API
+# needs a real user gesture, unreliable in jsdom — same precedent as dev-1/dev-2). User
+# live-tested: desktop Chrome auto-fullscreen rendered a blank page (phone was fine) — T1/T2
+# reverted, AC1-3/AC7 struck, manual toggle (T3) unaffected. iPhone toggle didn't work either
+# — confirmed as a real WebKit platform limitation (no Fullscreen API for DOM elements at
+# all), not a bug; added T4/AC9, a tap-to-reveal "Add to Home Screen" hint for iOS Safari
+# tabs (`navigator.standalone === false`) in place of the dead toggle. Manual
+# Client-UX hook checks (reconnect-while-not-fullscreen, denied-in-iframe, joystick/grid
+# non-overlap) still need a human pass on a real device — not verified in this session (no
+# display in the dev environment).
 # 2026-07-16: code review passed for dev-5-boss-transient-delta-whitelist-fix (done) — 0
 # decision_needed, 1 patch, 4 defer, 9 dismissed as noise. Patch applied: Task 2's test
 # checkbox reworded to state the actual 34/37-file result instead of an unqualified "full
@@ -307,7 +326,7 @@ development_status:
   # ─── Dev infra fixes (no epic) ──────────────────────────────────────────────
   dev-1-mobile-controller-network-binding: done
   dev-2-controller-rotation-lock-enforcement: done
-  dev-3-controller-fullscreen-toggle: ready-for-dev
+  dev-3-controller-fullscreen-toggle: done
   dev-4-debug-invincible-high-damage-mode: ready-for-dev
   # Closes D-6.8-A (deferred-work.md): host-session.ts's onTransientDelta
   # whitelist is missing boss:phaseChanged/boss:damaged/boss:stomped/

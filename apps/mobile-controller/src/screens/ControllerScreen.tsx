@@ -22,6 +22,15 @@ const JOYSTICK_MAX_RADIUS = 60;
 const DEADZONE_RADIUS = 8;
 const INPUT_INTERVAL_MS = 33; // ~30hz throttle to match sim tick rate
 
+// iOS Safari never implements the Fullscreen API for arbitrary elements (only <video> gets
+// webkitEnterFullscreen) — document.fullscreenEnabled is always false there, so the toggle
+// button hides itself correctly, but the player still has no fullscreen path in a plain tab.
+// navigator.standalone is a non-standard Apple-only flag: `false` means "iOS Safari, running
+// as a regular browser tab" (undefined on every other browser/OS, `true` once the PWA is
+// already installed to the Home Screen, where the manifest's display:'fullscreen' already
+// takes over). Detected once at module load since it can't change during a session.
+const IS_IOS_SAFARI_TAB = (navigator as Navigator & { standalone?: boolean }).standalone === false;
+
 interface InteractButtonProps {
   visible: boolean;
   onTap: () => void;
@@ -983,6 +992,8 @@ export function ControllerScreen({ session, gameState, cooldowns, bondNotificati
   const [joystickKnobOffset, setJoystickKnobOffset] = useState({ x: 0, y: 0 });
   const [classSelectionOpen, setClassSelectionOpen] = useState(false);
   const [dungeonEntranceOpen, setDungeonEntranceOpen] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(() => document.fullscreenElement !== null);
+  const [showIosHint, setShowIosHint] = useState(false);
   const inDungeon = gameState?.session.phase === 'dungeon';
   const [tapFlash, setTapFlash] = useState<boolean[]>([false, false, false, false]);
   const [displayTick, setDisplayTick] = useState(0);
@@ -991,6 +1002,20 @@ export function ControllerScreen({ session, gameState, cooldowns, bondNotificati
   useEffect(() => {
     sessionRef.current = session;
   }, [session]);
+
+  useEffect(() => {
+    const handler = () => setIsFullscreen(document.fullscreenElement !== null);
+    document.addEventListener('fullscreenchange', handler);
+    return () => document.removeEventListener('fullscreenchange', handler);
+  }, []);
+
+  const toggleFullscreen = useCallback(() => {
+    if (document.fullscreenElement) {
+      document.exitFullscreen?.().catch(() => {});
+    } else {
+      document.documentElement.requestFullscreen?.().catch(() => {});
+    }
+  }, []);
 
   useEffect(() => {
     if (activePoi !== 'dungeon-entrance') {
@@ -1190,6 +1215,78 @@ export function ControllerScreen({ session, gameState, cooldowns, bondNotificati
           if (activePoi === 'dungeon-entrance') setDungeonEntranceOpen(true);
         }}
       />
+      {document.fullscreenEnabled && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 'env(safe-area-inset-top, 0px)',
+            right: 0,
+            width: 44,
+            height: 44,
+            zIndex: 45,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            touchAction: 'manipulation',
+          }}
+          onPointerDown={e => { e.preventDefault(); toggleFullscreen(); }}
+        >
+          <span style={{ fontSize: 20, color: isFullscreen ? 'var(--accent-spirit)' : 'var(--text-secondary)' }}>⛶</span>
+        </div>
+      )}
+      {/* iOS Safari (regular tab, not installed) can never support the Fullscreen API — show a
+          tap-to-reveal hint pointing at the one path that actually works (Add to Home Screen)
+          instead of a dead toggle. */}
+      {!document.fullscreenEnabled && IS_IOS_SAFARI_TAB && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 'env(safe-area-inset-top, 0px)',
+            right: 0,
+            zIndex: 45,
+          }}
+        >
+          <div
+            style={{
+              width: 44,
+              height: 44,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              touchAction: 'manipulation',
+            }}
+            onPointerDown={e => { e.preventDefault(); setShowIosHint(v => !v); }}
+          >
+            <span style={{ fontSize: 18, color: 'var(--text-secondary)' }}>ⓘ</span>
+          </div>
+          {showIosHint && (
+            <div
+              style={{
+                position: 'absolute',
+                top: 44,
+                right: 0,
+                width: 200,
+                background: 'var(--bg-surface)',
+                border: '1px solid var(--border)',
+                borderRadius: 8,
+                padding: '10px 12px',
+                boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+                touchAction: 'manipulation',
+              }}
+              onPointerDown={e => { e.preventDefault(); setShowIosHint(false); }}
+            >
+              <span style={{
+                fontFamily: 'var(--font-body)',
+                fontSize: 'var(--text-xs)',
+                color: 'var(--text-primary)',
+                lineHeight: 1.4,
+              }}>
+                For fullscreen on iPhone: tap Share, then "Add to Home Screen".
+              </span>
+            </div>
+          )}
+        </div>
+      )}
       {/* Left zone — floating joystick (40% width) */}
       <div
         ref={joystickZoneRef}
