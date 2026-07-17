@@ -43,6 +43,49 @@
 
 generated: 2026-06-22
 last_updated: 2026-07-17
+# 2026-07-17: created 6-9-epic-6-post-66-deferred-hardening (ready-for-dev) — scopes
+# the two open combat-critical deferred findings since 6.6: D-dev4-B (user-flagged
+# HIGH PRIORITY — shared resolveOutgoingDamage() helper so BOND_DAMAGE_MULT/
+# DEBUG_GOD_MODE_DAMAGE_MULT apply uniformly across all 5 damage-delivery sites,
+# not just hit-scan/Spirit Nova) and D-dev5-A (Storm Eye's zone-tick damage and
+# bonus strike never reach the boss — adds a direct isInHitZone-against-
+# boss.position check, mirroring Spirit Nova's existing bossInRing pattern, since
+# the boss's physics fixture has filterMaskBits:0 and can never appear in
+# zoneOverlapping contact sets). Explicitly out of scope: projectile-vs-boss
+# collision (physics-contact-layer gap, deeper than a hardening story), the
+# eslint.config.mjs repo-wide lint gap (D3, different ownership area), and the
+# host-session.ts whitelist fragility (D-dev5-D, not yet at its stated revisit
+# trigger). Simulation Engineer single-owner story.
+# 2026-07-17: implemented 6-9-epic-6-post-66-deferred-hardening (review) — added
+# resolveOutgoingDamage(rawDamage, isBonded, isGodMode) to packages/game-rules/src/balance.ts;
+# routed all 5 GameRoom.ts damage-delivery sites (hit-scan, Spirit Nova, zone damage-tick, Storm
+# Eye bonus strike, projectile hit) through it, replacing each site's local inline mult/damage
+# ternary. Added boss branches to the zone damage-tick and Storm Eye bonus-strike loops (both use
+# the same isInHitZone-against-boss.position pattern Spirit Nova's bossInRing already used, since
+# the boss's filterMaskBits:0 fixture never appears in zoneOverlapping). Removed now-unused
+# BOND_DAMAGE_MULT/DEBUG_GOD_MODE_DAMAGE_MULT imports from GameRoom.ts. New unit test
+# (balance.test.ts, 5 cases) covers no-buff/bond-only/god-mode-only/stacked/round-only-when-mult!==1.
+# Typecheck clean across the full monorepo. Full test suite: 436 passed, 0 regressions; 3 e2e
+# files failed, all matching dev-4's documented pre-existing-environment-failure precedent
+# (ability-dispatch/hub-ability-use: simulation-server port-binding timeout; full-run: hit the
+# already-tracked D1 selectBondPair re-pair bug from 2026-07-03, confirmed via 4 repeated runs
+# against this story's changes vs 3 against unmodified baseline — same intermittent pattern on
+# both, unrelated to this story's changes). D-dev4-B and D-dev5-A marked RESOLVED in
+# deferred-work.md; new findings D-6.9-A (projectile-vs-boss still unreachable, physics-layer,
+# out of scope) and D-6.9-B (full-run.test.ts flakiness root-caused to pre-existing D1) logged.
+# 2026-07-17: code review of 6-9-epic-6-post-66-deferred-hardening (done) - 3 parallel layers
+# (Blind Hunter, Edge Case Hunter, Acceptance Auditor). 0 decision_needed, 3 patch, 2 defer,
+# 6 dismissed as noise (incl. the intended AC2 multiplier-coverage expansion to zone-tick/
+# projectile sites, correctly recognized as the story's stated purpose, not scope creep).
+# Patches applied: Storm Eye boss-strike zone:strike broadcast now sends the boss's real id
+# instead of the internal '__boss__' sentinel (was leaking into the ZoneStrikeDelta.targetId
+# wire field); AC7's rounding unit test changed from an integer to a fractional input (was
+# tautological, could not distinguish conditional-round from always-round); file-mode patch
+# skipped as a WSL2 DrvFs mount artifact (all files report 777, core.fileMode=false, not a
+# real diff). Deferred: D-6.9-C (boss can take 2 damage hits in 1 tick - pre-existing
+# dual-hit-per-tick pattern extended to boss, cosmetic double-broadcast at worst) and D-6.9-D
+# (isInHitZone boss-range check duplicated in 2 places - spec-prescribed, revisit at 3rd
+# occurrence). Full monorepo typecheck clean after patches.
 # 2026-07-17: implemented dev-4-debug-invincible-high-damage-mode (review) — debug:toggle-god-mode
 # message added to the existing NODE_ENV-gated debug block (GameRoom.ts), self-targeting only via
 # client.sessionId, room-local godModePlayerIds Set (no shared-types/net-protocol touch). Gates
@@ -406,6 +449,7 @@ development_status:
   6-6-epic-6-deferred-hardening: done
   6-7-boss-combat-resolution-wiring: done
   6-8-floating-damage-numbers-regular-enemies: done
+  6-9-epic-6-post-66-deferred-hardening: done
   epic-6-retrospective: optional
 
   # ─── E7: Progression & Persistent Meta ──────────────────────────────────────

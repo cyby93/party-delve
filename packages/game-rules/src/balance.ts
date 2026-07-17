@@ -304,3 +304,9 @@ export const BOSS_STOMP_DAMAGE                  = 40 as const;
 
 // ── Debug / Dev Tools ────────────────────────────────────────────────────────
 export const DEBUG_GOD_MODE_DAMAGE_MULT = 10;  // Debug-only: multiplies outgoing damage while god mode is toggled on
+
+// Folds every active outgoing-damage multiplier (Bond buff, debug god-mode) into one call.
+export function resolveOutgoingDamage(rawDamage: number, isBonded: boolean, isGodMode: boolean): number {
+  const mult = (isBonded ? BOND_DAMAGE_MULT : 1) * (isGodMode ? DEBUG_GOD_MODE_DAMAGE_MULT : 1);
+  return mult !== 1 ? Math.round(rawDamage * mult) : rawDamage;
+}

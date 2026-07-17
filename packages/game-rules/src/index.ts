@@ -59,7 +59,7 @@ export { dispatchAbility, calculateSelfCostHp, calculateHpScaledDamage } from '.
 export type { AbilityDispatchContext, AbilityFiredEvent, AbilityGameError } from './systems/abilities.js';
 export { assignBond, selectBondPair, selectBondType, bondKey, getProximityBuffedPlayers, getFateBuffedPlayers, getFateBondWipeTargets, getProximityDrainTargets } from './systems/bonds.js';
 export type { BondAssignedEvt, BondError, ProximityDrainTarget } from './systems/bonds.js';
-export { BOND_TYPE_COLORS, BOND_PROXIMITY_RANGE_PX, BOND_DRAIN_THRESHOLD_S, BOND_DRAIN_HP_PER_TICK, BOND_DAMAGE_MULT, BOND_SPEED_MULT, BOND_DESCRIPTIONS, BOND_MECHANICS, DEBUG_GOD_MODE_DAMAGE_MULT } from './balance.js';
+export { BOND_TYPE_COLORS, BOND_PROXIMITY_RANGE_PX, BOND_DRAIN_THRESHOLD_S, BOND_DRAIN_HP_PER_TICK, BOND_DAMAGE_MULT, BOND_SPEED_MULT, BOND_DESCRIPTIONS, BOND_MECHANICS, DEBUG_GOD_MODE_DAMAGE_MULT, resolveOutgoingDamage } from './balance.js';
 export { createBossState, tickBoss } from './entities/grassland-boss.js';
 export type { BossEvent, BossAddSpawnedEvent, BossStompedEvent } from './entities/grassland-boss.js';
 export { evaluateGrasslandAchievements } from './systems/achievements.js';
