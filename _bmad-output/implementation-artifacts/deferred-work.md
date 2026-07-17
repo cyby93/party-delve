@@ -30,6 +30,25 @@ The story's CLAUDE.md task header lists only `apps/host-client/src/session/host-
 
 ---
 
+## Deferred from: code review of dev-4-debug-invincible-high-damage-mode (2026-07-17)
+
+**D-dev4-A — No guard against a stray `debug:toggle-god-mode` message reaching a production server** [`apps/simulation-server/src/rooms/GameRoom.ts:334-372`]
+The handler is registered only inside `if (process.env['NODE_ENV'] !== 'production')`, so in production the message type is completely unregistered — per this project's documented Colyseus behavior, any client (a stale dev-mode mobile build, a manually replayed message) that still sends it would trigger a `WITH_ERROR` (4002) disconnect rather than a silent no-op. Shared by the pre-existing `debug:kill-all`/`debug:kill-boss` handlers registered in the exact same block; this story extends the same unguarded pattern to a third message type without introducing or worsening the risk. Revisit only if the project ever wants unregistered-in-prod debug messages to fail silently instead of disconnecting the client — likely fix is a generic top-level "unknown message" catch-all rather than a per-handler change.
+
+---
+
+**D-dev4-B — Damage multipliers are computed independently per ability-delivery type instead of through one shared resolver — `DEBUG_GOD_MODE_DAMAGE_MULT` (and the pre-existing `BOND_DAMAGE_MULT`) silently skip Storm Eye and both projectile abilities** [`apps/simulation-server/src/rooms/GameRoom.ts` — 5 separate damage-application sites: `~2119` (hitscan/mixed-faction), `~2319` (Spirit Nova, a hand-duplicated copy of the hitscan math), `~1648` (projectile hit — Blood Spike, Void Pulse), `~1511` (Storm Eye zone-tick damage), `~1577` (Storm Eye zone-strike bonus damage)]
+
+**⚠️ Flagged by the user as high-priority/foundational — surfaced via live manual testing of dev-4's god-mode toggle (Stormcaller's Storm Eye took no extra damage while toggled on), but the actual defect predates this story.**
+
+There is no single "resolve final damage for this caster+ability" function. Each of the 3 ability-delivery types (`hitscan`, `projectile`, `zone` — see `ABILITY_DELIVERY` in `balance.ts`) computes its damage value independently at its own call site in `GameRoom.ts`, and only 2 of the resulting 5 sites (hitscan/mixed-faction, and Spirit Nova's separately-duplicated copy of the same math) ever apply a multiplier. `BOND_DAMAGE_MULT` (Proximity Bond's +20% damage buff, existing since Story 5.3) already had this gap — no player has ever gotten the bond bonus on Blood Spike, Void Pulse, or Storm Eye. `DEBUG_GOD_MODE_DAMAGE_MULT` (this story) inherited the identical gap by design, since T5 deliberately mirrored `BOND_DAMAGE_MULT`'s existing footprint rather than fixing it (documented in this story's own Dev Notes as explicitly out of scope).
+
+**Why this is more than a debug-tool quirk:** every future multiplicative system (damage buffs, debuffs, elemental weaknesses, crit, gear bonuses, etc.) that gets bolted onto one of the 2 "covered" sites will silently and permanently exclude Storm Eye and both projectile abilities unless it's separately, manually added to all 5 sites — the same omission will keep reproducing itself indefinitely as the ability roster grows, exactly as it already has twice (Bond buff, then god-mode).
+
+**Recommended fix (not applied here, by user's explicit choice — deferred, not implemented):** introduce one shared damage-resolution function (e.g. `resolveOutgoingDamage(caster, rawDamage): number`) that folds in every active multiplier (`BOND_DAMAGE_MULT`, `DEBUG_GOD_MODE_DAMAGE_MULT`, and any future ones) in one place, and have all 5 delivery-site call sites call through it instead of each computing its own local `mult` ternary. This is a Simulation Engineer change touching combat-critical code (`apps/simulation-server/src/rooms/GameRoom.ts`, possibly a new pure helper in `packages/game-rules`) — warrants its own properly-scoped story with the full Simulation-safety hook (typecheck, unit tests, deterministic tick test, perf sanity), not a quick patch. Revisit **soon** — the user has explicitly asked this be picked up promptly, not left indefinitely like the "revisit if X happens" items above.
+
+---
+
 ## Deferred from: manual verification of dev-5-boss-transient-delta-whitelist-fix (2026-07-16)
 
 **D-dev5-A — Storm Eye's zone-tick damage never reaches the boss** [`apps/simulation-server/src/rooms/GameRoom.ts`, zone `damage`-effectType tick loop (~line 1492) and the Storm Eye bonus-strike loop (~line 1543)]

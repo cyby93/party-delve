@@ -4,7 +4,7 @@ baseline_commit: 1f9b932
 
 # Story dev-4: Debug Invincible/High-Damage Mode
 
-Status: ready-for-dev
+Status: done
 
 ## CLAUDE.md Required Task Header
 
@@ -256,28 +256,35 @@ so that I can test enemy and boss encounters without dying to a full-party-tuned
 
 ## Tasks / Subtasks
 
-- [ ] T1: `packages/game-rules/src/balance.ts` — add the debug damage multiplier constant (AC6)
-  - [ ] T1.1: Add a new `// ── Debug / Dev Tools ─────...` section (after the `BOSS_STOMP_DAMAGE` line, end of file) with `export const DEBUG_GOD_MODE_DAMAGE_MULT = 10;  // Debug-only: multiplies outgoing damage while god mode is toggled on`.
-- [ ] T2: `packages/game-rules/src/index.ts` — export the new constant (AC6)
-  - [ ] T2.1: Add `DEBUG_GOD_MODE_DAMAGE_MULT` to the existing `export { BOND_TYPE_COLORS, BOND_PROXIMITY_RANGE_PX, ... } from './balance.js';` line (~line 62), or a new adjacent `export { ... } from './balance.js';` line — either is fine, just make it importable from `'game-rules'`.
-- [ ] T3: `apps/simulation-server/src/rooms/GameRoom.ts` — room-local state + message handler (AC1-4, AC7, AC8)
-  - [ ] T3.1: Add `private godModePlayerIds = new Set<string>();` near the other room-local `Set<string>` fields (e.g. next to `bondsInRange`/`returnReadySet`, ~lines 137-145).
-  - [ ] T3.2: Inside the `if (process.env['NODE_ENV'] !== 'production') { ... }` block (lines 334-357), add a third `this.onMessage('debug:toggle-god-mode', (client: Client) => { ... })` handler: resolve `player = this.gameState.players.find(p => p.id === client.sessionId)`, return early if not found (AC3), otherwise toggle `client.sessionId` in `godModePlayerIds` and log via `logger.info({ roomId: this.roomId, clientId: client.sessionId, godMode: <new state> }, 'debug:toggle-god-mode')` (AC1, AC2, AC4, AC8).
-  - [ ] T3.3: In `onLeave`'s `CloseCode.CONSENTED` branch (~lines 448-455, alongside the other `.delete(client.sessionId)` cleanup calls), add `this.godModePlayerIds.delete(client.sessionId);` (AC7).
-  - [ ] T3.4: Import `DEBUG_GOD_MODE_DAMAGE_MULT` into GameRoom.ts's existing big `import { ... } from 'game-rules';` line (line 15).
-- [ ] T4: `apps/simulation-server/src/rooms/GameRoom.ts` — gate the five incoming-damage sites (AC5)
-  - [ ] T4.1: Dark Pact ally drain (~line 1241) — before computing `drainAmount`/calling `applyPlayerDamage`, skip if `this.godModePlayerIds.has(this.gameState.players[targetIdx]!.id)`.
-  - [ ] T4.2: Enemy melee attack target selection (~line 2382) — extend the existing guard `if (player.isDown || player.isSpirit || player.isFrozen) continue;` to also exclude `|| this.godModePlayerIds.has(player.id)`, so a god-mode player is never even selected as a melee target.
-  - [ ] T4.3: Fate Bond wipe cascade (~line 2444, right after `if (!partner) continue;`) — add `if (this.godModePlayerIds.has(partner.id)) continue;` before `applyPlayerDamage(partner, partner.hp, ...)` is called.
-  - [ ] T4.4: Boss stomp (~line 1726) — extend the existing guard `if (player.isDown || player.isSpirit || player.isFrozen) continue;` to also exclude `|| this.godModePlayerIds.has(player.id)`.
-  - [ ] T4.5: Bond proximity drain (~line 2495) — extend the existing guard `if (!player || player.isDown || player.isSpirit || player.isFrozen) continue;` to also exclude `|| this.godModePlayerIds.has(player.id)`.
-- [ ] T5: `apps/simulation-server/src/rooms/GameRoom.ts` — apply the outgoing damage multiplier (AC6)
-  - [ ] T5.1: Hit-scan/mixed-faction shared `damage` value (~lines 2102-2104) — after the existing `BOND_DAMAGE_MULT` ternary, additionally multiply by `DEBUG_GOD_MODE_DAMAGE_MULT` when `this.godModePlayerIds.has(clientId)` (combine both multipliers into one computed factor so they stack correctly, e.g. `const mult = (proximityBuffed.has(clientId) ? BOND_DAMAGE_MULT : 1) * (this.godModePlayerIds.has(clientId) ? DEBUG_GOD_MODE_DAMAGE_MULT : 1); const damage = mult !== 1 ? Math.round(rawDamage * mult) : rawDamage;`).
-  - [ ] T5.2: Spirit Nova sweep `novaDamage` (~lines 2265-2267) — same pattern, keyed on `nova.casterId` instead of `clientId`.
+- [x] T1: `packages/game-rules/src/balance.ts` — add the debug damage multiplier constant (AC6)
+  - [x] T1.1: Add a new `// ── Debug / Dev Tools ─────...` section (after the `BOSS_STOMP_DAMAGE` line, end of file) with `export const DEBUG_GOD_MODE_DAMAGE_MULT = 10;  // Debug-only: multiplies outgoing damage while god mode is toggled on`.
+- [x] T2: `packages/game-rules/src/index.ts` — export the new constant (AC6)
+  - [x] T2.1: Add `DEBUG_GOD_MODE_DAMAGE_MULT` to the existing `export { BOND_TYPE_COLORS, BOND_PROXIMITY_RANGE_PX, ... } from './balance.js';` line (~line 62), or a new adjacent `export { ... } from './balance.js';` line — either is fine, just make it importable from `'game-rules'`.
+- [x] T3: `apps/simulation-server/src/rooms/GameRoom.ts` — room-local state + message handler (AC1-4, AC7, AC8)
+  - [x] T3.1: Add `private godModePlayerIds = new Set<string>();` near the other room-local `Set<string>` fields (e.g. next to `bondsInRange`/`returnReadySet`, ~lines 137-145).
+  - [x] T3.2: Inside the `if (process.env['NODE_ENV'] !== 'production') { ... }` block (lines 334-357), add a third `this.onMessage('debug:toggle-god-mode', (client: Client) => { ... })` handler: resolve `player = this.gameState.players.find(p => p.id === client.sessionId)`, return early if not found (AC3), otherwise toggle `client.sessionId` in `godModePlayerIds` and log via `logger.info({ roomId: this.roomId, clientId: client.sessionId, godMode: <new state> }, 'debug:toggle-god-mode')` (AC1, AC2, AC4, AC8).
+  - [x] T3.3: In `onLeave`'s `CloseCode.CONSENTED` branch (~lines 448-455, alongside the other `.delete(client.sessionId)` cleanup calls), add `this.godModePlayerIds.delete(client.sessionId);` (AC7).
+  - [x] T3.4: Import `DEBUG_GOD_MODE_DAMAGE_MULT` into GameRoom.ts's existing big `import { ... } from 'game-rules';` line (line 15).
+- [x] T4: `apps/simulation-server/src/rooms/GameRoom.ts` — gate the five incoming-damage sites (AC5)
+  - [x] T4.1: Dark Pact ally drain (~line 1241) — before computing `drainAmount`/calling `applyPlayerDamage`, skip if `this.godModePlayerIds.has(this.gameState.players[targetIdx]!.id)`.
+  - [x] T4.2: Enemy melee attack target selection (~line 2382) — extend the existing guard `if (player.isDown || player.isSpirit || player.isFrozen) continue;` to also exclude `|| this.godModePlayerIds.has(player.id)`, so a god-mode player is never even selected as a melee target.
+  - [x] T4.3: Fate Bond wipe cascade (~line 2444, right after `if (!partner) continue;`) — add `if (this.godModePlayerIds.has(partner.id)) continue;` before `applyPlayerDamage(partner, partner.hp, ...)` is called.
+  - [x] T4.4: Boss stomp (~line 1726) — extend the existing guard `if (player.isDown || player.isSpirit || player.isFrozen) continue;` to also exclude `|| this.godModePlayerIds.has(player.id)`.
+  - [x] T4.5: Bond proximity drain (~line 2495) — extend the existing guard `if (!player || player.isDown || player.isSpirit || player.isFrozen) continue;` to also exclude `|| this.godModePlayerIds.has(player.id)`.
+- [x] T5: `apps/simulation-server/src/rooms/GameRoom.ts` — apply the outgoing damage multiplier (AC6)
+  - [x] T5.1: Hit-scan/mixed-faction shared `damage` value (~lines 2102-2104) — after the existing `BOND_DAMAGE_MULT` ternary, additionally multiply by `DEBUG_GOD_MODE_DAMAGE_MULT` when `this.godModePlayerIds.has(clientId)` (combine both multipliers into one computed factor so they stack correctly, e.g. `const mult = (proximityBuffed.has(clientId) ? BOND_DAMAGE_MULT : 1) * (this.godModePlayerIds.has(clientId) ? DEBUG_GOD_MODE_DAMAGE_MULT : 1); const damage = mult !== 1 ? Math.round(rawDamage * mult) : rawDamage;`).
+  - [x] T5.2: Spirit Nova sweep `novaDamage` (~lines 2265-2267) — same pattern, keyed on `nova.casterId` instead of `clientId`.
 
 ### Review Findings
 
-_(populated by code-review after implementation)_
+Reviewed by 3 parallel layers (Blind Hunter, Edge Case Hunter, Acceptance Auditor) against the
+uncommitted diff (`GameRoom.ts`, `balance.ts`, `index.ts`). Acceptance Auditor: 0 violations, all
+8 ACs verified against live source. 0 decision_needed, 1 patch, 1 defer, 13 dismissed as noise
+(false positives or already-scoped-out by this story's own Non-goals — see Change Log for the
+full breakdown).
+
+- [x] [Review][Patch] `onLeave`'s grace-period-expiry branch never deletes `godModePlayerIds` — every sibling field (`cooldownMap`, `spiritCooldownMap`, `lastKnownJoystick`, `classSelectLastAccepted`, `lastSoulMendInputAt`) is cleaned up in *both* the `CONSENTED` branch and the grace-period `catch` block, but `godModePlayerIds` only got the `CONSENTED` one — a stale entry survives for the room's lifetime whenever a disconnected player's grace period expires without reconnecting [apps/simulation-server/src/rooms/GameRoom.ts:~539-543] — **fixed**: added `this.godModePlayerIds.delete(client.sessionId);` to the catch block, mirroring the 5 sibling cleanup calls
+- [x] [Review][Defer] No guard against a stray `debug:toggle-god-mode` message reaching a production server — the message type is unregistered outside dev (`WITH_ERROR`/4002 disconnect on receipt), a risk already shared by the pre-existing `debug:kill-all`/`debug:kill-boss` handlers and not introduced or worsened by this story [apps/simulation-server/src/rooms/GameRoom.ts:334-372] — deferred, pre-existing
 
 ## Dev Notes
 
@@ -412,12 +419,111 @@ this story's scope (deploy/CI config is outside `apps/simulation-server`/
 
 ### Agent Model Used
 
+Claude Sonnet 5 (gds-dev-story workflow)
+
 ### Debug Log References
+
+- `npm run typecheck` — 0 errors, all 10 workspace tsconfigs.
+- `npm run test` (vitest run) — 33 files / 425 tests passed, 10 pre-existing skips, 0 regressions.
+  4 e2e files (`reconnect`, `full-run`, `ability-dispatch`, `hub-ability-use`) failed with
+  "simulation-server did not start within 60s". Root-caused via `tsx src/index.ts` /
+  `node dist/index.js` run directly: the Colyseus server never binds its port in this sandbox
+  (no log output, no listening socket, even after 20s — not a port conflict, not a Docker/Redis
+  dependency since `REDIS_HOST` is unset so `LocalPresence` is used). Confirmed unrelated to this
+  story's diff by `git stash` / `stash pop` — same 4 files fail identically against the pre-change
+  baseline. Matches the sandbox limitation already logged by every prior dev-infra story
+  (dev-3/dev-5: "no display/browser in the dev environment"). Two-strike QA: root-caused, one
+  extra manual re-run performed (not a second `npm test` retry, since the failure is
+  environmental/infrastructural, not flaky) — no third attempt made.
 
 ### Completion Notes List
 
+- Implemented exactly per the story's Task list (T1–T5) with no deviation — every touched line
+  number in the header's Context section matched the current source after accounting for line
+  drift from earlier stories.
+- T1/T2: `DEBUG_GOD_MODE_DAMAGE_MULT = 10` added to `balance.ts` under a new `// ── Debug / Dev
+  Tools ──` banner, barrel-exported from `index.ts` alongside the other `balance.js` re-exports.
+- T3: `godModePlayerIds` room-local `Set<string>` added next to `returnReadySet`; `debug:toggle-
+  god-mode` registered as a third handler inside the existing `NODE_ENV !== 'production'` block,
+  resolving the target exclusively via `client.sessionId` (AC2/AC3), toggling membership (AC4),
+  and logging `{ roomId, clientId, godMode }` on every fire (AC8). Cleanup added to `onLeave`'s
+  `CloseCode.CONSENTED` branch only (AC7's literal scope) — the grace-period-expiry branch
+  (a separate `catch` block further down performing the same slot-removal cleanup) was
+  deliberately left untouched since AC7/T3.3 scope this to the CONSENTED path specifically;
+  flagged as an open question below since a player who never reconnects after disconnecting
+  would otherwise leave a stale entry.
+- T4: all five incoming-damage sites gated — Dark Pact ally drain (early-return before
+  `applyPlayerDamage`), enemy melee target selection, Fate Bond wipe cascade, boss stomp, and
+  bond proximity drain (the last three via extending existing `isDown || isSpirit || isFrozen`
+  guards, matching the story's specified pattern exactly).
+- T5: outgoing damage multiplier applied at both `BOND_DAMAGE_MULT` sites (hit-scan/mixed-faction
+  `damage` and Spirit Nova's `novaDamage`), computed as one combined factor so god mode and the
+  Proximity Bond buff stack multiplicatively (AC6), matching the story's suggested pattern.
+- No new automated test added, per the story's own "Required tests: None new" — `debug:kill-all`/
+  `debug:kill-boss` have zero prior coverage and no GameRoom test file instantiates a live Room to
+  call `onMessage` handlers directly (confirmed, matches the story's stated reasoning).
+- **Manual verification not performed this session** — no live Colyseus client is available in
+  this sandbox (the server itself couldn't be brought up here either, see Debug Log). The story's
+  manual test procedure (connect a client, toggle twice, verify HP-fixed-under-damage and
+  multiplied enemy damage) still needs a human pass, same precedent as dev-3/dev-5.
+- Resolved by code review (see Review Findings): `godModePlayerIds` is now also cleaned up in
+  `onLeave`'s grace-period-expiry `catch` block, matching the 5 sibling fields that were already
+  cleaned up in both branches. The open question flagged above (AC7 only literally named
+  CONSENTED) was decided in favor of consistency with the existing codebase pattern rather than
+  the AC's narrower literal wording — a 1-line hygiene fix, not a new feature.
+- Confidence: 75% — code changes match the story's Context/Task section exactly (every line
+  number and pattern verified against current source before editing) and the full unit/contract
+  suite (425 tests) is green with zero regressions, but the story's own required manual
+  verification procedure could not be run in this sandbox (no live server, no Colyseus client),
+  so AC1–AC8 are verified by code inspection and existing-test-suite non-regression only, not by
+  an actual `debug:toggle-god-mode` round trip against a running room.
+
 ### File List
+
+- `packages/game-rules/src/balance.ts` (modified — new `DEBUG_GOD_MODE_DAMAGE_MULT` constant)
+- `packages/game-rules/src/index.ts` (modified — barrel-export the new constant)
+- `apps/simulation-server/src/rooms/GameRoom.ts` (modified — `godModePlayerIds` field,
+  `debug:toggle-god-mode` handler, `onLeave` cleanup, five incoming-damage guards, two outgoing-
+  damage multiplier sites)
+- `apps/mobile-controller/src/session/mobile-session.ts` (modified — added
+  `sendDebugToggleGodMode` to `MobileSession`; post-review addendum, see Change Log)
+- `apps/mobile-controller/src/screens/ControllerScreen.tsx` (modified — added a dev-build-only
+  (`import.meta.env.DEV`-gated) button that calls it; post-review addendum, see Change Log)
 
 ## Change Log
 
 - 2026-07-15: Story created (Cyby)
+- 2026-07-17: Implemented T1–T5 (dev agent). Full unit/contract suite green (425 passed, 0
+  regressions); typecheck clean. 4 pre-existing e2e test files fail in this sandbox due to an
+  environmental limitation (simulation-server cannot bind a port here) confirmed unrelated to
+  this diff. Manual live-verification deferred to the user (no live client/server available in
+  this session). Status → review.
+- 2026-07-17: Code review (3 parallel layers: Blind Hunter, Edge Case Hunter, Acceptance
+  Auditor) — 0 decision_needed, 1 patch, 1 defer, 13 dismissed as noise. Acceptance Auditor: 0
+  AC violations, all 8 ACs verified clean against live source. Patch applied: `onLeave`'s
+  grace-period-expiry branch now also deletes `godModePlayerIds` (was only cleaned up in the
+  `CONSENTED` branch, unlike every sibling field). 1 finding deferred (D-dev4-A,
+  deferred-work.md: no guard against a stray `debug:toggle-god-mode` message reaching a
+  production server — pre-existing risk shared by `debug:kill-all`/`debug:kill-boss`). Full
+  non-e2e suite re-verified green after the patch (425 passed, typecheck clean). Manual
+  live-verification (the story's own test procedure) still needs a human pass — no live
+  client/server available in this sandbox. Status → done.
+- 2026-07-17: Post-review addendum (user-requested, same session) — the mobile UI trigger this
+  story's own Non-goals explicitly deferred to "its own tightly-scoped follow-up story" was
+  never actually turned into a follow-up story, so the feature had shipped with no way to
+  invoke it from a running app at all. Added a minimal fix: `MobileSession.
+  sendDebugToggleGodMode()` (mobile-session.ts) and a small `import.meta.env.DEV`-gated button
+  in `ControllerScreen.tsx` (client-side mirror of the server's `NODE_ENV` gate — absent from
+  production builds). No visual confirmation of god-mode state is shown (matches the server's
+  own no-ack-broadcast design). Typecheck clean; not covered by the automated suite (same
+  no-test precedent as the rest of this story — UI-only debug tooling). Not run through a
+  separate code review pass; small enough and reviewed inline against the same constraints as
+  the rest of this story.
+- 2026-07-17: User live-tested the mobile god-mode button and found Storm Eye (Stormcaller)
+  damage isn't multiplied. Root-caused: damage is computed independently per ability-delivery
+  type across 5 separate `GameRoom.ts` sites, and only 2 (hitscan/mixed-faction, Spirit Nova)
+  ever apply a multiplier — `BOND_DAMAGE_MULT` already had this exact gap (Storm Eye + both
+  projectile abilities never got the Bond buff either), and `DEBUG_GOD_MODE_DAMAGE_MULT`
+  inherited it by design. Logged as **D-dev4-B** in `deferred-work.md`, flagged high-priority/
+  foundational per the user's explicit request (affects every future multiplicative system, not
+  just this debug tool) — not fixed in this session, deferred to a dedicated follow-up story.

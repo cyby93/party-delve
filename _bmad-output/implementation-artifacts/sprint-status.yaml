@@ -43,6 +43,29 @@
 
 generated: 2026-06-22
 last_updated: 2026-07-17
+# 2026-07-17: implemented dev-4-debug-invincible-high-damage-mode (review) — debug:toggle-god-mode
+# message added to the existing NODE_ENV-gated debug block (GameRoom.ts), self-targeting only via
+# client.sessionId, room-local godModePlayerIds Set (no shared-types/net-protocol touch). Gates
+# all 5 incoming-damage paths (Dark Pact drain, enemy melee, Fate Bond wipe, boss stomp, bond
+# drain) to zero and multiplies outgoing hit-scan/mixed-faction + Spirit Nova damage by new
+# DEBUG_GOD_MODE_DAMAGE_MULT=10 (balance.ts), stacking with BOND_DAMAGE_MULT. Typecheck clean,
+# full unit/contract suite green (425 passed, 0 regressions). 4 e2e test files fail in this
+# sandbox (simulation-server never binds a port here — confirmed pre-existing/environmental via
+# stash/pop, identical failure on baseline). No new automated test (matches debug:kill-all/
+# debug:kill-boss's zero-coverage precedent). Code review (3 parallel layers): 0 decision_needed,
+# 1 patch, 1 defer, 13 dismissed as noise. Patch applied: onLeave's grace-period-expiry catch
+# block now also cleans up godModePlayerIds (was only done in the CONSENTED branch, unlike every
+# sibling field). 1 finding deferred (D-dev4-A: no guard against a stray debug message reaching
+# a production server — pre-existing, shared with debug:kill-all/debug:kill-boss). Post-review
+# addendum (user-requested): added a dev-build-only mobile button (ControllerScreen.tsx,
+# mobile-session.ts) to actually trigger the toggle, since the story shipped with no client
+# trigger at all. User live-tested and found Storm Eye's damage isn't multiplied — root cause:
+# damage is computed independently per ability-delivery type across 5 GameRoom.ts sites, only 2
+# of which apply any multiplier (BOND_DAMAGE_MULT has the identical pre-existing gap). Logged as
+# D-dev4-B in deferred-work.md — user flagged this HIGH-PRIORITY/foundational (affects every
+# future multiplicative system: buffs, debuffs, gear, crit), recommend picking up soon as its
+# own properly-scoped Simulation Engineer story (shared damage-resolution function), not left
+# indefinitely like other deferred items.
 # 2026-07-17: dev-3-controller-fullscreen-toggle (done) — auto-fullscreen on first join and
 # reconnect (T1/T2, later reverted after live-test — see below) and fullscreen toggle button
 # with fullscreenchange sync (T3) in ControllerScreen.tsx. Typecheck clean throughout ("lint
@@ -327,7 +350,7 @@ development_status:
   dev-1-mobile-controller-network-binding: done
   dev-2-controller-rotation-lock-enforcement: done
   dev-3-controller-fullscreen-toggle: done
-  dev-4-debug-invincible-high-damage-mode: ready-for-dev
+  dev-4-debug-invincible-high-damage-mode: done
   # Closes D-6.8-A (deferred-work.md): host-session.ts's onTransientDelta
   # whitelist is missing boss:phaseChanged/boss:damaged/boss:stomped/
   # boss:defeated, making the already-built 6.3/6.4/6.5 boss visual-reaction

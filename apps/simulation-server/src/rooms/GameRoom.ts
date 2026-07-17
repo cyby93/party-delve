@@ -12,7 +12,7 @@ import {
   CAT_BOSS, createZoneBody, createProjectileBody,
 } from '../physics/world.js';
 import type { PoiBeginContactEvent, PoiEndContactEvent, EssenceBeginContactEvent, PhysicsBodyData } from '../physics/world.js';
-import { createRng, tickEnemy, dispatchAbility, getEnemyCount, applyDamage, isInHitZone, ABILITY_HIT_RANGE_PX, ABILITY_HIT_RADIUS_PX, ABILITY_DAMAGE, applyPlayerDamage, getReviveWindowMs, ENEMY_MELEE_DAMAGE, ENEMY_MELEE_RANGE_PX, ENEMY_ATTACK_COOLDOWN_MS, REVIVE_RADIUS_PX, REVIVE_HP, SPIRIT_ABILITY_COOLDOWN_MS, generateFloorLayout, GRASSLAND_ROOM_POOL, WAVE_COUNTS, WAVE_PAUSE_MS, WAVE_ENEMY_SCALE, bondKey, getProximityBuffedPlayers, getFateBuffedPlayers, getFateBondWipeTargets, getProximityDrainTargets, BOND_PROXIMITY_RANGE_PX, BOND_DRAIN_THRESHOLD_S, BOND_DRAIN_HP_PER_TICK, BOND_DAMAGE_MULT, BOND_SPEED_MULT, assignBond, BOND_DESCRIPTIONS, BOND_MECHANICS, createBossState, tickBoss, BOSS_ADD_HP, BOSS_STOMP_DAMAGE, evaluateGrasslandAchievements, JOYSTICK_DEADBAND, createEasyLayers, createNormalLayers, createHardLayers, tickStatusEffects, getStatusEffectMagnitude, applyStatusEffect, resolveProjectileHit, isProjectileExpired, shouldZoneTick, isZoneExpired, PROJECTILE_MAX_RANGE_PX, PROJECTILE_SPEED_PX_S, ABILITY_CHAINED_ZONE, ABILITY_STATUS_EFFECT, ABILITY_DISPLACEMENT_STRENGTH, applyDisplacement, resolveMixedFactionTargets, healPlayer, calculateLifesteal, resolveExpandingRadius, ABILITY_HEAL_AMOUNT, SPIRIT_NOVA_DURATION_MS, SPIRIT_NOVA_MAX_RADIUS_PX, findSoulMendTarget, shouldCancelSoulMendChannel, reviveBySoulMend, SOUL_MEND_CHANNEL_DURATION_MS, SOUL_MEND_LIVENESS_MS, ABILITY_COOLDOWNS_MS, ABILITY_DELIVERY, ABILITY_LIFESTEAL_PCT, VOID_PULSE_PULL_STRENGTH_PX, DARK_PACT_DRAIN_PCT, STORM_EYE_ZONE_RADIUS_PX, STORM_EYE_TICK_MS, STORM_EYE_TICK_DAMAGE, STORM_EYE_DURATION_MS, STORM_EYE_STRIKE_INTERVAL_MS, STORM_EYE_STRIKE_DAMAGE, pickRandomIndex } from 'game-rules';
+import { createRng, tickEnemy, dispatchAbility, getEnemyCount, applyDamage, isInHitZone, ABILITY_HIT_RANGE_PX, ABILITY_HIT_RADIUS_PX, ABILITY_DAMAGE, applyPlayerDamage, getReviveWindowMs, ENEMY_MELEE_DAMAGE, ENEMY_MELEE_RANGE_PX, ENEMY_ATTACK_COOLDOWN_MS, REVIVE_RADIUS_PX, REVIVE_HP, SPIRIT_ABILITY_COOLDOWN_MS, generateFloorLayout, GRASSLAND_ROOM_POOL, WAVE_COUNTS, WAVE_PAUSE_MS, WAVE_ENEMY_SCALE, bondKey, getProximityBuffedPlayers, getFateBuffedPlayers, getFateBondWipeTargets, getProximityDrainTargets, BOND_PROXIMITY_RANGE_PX, BOND_DRAIN_THRESHOLD_S, BOND_DRAIN_HP_PER_TICK, BOND_DAMAGE_MULT, BOND_SPEED_MULT, assignBond, BOND_DESCRIPTIONS, BOND_MECHANICS, createBossState, tickBoss, BOSS_ADD_HP, BOSS_STOMP_DAMAGE, evaluateGrasslandAchievements, JOYSTICK_DEADBAND, createEasyLayers, createNormalLayers, createHardLayers, tickStatusEffects, getStatusEffectMagnitude, applyStatusEffect, resolveProjectileHit, isProjectileExpired, shouldZoneTick, isZoneExpired, PROJECTILE_MAX_RANGE_PX, PROJECTILE_SPEED_PX_S, ABILITY_CHAINED_ZONE, ABILITY_STATUS_EFFECT, ABILITY_DISPLACEMENT_STRENGTH, applyDisplacement, resolveMixedFactionTargets, healPlayer, calculateLifesteal, resolveExpandingRadius, ABILITY_HEAL_AMOUNT, SPIRIT_NOVA_DURATION_MS, SPIRIT_NOVA_MAX_RADIUS_PX, findSoulMendTarget, shouldCancelSoulMendChannel, reviveBySoulMend, SOUL_MEND_CHANNEL_DURATION_MS, SOUL_MEND_LIVENESS_MS, ABILITY_COOLDOWNS_MS, ABILITY_DELIVERY, ABILITY_LIFESTEAL_PCT, VOID_PULSE_PULL_STRENGTH_PX, DARK_PACT_DRAIN_PCT, STORM_EYE_ZONE_RADIUS_PX, STORM_EYE_TICK_MS, STORM_EYE_TICK_DAMAGE, STORM_EYE_DURATION_MS, STORM_EYE_STRIKE_INTERVAL_MS, STORM_EYE_STRIKE_DAMAGE, pickRandomIndex, DEBUG_GOD_MODE_DAMAGE_MULT } from 'game-rules';
 import type { BehaviorLayer, EnemyContext, EnemyAIEvent, BossEvent, BossStompedEvent, ChainedZoneConfig } from 'game-rules';
 import { BOSS_ARENA_SPAWN_POINTS, loadBossArena } from '../levels/boss-arena.js';
 import { CLASS_DEFINITIONS } from 'shared-types';
@@ -143,6 +143,7 @@ export class GameRoom extends Room {
   private totalWaves = 0;
   private wavePauseUntil = 0;
   private returnReadySet = new Set<string>();
+  private godModePlayerIds = new Set<string>(); // debug-only, NODE_ENV-gated — see debug:toggle-god-mode
   private bondRng!: () => number;
   private bondMomentNextLevel = -1; // -1 = not in bond-moment; ≥0 = next level to load on CONTINUE
   private bossBody: Body | null = null;
@@ -354,6 +355,20 @@ export class GameRoom extends Room {
         if (!this.gameState.boss || this.gameState.boss.isDefeated) return;
         this.gameState.boss.hp = 0;
       });
+
+      this.onMessage('debug:toggle-god-mode', (client: Client) => {
+        const player = this.gameState.players.find(p => p.id === client.sessionId);
+        if (!player) return;
+        let godMode: boolean;
+        if (this.godModePlayerIds.has(client.sessionId)) {
+          this.godModePlayerIds.delete(client.sessionId);
+          godMode = false;
+        } else {
+          this.godModePlayerIds.add(client.sessionId);
+          godMode = true;
+        }
+        logger.info({ roomId: this.roomId, clientId: client.sessionId, godMode }, 'debug:toggle-god-mode');
+      });
     }
 
     // Initialize physics world
@@ -453,6 +468,7 @@ export class GameRoom extends Room {
       this.lastKnownJoystick.delete(client.sessionId);
       this.classSelectLastAccepted.delete(client.sessionId);
       this.lastSoulMendInputAt.delete(client.sessionId);
+      this.godModePlayerIds.delete(client.sessionId);
       const leaveBody = this.playerBodies.get(client.sessionId);
       if (leaveBody) {
         this.physicsWorld.destroyBody(leaveBody);
@@ -526,6 +542,7 @@ export class GameRoom extends Room {
       this.lastKnownJoystick.delete(client.sessionId);
       this.classSelectLastAccepted.delete(client.sessionId);
       this.lastSoulMendInputAt.delete(client.sessionId);
+      this.godModePlayerIds.delete(client.sessionId);
       const expireBody = this.playerBodies.get(client.sessionId);
       if (expireBody) {
         this.physicsWorld.destroyBody(expireBody);
@@ -1239,6 +1256,7 @@ export class GameRoom extends Room {
 
     const targetIdx = this.gameState.players.findIndex(p => p.id === nearest.id);
     if (targetIdx === -1) return;
+    if (this.godModePlayerIds.has(this.gameState.players[targetIdx]!.id)) return;
     const drainAmount = this.gameState.players[targetIdx]!.hp * DARK_PACT_DRAIN_PCT;
     const dmgResult = applyPlayerDamage(this.gameState.players[targetIdx]!, drainAmount, nowMs);
     if (!dmgResult.ok) return; // target became invalid this tick (e.g. concurrently downed) — no drain, no buff
@@ -1725,7 +1743,7 @@ export class GameRoom extends Room {
     if (this.pendingBossStompEvents.length > 0) {
       for (const stompEvt of this.pendingBossStompEvents) {
         for (const player of this.gameState.players) {
-          if (player.isDown || player.isSpirit || player.isFrozen) continue;
+          if (player.isDown || player.isSpirit || player.isFrozen || this.godModePlayerIds.has(player.id)) continue;
           const dx = player.x - stompEvt.x;
           const dy = player.y - stompEvt.y;
           if (Math.sqrt(dx * dx + dy * dy) > stompEvt.radius) continue;
@@ -2099,9 +2117,9 @@ export class GameRoom extends Room {
         const casterY = player.y;
         const rawDamage = result.value.damage;
         if (rawDamage <= 0 && healAmount <= 0) continue;  // ponytail: skip hit-scan for buff-only abilities (damage=0, heal=0)
-        const damage = proximityBuffed.has(clientId)
-          ? Math.round(rawDamage * BOND_DAMAGE_MULT)
-          : rawDamage;
+        const damageMult = (proximityBuffed.has(clientId) ? BOND_DAMAGE_MULT : 1)
+          * (this.godModePlayerIds.has(clientId) ? DEBUG_GOD_MODE_DAMAGE_MULT : 1);
+        const damage = damageMult !== 1 ? Math.round(rawDamage * damageMult) : rawDamage;
 
         // AC6: normalize direction so sub-unit joystick magnitude doesn't shrink hit range
         const mag = Math.hypot(dirX, dirY);
@@ -2299,9 +2317,9 @@ export class GameRoom extends Room {
           // Same Bond proximity-damage-buff treatment as every other damaging ability
           // (see Ancestor's Voice a few lines above) — heal is intentionally unbuffed,
           // matching Ancestor's Voice's heal side (BOND_DAMAGE_MULT is a damage-only buff).
-          const novaDamage = proximityBuffed.has(nova.casterId)
-            ? Math.round(rawNovaDamage * BOND_DAMAGE_MULT)
-            : rawNovaDamage;
+          const novaDamageMult = (proximityBuffed.has(nova.casterId) ? BOND_DAMAGE_MULT : 1)
+            * (this.godModePlayerIds.has(nova.casterId) ? DEBUG_GOD_MODE_DAMAGE_MULT : 1);
+          const novaDamage = novaDamageMult !== 1 ? Math.round(rawNovaDamage * novaDamageMult) : rawNovaDamage;
           const novaHeal = ABILITY_HEAL_AMOUNT[PlayerClass.SPIRITCALLER][1];
 
           for (const target of enemies) {
@@ -2427,7 +2445,7 @@ export class GameRoom extends Room {
         let targetPlayer: (typeof this.gameState.players)[0] | null = null;
         let minDist = Infinity;
         for (const player of this.gameState.players) {
-          if (player.isDown || player.isSpirit || player.isFrozen) continue;
+          if (player.isDown || player.isSpirit || player.isFrozen || this.godModePlayerIds.has(player.id)) continue;
           const dx = player.x - enemy.x;
           const dy = player.y - enemy.y;
           const dist = Math.sqrt(dx * dx + dy * dy);
@@ -2490,6 +2508,7 @@ export class GameRoom extends Room {
                 const partnerIdx = this.gameState.players.findIndex(p => p.id === partnerId);
                 const partner = this.gameState.players[partnerIdx];
                 if (!partner) continue;
+                if (this.godModePlayerIds.has(partner.id)) continue;
                 const wipeResult = applyPlayerDamage(partner, partner.hp, nowMelee);
                 if (!wipeResult.ok) continue; // already down/spirit/frozen
                 this.gameState.players[partnerIdx] = wipeResult.value.player;
@@ -2540,7 +2559,7 @@ export class GameRoom extends Room {
         for (const playerId of [playerA, playerB]) {
           const pi = this.gameState.players.findIndex(p => p.id === playerId);
           const player = this.gameState.players[pi];
-          if (!player || player.isDown || player.isSpirit || player.isFrozen) continue;
+          if (!player || player.isDown || player.isSpirit || player.isFrozen || this.godModePlayerIds.has(player.id)) continue;
           const newHp = Math.max(1, player.hp - BOND_DRAIN_HP_PER_TICK); // ponytail: drain never kills
           if (newHp !== player.hp) {
             player.hp = newHp;

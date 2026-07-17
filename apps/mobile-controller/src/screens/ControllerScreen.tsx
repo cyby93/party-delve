@@ -994,6 +994,9 @@ export function ControllerScreen({ session, gameState, cooldowns, bondNotificati
   const [dungeonEntranceOpen, setDungeonEntranceOpen] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(() => document.fullscreenElement !== null);
   const [showIosHint, setShowIosHint] = useState(false);
+  // Debug-only, dev-build-gated (see button render below) — local echo of what we last sent,
+  // not a server-confirmed state (debug:toggle-god-mode has no ack/broadcast, by design).
+  const [godModeSent, setGodModeSent] = useState(false);
   const inDungeon = gameState?.session.phase === 'dungeon';
   const [tapFlash, setTapFlash] = useState<boolean[]>([false, false, false, false]);
   const [displayTick, setDisplayTick] = useState(0);
@@ -1215,6 +1218,32 @@ export function ControllerScreen({ session, gameState, cooldowns, bondNotificati
           if (activePoi === 'dungeon-entrance') setDungeonEntranceOpen(true);
         }}
       />
+      {/* Debug-only: mirrors the server's NODE_ENV-gated debug:toggle-god-mode handler.
+          import.meta.env.DEV is Vite's build-time flag (false in production builds), so this
+          never ships — the client-side equivalent of the server's own env gate. */}
+      {import.meta.env.DEV && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 'env(safe-area-inset-top, 0px)',
+            right: 44,
+            width: 44,
+            height: 44,
+            zIndex: 45,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            touchAction: 'manipulation',
+          }}
+          onPointerDown={e => {
+            e.preventDefault();
+            session?.sendDebugToggleGodMode();
+            setGodModeSent(v => !v);
+          }}
+        >
+          <span style={{ fontSize: 18, color: godModeSent ? 'var(--accent-warm)' : 'var(--text-secondary)' }}>⚡</span>
+        </div>
+      )}
       {document.fullscreenEnabled && (
         <div
           style={{
