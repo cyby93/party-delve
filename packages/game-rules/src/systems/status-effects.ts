@@ -16,8 +16,9 @@ export function applyStatusEffect(
   // damageReduction/slow/damageBuff are 0-1 fractions (see StatusEffect's own type comment) —
   // out-of-range values invert their multiplier math at the read sites (combat.ts, player-health.ts,
   // fsm.ts, GameRoom.ts all compute `* (1 - magnitude)`), turning damage into healing or movement
-  // into reverse. shield's magnitude is flat HP, not a fraction, so it's exempt from this check.
-  if (effect.type !== 'shield' && (effect.magnitude < 0 || effect.magnitude > 1)) {
+  // into reverse. shield's magnitude is flat HP, not a fraction, so it's exempt from the
+  // upper bound — but never negative, like every other effect type.
+  if (effect.magnitude < 0 || (effect.type !== 'shield' && effect.magnitude > 1)) {
     return { ok: false, error: { code: 'INVALID_MAGNITUDE', detail: String(effect.magnitude) } };
   }
 

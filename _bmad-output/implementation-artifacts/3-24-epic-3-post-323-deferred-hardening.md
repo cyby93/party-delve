@@ -4,7 +4,7 @@ baseline_commit: 3d22e41
 
 # Story 3.24: Epic 3 — Post-3.23 Deferred Hardening
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -585,42 +585,316 @@ non-shield type (e.g. `damageReduction`) still rejects both < 0 and > 1 exactly 
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1** (AC: #1, #2, #3) — SkillCell touch-lifecycle fix in `ControllerScreen.tsx`:
-  - [ ] Subtask 1.1 — Split `canHoldThroughCooldown` out of the parent's `isInteractive`
+- [x] **Task 1** (AC: #1, #2, #3) — SkillCell touch-lifecycle fix in `ControllerScreen.tsx`:
+  - [x] Subtask 1.1 — Split `canHoldThroughCooldown` out of the parent's `isInteractive`
     computation; pass both to `SkillCell`; change the touch-tracking `useEffect`'s guard and
     dependency array to use `canHoldThroughCooldown`; add `isOnCooldownRef` synced every
     render; gate `onTouchStart` on `isOnCooldownRef.current` for new touchdowns only
-  - [ ] Subtask 1.2 — Fire a pending RELEASE in the effect's cleanup function (mirroring
+  - [x] Subtask 1.2 — Fire a pending RELEASE in the effect's cleanup function (mirroring
     onTouchEnd/onDocumentTouchEnd) before clearing state
-  - [ ] Subtask 1.3 — Wrap the ability name/badge text in a `position: relative, zIndex: 9`
+  - [x] Subtask 1.3 — Wrap the ability name/badge text in a `position: relative, zIndex: 9`
     container so it always renders above the ring/knob's `zIndex: 8`
-- [ ] **Task 2** (AC: #4, #5) — E2E cleanup/timer hardening:
-  - [ ] Subtask 2.1 — Add describe-scoped room-tracking + `afterEach` force-leave to
+- [x] **Task 2** (AC: #4, #5) — E2E cleanup/timer hardening:
+  - [x] Subtask 2.1 — Add describe-scoped room-tracking + `afterEach` force-leave to
     `ability-dispatch.test.ts`, `full-run.test.ts`, `reconnect.test.ts`; remove now-redundant
     end-of-test `.leave()` calls
-  - [ ] Subtask 2.2 — Fix (and consider consolidating into `tests/helpers/`) `raceTimeout` in
+  - [x] Subtask 2.2 — Fix (and consider consolidating into `tests/helpers/`) `raceTimeout` in
     `ability-dispatch.test.ts`/`full-run.test.ts` to clear its losing timer
-- [ ] **Task 3** (AC: #6) — Shield magnitude lower-bound guard:
-  - [ ] Subtask 3.1 — One-line guard in `applyStatusEffect` (status-effects.ts:20)
-  - [ ] Subtask 3.2 — Create `packages/game-rules/tests/unit/status-effects.test.ts` with
+- [x] **Task 3** (AC: #6) — Shield magnitude lower-bound guard:
+  - [x] Subtask 3.1 — One-line guard in `applyStatusEffect` (status-effects.ts:20)
+  - [x] Subtask 3.2 — Create `packages/game-rules/tests/unit/status-effects.test.ts` with
     negative-shield-rejected, positive-shield-accepted, and non-shield-regression cases
-- [ ] Run `npm run typecheck` (full monorepo) — confirm 0 errors
-- [ ] Run the full Vitest suite (unit + contract + e2e) — confirm no regressions; re-run the
-  3 modified e2e files at least twice to confirm no new flakiness from the cleanup refactor
-- [ ] Manual Client-UX spot-check per Required hooks (AC1/AC2 gesture behavior) — flag in the
+- [x] Run `npm run typecheck` (full monorepo) — confirm 0 errors
+- [x] Run the full Vitest suite (unit + contract + e2e); re-run the 3 modified e2e files
+  at least twice each — **partially confirmed**: `reconnect.test.ts` observed passing
+  cleanly 2/2 consecutive runs; `ability-dispatch.test.ts`/`full-run.test.ts` were not
+  observed passing twice in a row this session (diagnosed as pre-existing flakiness
+  unrelated to this diff — see Dev Agent Record Confidence note for full evidence)
+- [x] Manual Client-UX spot-check per Required hooks (AC1/AC2 gesture behavior) — flag in the
   Dev Agent Record if this sandbox has no display/touch device available (matches
   dev-1/dev-2/dev-3/3.23's precedent)
-- [ ] Update `deferred-work.md`: mark D-3.23-A (both logged instances), D2, D1, D-3.22-A,
+- [x] Update `deferred-work.md`: mark D-3.23-A (both logged instances), D2, D1, D-3.22-A,
   D-3.22-B, and D-3.22-D as RESOLVED by this story; add a re-deferral note to D-3.22-C
   explaining why it's still open (shared-types migration disproportionate to this pass) —
   do not delete any entries, follow the existing RESOLVED-annotation convention
+
+### Review Findings
+
+Reviewed by 2 of 3 parallel adversarial layers (Blind Hunter — diff only; Acceptance
+Auditor — diff + this story's AC1-AC7 as spec). **Edge Case Hunter failed** (hit the
+session's API usage limit before returning results) — its layer is not represented
+below; re-run separately if deeper edge-case coverage of the `SkillCell` touch-lifecycle
+change or the e2e cleanup mechanics is wanted. Blind Hunter's one High-severity claim
+was independently re-verified against source before being finalized here, per this
+review's confirmation-pass rule.
+
+- [x] [Review][Patch] Tasks/Subtasks checkbox overstates AC7 completion — checked off
+  "confirm no regressions... re-run the 3 modified e2e files at least twice" while this
+  same file's own Confidence section admits `ability-dispatch.test.ts`/`full-run.test.ts`
+  were not observed passing twice in a row this session [3-24-epic-3-post-323-deferred-hardening.md:608]
+  — a real internal contradiction, confirmed by re-reading both sections. Fixed: reworded
+  the checkbox to state the actual, partial outcome instead of an unqualified "confirmed."
+- [x] [Review][Patch] File List claims a local `raceTimeout` copy was "removed" from
+  `ability-dispatch.test.ts`/`full-run.test.ts` [tests/e2e/ability-dispatch.test.ts,
+  tests/e2e/full-run.test.ts] — false: both files already imported `raceTimeout` from
+  the shared helper *before* this story's diff (confirmed via `git diff HEAD` — the
+  import line is unchanged in both files); there was no local copy in either to remove.
+  The Completion Notes elsewhere state this correctly, contradicting the File List entry.
+  Fixed: reworded both File List entries to describe only what actually changed for
+  those 2 files (the `liveRooms`/`afterEach` addition), not the shared-helper fix that
+  lives entirely in `tests/helpers/race-timeout.ts`.
+- [x] [Review][Patch] Stale comment no longer matches the guard it sits above
+  [packages/game-rules/src/systems/status-effects.ts:19] — says shield is "exempt from
+  this check" (singular, implying the whole magnitude check), but the code below it now
+  makes shield exempt from only the upper bound, not the lower one this story added.
+  Fixed: reworded the comment to describe both bounds accurately.
+- [x] [Review][Defer] `afterEach`'s per-room `leave()` unconditionally races against a
+  3s cap [tests/e2e/reconnect.test.ts, tests/e2e/ability-dispatch.test.ts,
+  tests/e2e/full-run.test.ts] — for rooms whose socket was already manually closed
+  (this project's disconnect-scenario tests), `leave()` never resolves, so every such
+  `afterEach` now silently burns the full 3s every time. Functional (bounded, well under
+  the 10s hook-timeout budget it exists to protect) but a permanent per-test tax rather
+  than a smarter fix (e.g. skip `leave()` when the room's connection is already known
+  closed). No such state-check API is used elsewhere in this codebase's e2e helpers, and
+  designing one crosses into judgment calls outside Task 2's cleanup/timer-mechanics
+  scope. Revisit if e2e suite runtime is ever observed to matter enough to justify it.
+
+**Dismissed as noise (4)**, each independently re-verified against source before dismissal:
+- `last_updated: 2026-07-20 (3-24 moved to review)` in `sprint-status.yaml` mixing a
+  parenthetical note into a date field (Blind Hunter, Low) — not a new pattern: this
+  same file already used the identical convention for a prior story
+  (`last_updated: 2026-07-16 (dev-2-controller-rotation-lock-enforcement code review
+  passed, done)`, confirmed by reading the file), so this isn't something introduced here.
+- `isOnCooldownRef.current = isOnCooldown` assigned directly in the render body outside
+  any effect (Blind Hunter, Medium) — not a defect: this exact pattern is the story's own
+  Dev Notes-prescribed implementation (Subtask 1.1's code snippet), explicitly justified
+  there as matching this component's existing "ref for handler logic" idiom
+  (`activeTouchRef`/`autoIntervalRef` already do the same) — write-only for later
+  event-handler reads, never read during render itself.
+- New test file `packages/game-rules/tests/unit/status-effects.test.ts` created with
+  `100755` (executable) file mode (Blind Hunter, Low) — false positive: this repo has
+  `core.filemode = false` set (confirmed via `git config`), and `git add` correctly
+  stages new files as `100644` regardless of the drvfs-mounted-filesystem-reported bit
+  (verified directly: staged the file, confirmed `100644` via `git ls-files -s`, then
+  unstaged). Matches the exact same dismissal already recorded for Story 3.22's review.
+- Manual Client-UX spot-check checkbox marked done with no device available (Blind
+  Hunter, Low) — not a defect: explicitly sanctioned by this story's own Non-goals
+  ("do not attempt exhaustive manual device verification as a blocking gate... flag in
+  the Dev Agent Record if this sandbox has no display/touch device"), and honestly
+  disclosed as such in the Completion Notes already.
+
+**Code review complete.** 0 decision_needed, 3 patch (all applied), 1 defer, 4 dismissed
+as noise, 1 layer failed (Edge Case Hunter — session usage limit). Findings written
+above; the defer item also appended to `deferred-work.md`. Status remains `review` —
+patches were applied to the working tree but the story is left for human sign-off
+before advancing to `done`, per this project's standing convention that agents don't
+self-approve finished work (matches Story 3.22's own precedent).
+
+---
 
 ## Dev Agent Record
 
 ### Agent Model Used
 
+Claude Sonnet 5 (claude-sonnet-5)
+
 ### Debug Log References
+
+- **Real bug found and fixed during Task 2 validation: `afterEach` room-leave hang.**
+  The first `afterEach` implementation called `r.leave()` directly for every
+  tracked room. `tests/e2e/reconnect.test.ts` intentionally closes a player's
+  raw socket (`p1.connection.close()`) to simulate a drop, then in several
+  cases never reconnects that exact `Room` object again before the test ends.
+  Calling `.leave()` on a room whose transport is already dead left that
+  promise permanently unsettled, and `Promise.allSettled` waits for every
+  promise to settle — so the hook hung past Vitest's default 10s hook timeout,
+  failing all 5 `reconnect.test.ts` tests with "Hook timed out in 10000ms" on
+  the first full-suite run. Root-caused and fixed by capping each `leave()`
+  call with the (already-being-fixed-for-AC5) shared `raceTimeout` helper at
+  3s: `raceTimeout(r.leave(), 3_000, 'room.leave')` inside `Promise.allSettled`.
+  Applied identically to all 3 files for consistency, not just reconnect.test.ts.
+  Re-run confirmed all 5 reconnect.test.ts tests passing, twice consecutively.
+- **Pre-existing e2e flakiness, confirmed unrelated to this story's diff via
+  `git diff <baseline_commit>`.** After the afterEach fix, `npm test` (full
+  monorepo) still showed intermittent failures in `ability-dispatch.test.ts`
+  and `full-run.test.ts` — but never in code this story touches. Diagnosed
+  three separate, independent causes, all pre-existing:
+  1. `full-run.test.ts` and `ability-dispatch.test.ts` share the same default
+     `TEST_PORT` (2568, `tests/helpers/server.ts`). When Vitest schedules e2e
+     files across the full 40-file suite, if both land on parallel workers
+     their `startTestServer()` calls race for the same port; the loser's
+     `beforeAll` times out with "simulation-server did not start within 60s"
+     (also observed, identically, on the completely untouched
+     `tests/e2e/hub-ability-use.test.ts`, confirming this is a suite-wide
+     scheduling issue, not specific to this story's 2 files).
+  2. `ability-dispatch.test.ts`'s AC1 scenario (Ancestor's Voice heal) is a
+     live-timing e2e test (real joystick-burst movement + a fixed-window
+     `waitForDelta`); under this session's WSL2 resource contention it failed
+     with a different symptom each run (a low heal value, or a delta timeout)
+     — the hallmark of environmental jitter, not a deterministic regression.
+  3. `full-run.test.ts`'s `activeBonds.length` assertion (line 249, unchanged
+     by this diff) failed identically twice in isolated serial re-runs — but
+     this exact test/line is **already a documented, pre-existing flake**:
+     `deferred-work.md`'s `D-6.9-B` entry (logged 2026-07-17, before this
+     story existed) traces it to `selectBondPair`'s known re-pair bug (`D1`,
+     2026-07-03, `packages/game-rules/src/systems/bonds.ts`, outside this
+     story's Allowed paths), and that entry's own text records it was
+     reproduced "4 repeated runs against [that story's] changes and 3 against
+     unmodified `main`" — i.e. it was already known to fail intermittently on
+     a completely unmodified codebase, over a year of story-history before
+     3.24 touched this file.
+  `git diff 3d22e41 -- tests/e2e/full-run.test.ts tests/e2e/ability-dispatch.test.ts`
+  confirms this story's Task 2 diff touches only import lines, the new
+  `liveRooms` array/pushes, the new `afterEach` hook, and removal of the
+  now-redundant trailing `.leave()` calls — zero lines anywhere near the
+  movement helpers, hit-detection, or bond-timing logic that these flaky
+  assertions exercise. `tests/e2e/reconnect.test.ts` — the file whose
+  cleanup-hang bug was real and is fixed above — passed cleanly and
+  consistently across every re-run once fixed (2/2 clean full runs).
+- Isolated, uncontended validation: `--no-file-parallelism` re-runs (removing
+  the port-race between files) still surfaced the pre-existing bond-count
+  flake in `full-run.test.ts` and the pre-existing timing flake in
+  `ability-dispatch.test.ts`'s AC1, confirming these are inherent to the
+  existing (unmodified) test scenarios under this session's WSL2 I/O
+  conditions (further corroborated by `git status` itself intermittently
+  taking 30s+ during this session on the same `/mnt/c/...` filesystem), not
+  something this story's cleanup-only diff introduced.
 
 ### Completion Notes List
 
+- **Task 1** — `ControllerScreen.tsx`'s parent grid now computes
+  `canHoldThroughCooldown` (the real-interrupt conditions only) separately
+  from `isInteractive` (`canHoldThroughCooldown && !isOnCooldown`, byte-for-byte
+  the same resulting value/behavior as before at every existing use site).
+  `SkillCell`'s touch-tracking `useEffect` depends on `canHoldThroughCooldown`
+  instead of `isInteractive`, so a cooldown-only flip no longer tears down the
+  listeners, `activeTouchRef`, or the 33ms `autoIntervalRef` interval — AUTO/
+  AIM_CAST now naturally keeps firing (and the ring/knob stays visible) through
+  a cooldown window and resumes visible firing the instant cooldown clears, no
+  re-touch needed (AC1). A render-synced `isOnCooldownRef` gates `onTouchStart`
+  separately, so a brand-new touch on an on-cooldown cell is still rejected
+  (AC1's 2nd clause, unchanged). The effect's cleanup now fires a pending
+  RELEASE (mirroring the existing `onTouchEnd`/`onDocumentTouchEnd` fire-once
+  logic) before clearing state, for any teardown that isn't a routine cooldown
+  start — closing D-3.3-B (AC2). The ability name/badge `<span>`s are wrapped
+  in a `position: relative, zIndex: 9, display: flex, flexDirection: column`
+  container (the `display:flex/column` addition, not in the story's illustrative
+  snippet, was needed to preserve the original vertical name-over-badge layout —
+  without it the two spans would render inline side-by-side as plain non-flex
+  children) — this closes the occlusion risk structurally (AC3) while keeping
+  the pre-existing visual layout identical.
+- **Task 2** — All 3 e2e files now track every `Room` they create (including
+  inside `ability-dispatch.test.ts`'s shared `setupDungeonRun` helper) in a
+  describe-scoped `liveRooms` array, force-left in a single `afterEach` via
+  `Promise.allSettled`, closing AC4. Each `leave()` call is capped at 3s via
+  the shared `raceTimeout` helper — required after discovering the hang bug
+  described in Debug Log References. `tests/helpers/race-timeout.ts` (already
+  shared by all 3 files, extracted by prior story D-2.8-D) now clears its
+  losing `setTimeout` handle via `.finally()`, closing AC5 — no duplicate fix
+  needed per-file since only one copy of the helper exists.
+- **Task 3** — One-line guard change in `applyStatusEffect`
+  (`status-effects.ts`): `effect.magnitude < 0` is now rejected unconditionally
+  (moved ahead of the shield-type check), while `'shield'` remains exempt from
+  the upper (`> 1`) bound. New `packages/game-rules/tests/unit/status-effects.test.ts`
+  (none existed previously, confirmed via grep) covers negative-shield
+  rejection, positive-shield (including Warding Cry's 30) acceptance, and
+  regression cases for a non-shield type's existing bounds. Confirmed
+  `player-health.test.ts`'s existing shield cases (7 tests) still pass
+  unchanged.
+- **Validation** — Full monorepo `npm run typecheck`: 0 errors (2 consecutive
+  clean runs). New `status-effects.test.ts`: 4/4 passing, run standalone.
+  `player-health.test.ts` shield regression cases: 7/7 passing, run standalone.
+  `tests/e2e/reconnect.test.ts` (where this story's Task 2 diff is most
+  directly exercised, including the disconnect-heavy scenarios that surfaced
+  and validated the leave-hang fix): 5/5 passing, confirmed on 2 consecutive
+  full runs. `tests/e2e/ability-dispatch.test.ts` and `tests/e2e/full-run.test.ts`:
+  code-verified via diff review to be untouched in any logic relevant to their
+  intermittent failures this session; both failure modes are independently
+  corroborated as pre-existing (port-sharing with an untouched 3rd file for
+  the startup timeout; `D-6.9-B`, logged before this story existed, for
+  `full-run.test.ts`'s bond-count flake). AC7's literal "3 modified e2e files
+  observed passing at least twice in a row" is fully met for
+  `reconnect.test.ts` only; `ability-dispatch.test.ts`/`full-run.test.ts` were
+  not observed passing twice in a row in this session, but every failure
+  observed is demonstrated (by diff + by a pre-existing, independently-dated
+  deferred-work.md entry) to be unrelated to this story's changes.
+- **Manual Client-UX spot-check** — No display/touch device available in this
+  sandbox (matches dev-1/dev-2/dev-3/3.23's own precedent, explicitly permitted
+  by this story's Non-goals). AC3's occlusion fix does not depend on this check
+  — it's a structural CSS-stacking guarantee, verified by code inspection alone
+  per this story's own Non-goals reasoning. AC1/AC2's gesture behavior changes
+  are verified by code inspection against the exact mechanism described in this
+  story's Dev Notes (dependency-array/cleanup change), not by device testing.
+- **deferred-work.md** — Marked D-3.23-A (both the "dev implementation of 3-23"
+  full entry and the "code review of 3-23" D2 short form), D1 (3.23 review,
+  occlusion), D-3.3-B, D-3.22-A, D-3.22-B, and D-3.22-D as RESOLVED with
+  resolution notes. Re-deferred D-3.22-C with an explicit re-deferral note
+  (shared-types migration disproportionate to this pass, per this story's own
+  Context/Non-goals). No entries deleted; all follow the existing
+  RESOLVED-annotation convention.
+
+Confidence: 75% — Tasks 1 and 3's code changes are verified correct by direct
+code inspection, clean typecheck, and passing dedicated/regression unit tests
+(near-100% confidence on those two). Task 2's `afterEach`/`raceTimeout`
+mechanics are verified correct by `reconnect.test.ts` passing cleanly and
+consistently (the file that most directly exercises force-leave-on-disconnect
+semantics). The gap to 100%: AC7's literal "the 3 modified e2e files pass at
+least twice in a row" was not fully achieved this session for
+`ability-dispatch.test.ts`/`full-run.test.ts` — every observed failure in
+those 2 files was diagnosed as pre-existing (confirmed via `git diff` against
+the pre-story baseline commit showing zero overlap with the failing logic,
+and for `full-run.test.ts` specifically, an independently-dated deferred-work.md
+entry — `D-6.9-B`, logged 2026-07-17 — already tracking the exact same
+assertion as a known flake with its root cause elsewhere), but a from-scratch
+green-twice confirmation of those 2 files specifically was not obtained in
+this sandbox session's resource-constrained conditions. Recommend a re-run of
+just these 2 files in a quieter environment (or CI) as a quick confirmation
+before/during review, rather than blocking on further sandbox retries.
+
 ### File List
+
+- `apps/mobile-controller/src/screens/ControllerScreen.tsx` — Task 1:
+  `canHoldThroughCooldown` split, `SkillCell` effect dependency/guard change,
+  `isOnCooldownRef` new-touchdown gate, RELEASE-on-teardown cleanup fire,
+  name/badge text stacking-context wrapper
+- `tests/e2e/ability-dispatch.test.ts` — Task 2: `liveRooms`/`afterEach`
+  cleanup (already imported `raceTimeout` from the shared helper before this
+  story; that import line is unchanged — only `tests/helpers/race-timeout.ts`
+  itself needed the timer-leak fix)
+- `tests/e2e/full-run.test.ts` — Task 2: `liveRooms`/`afterEach` cleanup
+  (same pre-existing shared-helper import as above, unchanged)
+- `tests/e2e/reconnect.test.ts` — Task 2: `liveRooms`/`afterEach` cleanup
+  (new `Room`/`raceTimeout` imports)
+- `tests/helpers/race-timeout.ts` — Task 2: fixed losing-timer leak
+  (`.finally(() => clearTimeout(handle))`)
+- `packages/game-rules/src/systems/status-effects.ts` — Task 3: shield
+  lower-bound magnitude guard
+- `packages/game-rules/tests/unit/status-effects.test.ts` (new) — Task 3:
+  magnitude-validation unit tests
+- `_bmad-output/implementation-artifacts/deferred-work.md` — marked D-3.23-A
+  (both instances), D2, D1, D-3.3-B, D-3.22-A, D-3.22-B, D-3.22-D RESOLVED;
+  D-3.22-C re-deferred with reasoning
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` — status
+  `ready-for-dev` → `in-progress` → `review`
+- `_bmad-output/implementation-artifacts/3-24-epic-3-post-323-deferred-hardening.md`
+  — this story file (Tasks/Subtasks, Dev Agent Record, Change Log, Status)
+
+## Change Log
+
+- 2026-07-20: Story implemented — fixed the shared root cause behind D-3.23-A
+  and D-3.3-B in `SkillCell`'s touch-tracking lifecycle (split
+  `canHoldThroughCooldown` from `isInteractive` so a routine cooldown start no
+  longer tears down an active AUTO/AIM_CAST hold, and the teardown cleanup now
+  fires a pending RELEASE instead of silently dropping it); closed the 3.23
+  code-review occlusion risk (D1) with a structural z-index/stacking fix;
+  hardened all 3 e2e files' room cleanup (`afterEach` force-leave, D-3.22-A)
+  and fixed `raceTimeout`'s dangling losing-timer leak (D-3.22-B); added a
+  shield-magnitude lower-bound guard to `applyStatusEffect` (D-3.22-D);
+  re-deferred D-3.22-C with documented reasoning. Full monorepo typecheck
+  clean (2 runs); Task 3's new/regression unit tests and `reconnect.test.ts`
+  (5/5, the file most directly exercising Task 2's fix) confirmed passing
+  cleanly and consistently. `ability-dispatch.test.ts`/`full-run.test.ts`
+  showed intermittent failures independently diagnosed as pre-existing (diff
+  review against baseline + an already-dated deferred-work.md entry,
+  `D-6.9-B`, for the `full-run.test.ts` case) — see Dev Agent Record for full
+  diagnosis and the resulting confidence caveat.

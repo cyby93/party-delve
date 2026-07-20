@@ -626,6 +626,7 @@ interface SkillCellProps {
   ability: ClassAbilityDef | null;
   cooldownState: CooldownState | null;
   isInteractive: boolean;
+  canHoldThroughCooldown: boolean;
   badgeBorderColor: string;
   onAbilityFire: (abilityIndex: number, dirX: number, dirY: number, isContinuous: boolean) => void;
   tapFlash: boolean;
@@ -634,7 +635,7 @@ interface SkillCellProps {
   spiritGlowColor?: string;
 }
 
-function SkillCell({ index, ability, cooldownState: cd, isInteractive, badgeBorderColor, onAbilityFire, tapFlash, downedOverlay, spiritName, spiritGlowColor }: SkillCellProps) {
+function SkillCell({ index, ability, cooldownState: cd, isInteractive, canHoldThroughCooldown, badgeBorderColor, onAbilityFire, tapFlash, downedOverlay, spiritName, spiritGlowColor }: SkillCellProps) {
   const cellRef = useRef<HTMLDivElement>(null);
   const activeTouchRef = useRef<{ id: number; originX: number; originY: number; lastDirX: number; lastDirY: number; releaseFired: boolean } | null>(null);
   const autoIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -643,6 +644,8 @@ function SkillCell({ index, ability, cooldownState: cd, isInteractive, badgeBord
 
   const now = Date.now();
   const isOnCooldown = cd !== null && cd.expiresAt > now;
+  const isOnCooldownRef = useRef(isOnCooldown);
+  isOnCooldownRef.current = isOnCooldown;
   const totalDuration = cd !== null ? cd.expiresAt - cd.startAt : 1;
   const elapsed = cd !== null ? now - cd.startAt : 0;
   const pctElapsed = Math.min(elapsed / totalDuration, 1);
@@ -651,12 +654,13 @@ function SkillCell({ index, ability, cooldownState: cd, isInteractive, badgeBord
 
   useEffect(() => {
     const el = cellRef.current;
-    if (!el || !isInteractive || ability === null) return;
+    if (!el || !canHoldThroughCooldown || ability === null) return;
     if (ability.inputType === 'TAP') return;
 
     const onTouchStart = (e: TouchEvent) => {
       e.preventDefault();
       if (activeTouchRef.current !== null) return;
+      if (isOnCooldownRef.current) return;
       const touch = e.changedTouches[0];
       if (!touch) return;
       const rect = el.getBoundingClientRect();
@@ -756,6 +760,11 @@ function SkillCell({ index, ability, cooldownState: cd, isInteractive, badgeBord
     document.addEventListener('touchcancel', onDocumentTouchEnd, { passive: false });
 
     return () => {
+      const t = activeTouchRef.current;
+      if (t !== null && ability.inputType === 'RELEASE' && !t.releaseFired) {
+        t.releaseFired = true;
+        onAbilityFire(index, t.lastDirX, t.lastDirY, false);
+      }
       el.removeEventListener('touchstart', onTouchStart);
       el.removeEventListener('touchmove', onTouchMove);
       el.removeEventListener('touchend', onTouchEnd);
@@ -770,7 +779,7 @@ function SkillCell({ index, ability, cooldownState: cd, isInteractive, badgeBord
       setSpawnOrigin(null);
       setKnobOffset({ x: 0, y: 0 });
     };
-  }, [isInteractive, ability, index, onAbilityFire]);
+  }, [canHoldThroughCooldown, ability, index, onAbilityFire]);
 
   return (
     <div
@@ -802,7 +811,7 @@ function SkillCell({ index, ability, cooldownState: cd, isInteractive, badgeBord
       }}
     >
       {ability !== null ? (
-        <>
+        <div style={{ position: 'relative', zIndex: 9, display: 'flex', flexDirection: 'column' }}>
           <span
             style={{
               fontFamily: 'var(--font-body)',
@@ -833,7 +842,7 @@ function SkillCell({ index, ability, cooldownState: cd, isInteractive, badgeBord
           >
             {ability.inputType}
           </span>
-        </>
+        </div>
       ) : (
         <span
           style={{
@@ -1481,9 +1490,10 @@ export function ControllerScreen({ session, gameState, cooldowns, bondNotificati
           const cd = cooldowns[i] ?? null;
           const now = Date.now();
           const isOnCooldown = cd !== null && cd.expiresAt > now;
-          const isInteractive = isSpiritCell
-            ? !isOnCooldown && !isFrozen && !inBondMoment
-            : (!isDown && !isSpirit) && ability !== null && !isOnCooldown && !inBondMoment;
+          const canHoldThroughCooldown = isSpiritCell
+            ? !isFrozen && !inBondMoment
+            : (!isDown && !isSpirit) && ability !== null && !inBondMoment;
+          const isInteractive = canHoldThroughCooldown && !isOnCooldown;
           const badgeBorderColor = ability !== null
             ? (ability.inputType === 'AUTO' ? 'var(--accent-spirit)'
               : ability.inputType === 'RELEASE' ? 'var(--accent-warm)'
@@ -1503,6 +1513,7 @@ export function ControllerScreen({ session, gameState, cooldowns, bondNotificati
               ability={ability}
               cooldownState={isOnCooldown ? cd : null}
               isInteractive={isInteractive}
+              canHoldThroughCooldown={canHoldThroughCooldown}
               badgeBorderColor={badgeBorderColor}
               onAbilityFire={handleAbilityFire}
               tapFlash={tapFlash[i] ?? false}

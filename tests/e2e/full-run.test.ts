@@ -1,4 +1,4 @@
-import { describe, it, beforeAll, afterAll, expect } from 'vitest';
+import { describe, it, beforeAll, afterAll, afterEach, expect } from 'vitest';
 import * as Colyseus from '@colyseus/sdk';
 import type { Room } from '@colyseus/sdk';
 import { EventNames } from 'net-protocol';
@@ -88,6 +88,10 @@ async function fineTuneToDistanceBand(
 
 describe('full run happy path', { timeout: 120_000 }, () => {
   let client: Colyseus.Client;
+  // Describe-scoped: every room created by a test is pushed here and force-left
+  // in afterEach, so a thrown assertion or a waitForDelta/raceTimeout timeout
+  // can't leak a live room into the next test.
+  const liveRooms: Room[] = [];
 
   beforeAll(async () => {
     await startTestServer();
@@ -96,9 +100,17 @@ describe('full run happy path', { timeout: 120_000 }, () => {
 
   afterAll(() => stopTestServer());
 
+  afterEach(async () => {
+    // Cap each leave() at 3s — a room whose connection is already dead (e.g. a
+    // manually-closed socket) can leave its leave() promise unsettled forever,
+    // which would otherwise hang this hook past its default 10s timeout.
+    await Promise.allSettled(liveRooms.splice(0).map((r) => raceTimeout(r.leave(), 3_000, 'room.leave')));
+  });
+
   it('session creation → 3 players → run vote → 3 levels → post-run → hub', async () => {
     // ── 1. Create session ─────────────────────────────────────────────────────
     const host = await client.create('game_room', { isHost: true });
+    liveRooms.push(host);
     const roomId = host.roomId;
 
     const allJoinedSnap = new Promise<SnapshotMsg>((resolve) => {
@@ -109,6 +121,7 @@ describe('full run happy path', { timeout: 120_000 }, () => {
     const p1 = await client.joinById(roomId, { playerName: 'Alice' });
     const p2 = await client.joinById(roomId, { playerName: 'Bob' });
     const p3 = await client.joinById(roomId, { playerName: 'Charlie' });
+    liveRooms.push(p1, p2, p3);
 
     const initialSnap = await raceTimeout(allJoinedSnap, 10_000, 'all 3 players joined snapshot');
     expect(initialSnap.state.session.phase).toBe('lobby');
@@ -264,14 +277,13 @@ describe('full run happy path', { timeout: 120_000 }, () => {
     expect(hubSnap.state.session.phase).toBe('hub');
     expect(hubSnap.state.enemies.length).toBe(0);
     expect(hubSnap.state.players.every((p: any) => !p.isDown && !p.isSpirit)).toBe(true);
-
-    await Promise.all([host.leave(), p1.leave(), p2.leave(), p3.leave()]);
   });
 
   // ponytail: boss defeat e2e is partial — verifies delta timing, not full AI simulation
   it('boss defeat path: BossDefeatedDelta then run:complete after delay', async () => {
     // ── Bring game to boss level (same setup as main test through L3 bond-moment) ─
     const host = await client.create('game_room', { isHost: true });
+    liveRooms.push(host);
     const roomId = host.roomId;
 
     const allJoinedSnap = new Promise<SnapshotMsg>((resolve) => {
@@ -281,6 +293,7 @@ describe('full run happy path', { timeout: 120_000 }, () => {
     });
     const p1 = await client.joinById(roomId, { playerName: 'Alice' });
     const p2 = await client.joinById(roomId, { playerName: 'Bob' });
+    liveRooms.push(p1, p2);
     await raceTimeout(allJoinedSnap, 10_000, 'players joined');
 
     p1.send(EventNames.CLASS_SELECT, { classId: 'stormcaller' });
@@ -405,7 +418,5 @@ describe('full run happy path', { timeout: 120_000 }, () => {
       'post-run phase after boss defeat',
     );
     expect(postRunSnap.state.session.phase).toBe('post-run');
-
-    await Promise.all([host.leave(), p1.leave(), p2.leave()]);
   });
 });

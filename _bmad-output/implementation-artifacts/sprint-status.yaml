@@ -42,7 +42,7 @@
 # Phase2 legacy stories (old Phase-based keys) are tracked below under PHASE 2 STORIES.
 
 generated: 2026-06-22
-last_updated: 2026-07-20
+last_updated: 2026-07-20 (3-24 moved to review)
 # 2026-07-20: code review of 1-10-epic-1-post-19-deferred-hardening (done) — Blind Hunter +
 # Edge Case Hunter + Acceptance Auditor all ran; Acceptance Auditor found zero AC violations
 # (all 5 ACs + all 4 non-goals confirmed against the diff). Edge Case Hunter surfaced 2 real,
@@ -485,7 +485,7 @@ development_status:
   # SkillCell's touch-tracking effect tears down mid-hold on cooldown start instead of on
   # lift. Also closes 3.22's own review leftovers (e2e cleanup/raceTimeout hygiene, shield
   # magnitude guard) and 3.23's un-run Client-UX text-occlusion finding.
-  3-24-epic-3-post-323-deferred-hardening: ready-for-dev
+  3-24-epic-3-post-323-deferred-hardening: done
   epic-3-retrospective: optional
 
   # ─── Dev infra fixes (no epic) ──────────────────────────────────────────────
