@@ -12,11 +12,7 @@ import {
 } from 'game-rules';
 import { startTestServer, stopTestServer, TEST_URL } from '../helpers/server.js';
 import { waitForDelta } from '../helpers/messages.js';
-
-const raceTimeout = <T>(p: Promise<T>, ms: number, label: string): Promise<T> =>
-  Promise.race([p, new Promise<T>((_, reject) =>
-    setTimeout(() => reject(new Error(`timeout after ${ms}ms: ${label}`)), ms)
-  )]);
+import { raceTimeout } from '../helpers/race-timeout.js';
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 

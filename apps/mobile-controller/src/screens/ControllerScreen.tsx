@@ -1225,7 +1225,7 @@ export function ControllerScreen({ session, gameState, cooldowns, bondNotificati
     el.addEventListener('touchcancel', onTouchEnd, { passive: false });
 
     return () => {
-      stopJoystick();
+      if (activeTouchIdRef.current !== null) stopJoystick();
       el.removeEventListener('touchstart', onTouchStart);
       el.removeEventListener('touchmove', onTouchMove);
       el.removeEventListener('touchend', onTouchEnd);
@@ -1483,7 +1483,7 @@ export function ControllerScreen({ session, gameState, cooldowns, bondNotificati
           const isOnCooldown = cd !== null && cd.expiresAt > now;
           const isInteractive = isSpiritCell
             ? !isOnCooldown && !isFrozen && !inBondMoment
-            : (!inDungeon || (!isDown && !isSpirit)) && ability !== null && !isOnCooldown && !inBondMoment;
+            : (!isDown && !isSpirit) && ability !== null && !isOnCooldown && !inBondMoment;
           const badgeBorderColor = ability !== null
             ? (ability.inputType === 'AUTO' ? 'var(--accent-spirit)'
               : ability.inputType === 'RELEASE' ? 'var(--accent-warm)'

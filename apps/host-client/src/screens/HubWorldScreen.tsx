@@ -202,7 +202,13 @@ export function HubWorldScreen({ gameState, session }: HubWorldScreenProps) {
           const app = pixiAppRef.current;
           const state = latestGameStateRef.current;
           if (!app || !state) { rafRef.current = null; return; }
-          renderFrame(state, app, playerGraphicsRef.current, poiGraphicsRef.current);
+          try {
+            renderFrame(state, app, playerGraphicsRef.current, poiGraphicsRef.current);
+          } catch (err) {
+            console.error('[HubWorldScreen] renderFrame threw during flash animation', err);
+            rafRef.current = null;
+            return;
+          }
           if ([...playerGraphicsRef.current.values()].some(e => e.flashUntil > Date.now())) {
             rafRef.current = requestAnimationFrame(tick);
           } else {

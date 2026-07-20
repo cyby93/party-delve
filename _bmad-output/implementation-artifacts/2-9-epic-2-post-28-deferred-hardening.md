@@ -4,7 +4,7 @@ baseline_commit: 3d22e41
 
 # Story 2.9: Epic 2 — Post-2.8 Deferred Hardening
 
-Status: ready-for-dev
+Status: done
 
 ## CLAUDE.md Required Task Header
 
@@ -215,25 +215,25 @@ shared helper
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 (AC1):** `apps/host-client/src/screens/HubWorldScreen.tsx` — wrap the
+- [x] **Task 1 (AC1):** `apps/host-client/src/screens/HubWorldScreen.tsx` — wrap the
   `renderFrame(...)` call inside the flash-animation `tick` closure (`[gameState]` effect,
   ~lines 201-211) in try/catch. On catch: `console.error('[HubWorldScreen] renderFrame threw
   during flash animation', err)`, set `rafRef.current = null`, and `return` (do not
   reschedule — stop the loop gracefully rather than looping into repeated throws). On success,
   keep the existing reschedule-or-null logic unchanged.
-- [ ] **Task 2 (AC2):** `apps/mobile-controller/src/screens/ControllerScreen.tsx` — in the
+- [x] **Task 2 (AC2):** `apps/mobile-controller/src/screens/ControllerScreen.tsx` — in the
   joystick `useEffect`'s cleanup function (currently unconditionally calling `stopJoystick()`
   alongside the 4 `removeEventListener` calls), guard the `stopJoystick()` call with
   `if (activeTouchIdRef.current !== null) stopJoystick();`. Leave the 4
   `removeEventListener` calls unconditional (they're always safe/needed).
-- [ ] **Task 3 (AC3):** Same file — in the skill-grid `isInteractive` computation
+- [x] **Task 3 (AC3):** Same file — in the skill-grid `isInteractive` computation
   (~line 1486), change
   `(!inDungeon || (!isDown && !isSpirit)) && ability !== null && !isOnCooldown && !inBondMoment`
   to
   `(!isDown && !isSpirit) && ability !== null && !isOnCooldown && !inBondMoment`
   (drop the `!inDungeon ||` bypass entirely — `isDown`/`isSpirit` should gate unconditionally,
   matching the spirit-cell branch's own unconditional `!isFrozen` gate one line above it).
-- [ ] **Task 4 (AC4):** Create `apps/simulation-server/tests/game-room-ability-guard.test.ts`.
+- [x] **Task 4 (AC4):** Create `apps/simulation-server/tests/game-room-ability-guard.test.ts`.
   Follow the exact pattern of `game-room-revive-proximity.test.ts` (mockPlayer helper +
   hand-mirrored guard function, since `GameRoom` isn't instantiable outside a live Colyseus
   room). Mirror `GameRoom.ts:1961`'s guard:
@@ -242,7 +242,7 @@ shared helper
   Write 5 test cases: frozen blocks, down blocks, spirit blocks, class===null blocks, and one
   baseline case (all clear) that passes through to confirm the mirrored function isn't
   vacuously rejecting everything.
-- [ ] **Task 5 (AC5):** Create `tests/helpers/race-timeout.ts` exporting:
+- [x] **Task 5 (AC5):** Create `tests/helpers/race-timeout.ts` exporting:
   ```ts
   export const raceTimeout = <T>(p: Promise<T>, ms: number, label: string): Promise<T> =>
     Promise.race([p, new Promise<T>((_, reject) =>
@@ -253,15 +253,34 @@ shared helper
   `tests/e2e/full-run.test.ts`: delete each file's local `raceTimeout` const definition and
   add `import { raceTimeout } from '../helpers/race-timeout.js';` (match the existing
   `.js` extension convention used by the other `tests/helpers/*` imports in these same files).
-- [ ] Update `deferred-work.md`: mark D-2.6-A, D-2.6-B, D-2.8-A, D-2.8-C, D-2.8-D as
+- [x] Update `deferred-work.md`: mark D-2.6-A, D-2.6-B, D-2.8-A, D-2.8-C, D-2.8-D as
   "RESOLVED by 2-9-epic-2-post-28-deferred-hardening" following the existing convention (see
   D-dev5-A/D-dev5-B resolution entries for the exact style — append a "Resolution: ..." line
   under the original finding, don't delete the finding). Also annotate (do not delete) the
   mis-filed "D-6.6-C" entry noting it was identified as Epic 6 subject matter incorrectly
   filed under the 2.8 review section, and annotate QD-6-A as resolved by Story 6.7/6.9.
-- [ ] Run `npm run typecheck` from repo root; verify zero errors.
-- [ ] Run the full test suite (`npx vitest run` equivalent across workspaces, plus
+- [x] Run `npm run typecheck` from repo root; verify zero errors.
+- [x] Run the full test suite (`npx vitest run` equivalent across workspaces, plus
   `tests/e2e`); verify no regressions and the new Task 4 test passes.
+
+### Review Findings
+
+- [x] [Review][Patch] `game-room-ability-guard.test.ts` never exercises the guard's `!player`
+  (undefined) branch — only 4 of 5 disjuncts have coverage
+  [apps/simulation-server/tests/game-room-ability-guard.test.ts]
+- [x] [Review][Patch] QD-6-A annotation in `deferred-work.md` cites the wrong line for the
+  "hit-scan/mixed-faction" boss-damage broadcast site (says ~1860; actual site is ~2229-2236)
+  [_bmad-output/implementation-artifacts/deferred-work.md]
+- [x] [Review][Patch] Two new files created with anomalous executable permission (mode 100755
+  instead of 644) — no shebang, not meant to run standalone
+  [apps/simulation-server/tests/game-room-ability-guard.test.ts, tests/helpers/race-timeout.ts]
+- [x] [Review][Defer] Sibling unguarded `renderFrame` call in `HubWorldScreen.tsx`'s
+  `[gameState]` effect body (~line 196, outside the fixed `tick` closure) shares D-2.6-A's
+  throw-vulnerability class but is out of AC1's scope
+  [apps/host-client/src/screens/HubWorldScreen.tsx:196] — deferred, pre-existing
+- [x] [Review][Defer] Sibling unguarded `renderFrame` call inside the async PixiJS init effect
+  (~line 176) shares the same throw-vulnerability class, also untouched by this story
+  [apps/host-client/src/screens/HubWorldScreen.tsx:176] — deferred, pre-existing
 
 ---
 
@@ -371,11 +390,65 @@ silently regress in a future story.
 
 ### Agent Model Used
 
+Claude Sonnet 5 (claude-sonnet-5)
+
 ### Debug Log References
+
+- `npm run typecheck` (root): exit 0, zero errors across all 10 project configs.
+- `npm run test --workspace=apps/simulation-server`: 8 files / 64 tests passed (includes new
+  `game-room-ability-guard.test.ts`, 5 tests).
+- `npm run test --workspace=packages/game-rules`: 6 files / 54 tests passed.
+- `npm run test --workspace=tests` (parallel, default): 23/25 files passed; `ability-dispatch.test.ts`
+  and `full-run.test.ts` failed with `EADDRINUSE :::2568` — two e2e files raced to bind the
+  same hardcoded `TEST_PORT` when vitest ran files in parallel. Pre-existing test-infra
+  fragility in `tests/helpers/server.ts` (fixed port, no per-file allocation), not caused by
+  this story's changes (Task 5 only swapped a `const` for an `import`, no port/server logic
+  touched). Re-ran with `npx vitest run --no-file-parallelism` (serial, no source changes) per
+  the two-strike QA rule: 25/25 files, 317/317 tests passed, 0 failures — confirms the
+  `raceTimeout` extraction is correct and the failure was purely the parallel-port collision.
+- `npm run test --workspace=apps/host-client` / `apps/mobile-controller`: "No test files
+  found" (exit 1) — expected, pre-existing (confirmed by D-2.8-B: zero component-test
+  precedent in either client app; unchanged by this story).
 
 ### Completion Notes List
 
+- Task 1: wrapped the flash-animation `tick` closure's `renderFrame` call in try/catch;
+  on catch, logs via `console.error`, sets `rafRef.current = null`, and returns without
+  rescheduling (stops the loop instead of spiraling into repeated throws).
+- Task 2: `ControllerScreen.tsx`'s joystick cleanup now calls `stopJoystick()` only when
+  `activeTouchIdRef.current !== null`; the 4 `removeEventListener` calls stayed unconditional.
+- Task 3: dropped the `!inDungeon ||` bypass from the non-spirit-cell `isInteractive`
+  computation — it now gates on `(!isDown && !isSpirit)` unconditionally, matching the
+  spirit-cell branch. Confirmed `inDungeon` remains used elsewhere in the file (no unused-var
+  fallout).
+- Task 4: added `game-room-ability-guard.test.ts`, hand-mirroring the `GameRoom.ts:1961` guard
+  (verified unchanged from the story's cited line) with 5 cases: frozen/down/spirit/class-null
+  each block, one all-clear case passes.
+- Task 5: extracted `raceTimeout` to `tests/helpers/race-timeout.ts`; all three e2e files
+  (`ability-dispatch.test.ts`, `hub-ability-use.test.ts`, `full-run.test.ts`) now import it
+  instead of defining a local copy.
+- Deferred-work.md: appended "RESOLVED by 2-9-..." + a `Resolution:` line to each of D-2.6-A,
+  D-2.6-B, D-2.8-A, D-2.8-C, D-2.8-D, following the D-dev5-A convention. Annotated (not
+  deleted) "D-6.6-C" as mis-filed Epic 6 content, left open for an Epic 6 story to own.
+  Annotated QD-6-A as already resolved by Story 6.7/6.9, no action taken.
+- Per the story's explicit Blocked paths / Dev Notes instruction, `sprint-status.yaml` was NOT
+  edited by this dev pass — it's being updated separately by the orchestrator to avoid a
+  multi-agent write collision.
+- Confidence: 95% — all 7 tasks map 1:1 to their AC, every changed line was read and confirmed
+  against the story's cited line numbers before editing, and the only test failure encountered
+  (port collision) was independently diagnosed as pre-existing infra and confirmed non-blocking
+  via a clean serial re-run with zero source changes.
+
 ### File List
+
+- `apps/host-client/src/screens/HubWorldScreen.tsx` (modified — Task 1)
+- `apps/mobile-controller/src/screens/ControllerScreen.tsx` (modified — Tasks 2, 3)
+- `apps/simulation-server/tests/game-room-ability-guard.test.ts` (new — Task 4)
+- `tests/helpers/race-timeout.ts` (new — Task 5)
+- `tests/e2e/ability-dispatch.test.ts` (modified — Task 5, import swap)
+- `tests/e2e/hub-ability-use.test.ts` (modified — Task 5, import swap)
+- `tests/e2e/full-run.test.ts` (modified — Task 5, import swap)
+- `_bmad-output/implementation-artifacts/deferred-work.md` (modified — resolution annotations)
 
 ---
 
@@ -385,3 +458,6 @@ silently regress in a future story.
   (D-2.6-A, D-2.6-B, D-2.8-A, D-2.8-C, D-2.8-D); D-2.8-B re-deferred (test-infra bootstrap,
   disproportionate to a hardening sweep); "D-6.6-C" excluded as mis-filed Epic 6 content;
   QD-6-A excluded as already resolved by Story 6.7/6.9.
+- 2026-07-20: All 5 findings closed (Tasks 1-5), deferred-work.md annotated, typecheck +
+  full test suite verified green (317/317 in `tests` workspace via serial re-run after a
+  pre-existing parallel-port test-infra flake was ruled out). Status → review.

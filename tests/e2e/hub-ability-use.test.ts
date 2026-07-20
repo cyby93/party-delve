@@ -5,11 +5,7 @@ import { EventNames } from 'net-protocol';
 import type { SnapshotMsg, CooldownUpdateMsg } from 'net-protocol';
 import { startTestServer, stopTestServer, TEST_URL } from '../helpers/server.js';
 import { waitForDelta, waitForMessage } from '../helpers/messages.js';
-
-const raceTimeout = <T>(p: Promise<T>, ms: number, label: string): Promise<T> =>
-  Promise.race([p, new Promise<T>((_, reject) =>
-    setTimeout(() => reject(new Error(`timeout after ${ms}ms: ${label}`)), ms)
-  )]);
+import { raceTimeout } from '../helpers/race-timeout.js';
 
 // Story 2.8 (AC1): the ability-processing guard previously required
 // `player.nearPoiId === 'training-dummy'` outside a dungeon; firing anywhere

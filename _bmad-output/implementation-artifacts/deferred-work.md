@@ -922,30 +922,35 @@ If the server adds a new `GrasslandAchievement` value before the host client is 
 
 ## Deferred from: code review of 2-8-hub-ability-use-outside-training-dummy-poi (2026-07-15)
 
-**D-2.8-A — `isInteractive`'s `!inDungeon` short-circuit bypasses `isDown`/`isSpirit` outside a dungeon** [`apps/mobile-controller/src/screens/ControllerScreen.tsx:1291`]
+**D-2.8-A — `isInteractive`'s `!inDungeon` short-circuit bypasses `isDown`/`isSpirit` outside a dungeon** — RESOLVED by 2-9-epic-2-post-28-deferred-hardening (2026-07-20) [`apps/mobile-controller/src/screens/ControllerScreen.tsx:1291`]
 `(!inDungeon || (!isDown && !isSpirit))` never evaluates the `isDown`/`isSpirit` clause when `inDungeon` is false. Currently unreachable in practice: `App.tsx` routes the `post-run` phase away from `ControllerScreen` to `PostRunMobileScreen`, and `resetToHub` unconditionally zeroes `isDown`/`isSpirit` before `hub`/`lobby` ever render `ControllerScreen` again. But the client has no independent gate of its own — if that routing ever changes, a downed/spirit player could see an incorrectly-interactive skill cell. Server-side is unaffected (GameRoom.ts's own `isDown`/`isSpirit` guard at line 1896 still blocks the actual ability dispatch).
+Resolution: dropped the `!inDungeon ||` bypass — the non-spirit-cell branch now gates on `(!isDown && !isSpirit)` unconditionally, matching the spirit-cell branch's own unconditional `!isFrozen` gate.
 
 **D-2.8-B — No automated test coverage for the `ControllerScreen.tsx` interactivity-gate rewrite** [`apps/mobile-controller/src/screens/ControllerScreen.tsx`]
 The riskier of this story's two diff hunks (a boolean-expression rewrite gating real touch input) ships with zero test coverage. Consistent with this repo's pre-existing lack of any `apps/mobile-controller` test precedent (confirmed: no `.test.*` files exist under that app), so this is not a regression introduced by 2.8, but the gap remains real.
 
-**D-2.8-C — No regression test for the surviving ability-input guards** [`apps/simulation-server/src/rooms/GameRoom.ts:1896`]
+**D-2.8-C — No regression test for the surviving ability-input guards** — RESOLVED by 2-9-epic-2-post-28-deferred-hardening (2026-07-20) [`apps/simulation-server/src/rooms/GameRoom.ts:1896`]
 `isFrozen`/`isDown`/`isSpirit`/`player.class === null` still gate ability processing (unchanged by this story) but no test asserts any of them still reject input post-change. Pre-existing gap, not introduced by 2.8 and outside its Required Tests scope.
+Resolution: added `apps/simulation-server/tests/game-room-ability-guard.test.ts`, mirroring the guard at `GameRoom.ts:1961` and asserting each of the 4 rejection conditions independently blocks dispatch, plus one all-clear passing case.
 
-**D-2.8-D — `raceTimeout` test helper duplicated instead of centralized** [`tests/e2e/hub-ability-use.test.ts`]
+**D-2.8-D — `raceTimeout` test helper duplicated instead of centralized** — RESOLVED by 2-9-epic-2-post-28-deferred-hardening (2026-07-20) [`tests/e2e/hub-ability-use.test.ts`]
 The `raceTimeout` generic (wraps `Promise.race` + `setTimeout`) is copy-pasted verbatim from `ability-dispatch.test.ts` rather than extracted into `tests/helpers/`. Low risk, but the next e2e test file will likely copy it a third time. Out of this story's Allowed Paths (adding/editing a shared helper file wasn't in scope).
+Resolution: extracted to `tests/helpers/race-timeout.ts`; `ability-dispatch.test.ts`, `hub-ability-use.test.ts`, and `full-run.test.ts` (which had since acquired its own 3rd copy) now import it instead of defining a local copy.
 
-**D-6.6-C — Reconnecting player during the 5.5s purification window lands on ControllerScreen then abruptly jumps to PostRunMobileScreen** [`apps/simulation-server/src/rooms/GameRoom.ts:1184`]
+**D-6.6-C — Reconnecting player during the 5.5s purification window lands on ControllerScreen then abruptly jumps to PostRunMobileScreen** — NOTE (2026-07-20): mis-filed under this section's header; ID prefix and content (`GameRoom.ts:1184`, boss purification, PostRunMobileScreen) are Epic 6 subject matter, not Epic 2. Left open/unresolved here — an Epic 6 hardening story is the correct owner. [`apps/simulation-server/src/rooms/GameRoom.ts:1184`]
 While online players see the purification animation on the host screen, the mobile client's phase is still `'dungeon'` (only changed via `run:complete` delta or snapshot). A player who reconnects during this 5.5-second window gets a snapshot with `phase='post-run'` immediately from the server but their mobile then shows the controller screen briefly before `run:complete` arrives. No data loss; UX is jarring. Pre-existing design; fix when post-run mobile UX is polished.
 
 ## Deferred from: code review of 2-6-epic-2-deferred-hardening (2026-07-06)
 
-**D-2.6-A — rAF stale `rafRef` if `renderFrame` throws** [`apps/host-client/src/screens/HubWorldScreen.tsx:201`]
+**D-2.6-A — rAF stale `rafRef` if `renderFrame` throws** — RESOLVED by 2-9-epic-2-post-28-deferred-hardening (2026-07-20) [`apps/host-client/src/screens/HubWorldScreen.tsx:201`]
 Inside the flash `tick` closure, if `renderFrame` throws, `rafRef.current` is left holding the ID of the already-executed (now invalid) frame. The `if (rafRef.current === null)` guard in the `[gameState]` effect then treats the loop as still running, permanently blocking future flash animation restarts. `renderFrame` is stable PixiJS rendering with no throw paths in the current codebase. Address if WebGL context loss or PixiJS upgrade ever introduces error paths in `renderFrame`.
+Resolution: wrapped the `renderFrame` call inside `tick` in try/catch — on catch, logs the error, sets `rafRef.current = null`, and stops the loop (no reschedule) instead of leaving a stale non-null id.
 
-**D-2.6-B — `stopJoystick` sends zero-velocity unconditionally on effect cleanup** [`apps/mobile-controller/src/screens/ControllerScreen.tsx:1138`]
+**D-2.6-B — `stopJoystick` sends zero-velocity unconditionally on effect cleanup** — RESOLVED by 2-9-epic-2-post-28-deferred-hardening (2026-07-20) [`apps/mobile-controller/src/screens/ControllerScreen.tsx:1138`]
 The joystick `useEffect` cleanup calls `stopJoystick()` regardless of whether a touch is currently active (`activeTouchIdRef.current !== null`). When the component unmounts with no active joystick touch, a spurious `{ joystick: { x: 0, y: 0 } }` message is sent. The server discards duplicate zero-vector inputs without side effects. Address if spurious messages ever appear in input telemetry noise analysis.
+Resolution: cleanup now only calls `stopJoystick()` when `activeTouchIdRef.current !== null`; the 4 `removeEventListener` calls remain unconditional.
 
-**QD-6-A — Player abilities never damage the boss**
+**QD-6-A — Player abilities never damage the boss** — NOTE (2026-07-20): resolved by Story 6.7 (boss combat resolution wiring) and extended by 6.9. Confirmed via `GameRoom.ts`: boss hit-scan branches broadcasting `boss:damaged` now exist at multiple sites (hit-scan/mixed-faction ~2229-2236, zone-tick ~1560, Storm Eye strike ~1595), all clamping `hp` via `Math.max(0, hp - damage)`. No action needed.
 The ability hit-scan loop in `GameRoom.ts` (~line 1251) only iterates `gameState.enemies`. The boss is never checked. Fix: after the enemy loop, add a boss hit-scan — check `isInHitZone` against `gameState.boss.position`, reduce `boss.hp` by damage, broadcast `BossDamagedDelta` (`{ type: 'boss:damaged'; bossId; newHp }`), clamp hp ≥ 0. The boss defeat event is already emitted by `tickBoss` when hp ≤ 0 on the next tick. This is a gameplay-critical fix needed for any real boss playtest.
 
 ---
@@ -1199,3 +1204,11 @@ The new flag is set in `onBack` and consumed in `handleDisconnect`, but nothing 
 
 **D2 — `safeReplaceState`'s blanket catch means `handleGiveUp`'s stale-URL clear can silently no-op under the exact throttle condition it exists to survive** [`apps/mobile-controller/src/App.tsx:22-32` (`safeReplaceState`), `:246-253` (`handleGiveUp`'s clear-on-empty-code branch)]
 `safeReplaceState`'s "losing a URL sync is harmless" rationale holds for `handleJoin` and `onBack` (both are purely a sync of already-known state), but not for `handleGiveUp`'s Task-3 call site, whose entire purpose is to strip a stale `?session=<oldRoomId>` before `SessionCodeEntryScreen` mounts without an `initialCode` prop (`SessionCodeEntryScreen.tsx:32-33` falls back to reading `?session=` from the URL when `initialCode` is absent). If `history.replaceState` throws here (Safari's ~100-calls/30s throttle — the exact case the helper was built to survive), the exception is swallowed, the stale code stays in the URL, and the give-up flow silently re-prefills the abandoned room instead of showing a blank field, undermining AC3's stated intent in the one case AC1 is designed to handle. Requires two independently rare conditions to compound (the browser throttle AND being on the give-up path with no reconnect code), matching this story's own D1 framing of "very-low-probability real-world trigger." Fixing it without contradicting AC1's uniform swallow-everything design would need a URL-independent source of truth for "no code to prefill" (e.g., an explicit `hasStaleUrl` flag or switching `SessionCodeEntryScreen`'s fallback away from reading the URL directly) — a small but real redesign of the Story 4.7-established URL-as-fallback pattern, out of this story's scope. Revisit if stale-code re-prefill on give-up is ever reported.
+
+## Deferred from: code review of 2-9-epic-2-post-28-deferred-hardening (2026-07-20)
+
+**D-2.9-A — Sibling unguarded `renderFrame` call in the `[gameState]` effect body has the same throw-vulnerability class as D-2.6-A** [`apps/host-client/src/screens/HubWorldScreen.tsx:196`]
+Story 2.9 wrapped the flash-animation `tick` closure's `renderFrame` call in try/catch (D-2.6-A), but the direct `renderFrame` call at the top of the same `[gameState]` effect (before the `tick` closure is ever entered) remains unguarded. A throw there is unhandled — same failure class, different call site, out of D-2.6-A's/AC1's originally-scoped location. Found by the Edge Case Hunter review layer during Story 2.9's code review, verified against source; not caused by this story's diff, pre-existing. Revisit alongside any future rendering-robustness pass, or if `renderFrame` ever gains a real throw path (WebGL context loss, PixiJS upgrade).
+
+**D-2.9-B — Sibling unguarded `renderFrame` call inside the async PixiJS init effect** [`apps/host-client/src/screens/HubWorldScreen.tsx:176`]
+Same throw-vulnerability class as D-2.9-A / D-2.6-A: the catch-up `renderFrame` call inside the PixiJS init effect (fires when `gameState` arrived before `pixiAppRef` finished initializing) has no try/catch. Found by the Edge Case Hunter review layer during Story 2.9's code review; pre-existing, untouched by this story. Revisit together with D-2.9-A.

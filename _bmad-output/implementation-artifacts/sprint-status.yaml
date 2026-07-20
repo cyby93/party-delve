@@ -437,7 +437,7 @@ development_status:
   2-8-hub-ability-use-outside-training-dummy-poi: done
   # Closes D-2.6-A/B (rAF stale ref, spurious stopJoystick send) and D-2.8-A/C/D
   # (isInteractive inDungeon bypass, ability-guard regression test, raceTimeout dedup).
-  2-9-epic-2-post-28-deferred-hardening: ready-for-dev
+  2-9-epic-2-post-28-deferred-hardening: done
   epic-2-retrospective: optional
 
   # ─── E3: Core Combat — 4 Alpha Classes ──────────────────────────────────────
