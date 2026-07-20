@@ -42,7 +42,7 @@
 # Phase2 legacy stories (old Phase-based keys) are tracked below under PHASE 2 STORIES.
 
 generated: 2026-06-22
-last_updated: 2026-07-20 (3-24 moved to review)
+last_updated: 2026-07-20 (4-14 done)
 # 2026-07-20: code review of 1-10-epic-1-post-19-deferred-hardening (done) — Blind Hunter +
 # Edge Case Hunter + Acceptance Auditor all ran; Acceptance Auditor found zero AC violations
 # (all 5 ACs + all 4 non-goals confirmed against the diff). Edge Case Hunter surfaced 2 real,
@@ -521,7 +521,7 @@ development_status:
   # Closes D-4.11-A/B (loadLevel level-2/default branch commit-ordering risk, resetToHub
   # boss-body leak), D1-4.12 (isFrozen never cleared on level transition), D1-4.13
   # (VotePopup stuck-on-Waiting with no recovery timeout).
-  4-14-epic-4-post-413-deferred-hardening: ready-for-dev
+  4-14-epic-4-post-413-deferred-hardening: done
   epic-4-retrospective: optional
 
   # ─── E5: Spirit Bond System ─────────────────────────────────────────────────

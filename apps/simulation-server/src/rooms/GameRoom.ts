@@ -778,6 +778,15 @@ export class GameRoom extends Room {
     }
     this.essenceSensorBodies.clear();
 
+    // Destroy boss body and arena walls if a run ended mid-boss-fight or boss construction
+    // failed partway through (Story 4.14 — mirrors loadLevel's equivalent cleanup block)
+    if (this.bossBody) {
+      this.physicsWorld.destroyBody(this.bossBody);
+      this.bossBody = null;
+    }
+    for (const wall of this.arenaWallBodies) this.physicsWorld.destroyBody(wall);
+    this.arenaWallBodies.length = 0;
+
     // Clear game state arrays
     this.gameState.enemies = [];
     this.gameState.essenceDrops = [];
@@ -1017,6 +1026,10 @@ export class GameRoom extends Room {
       // Full HP restore on every level transition (Story 4.12) — applies to every player,
       // not only the isDown/isSpirit subset; matches resetToHub()'s existing pattern.
       player.hp = player.maxHp;
+      // Clear isFrozen on every level transition too (Story 4.14) — matches
+      // resetToHub()'s existing player.isFrozen = false precedent; a disconnected/frozen
+      // player must not carry a stale freeze flag across a level boundary.
+      player.isFrozen = false;
       const spawnIdx = this.gameState.players.indexOf(player);
       const spawn = DUNGEON_SPAWN_POSITIONS[spawnIdx] ?? { x: 400, y: 540 };
       player.x = spawn.x;
@@ -1059,7 +1072,6 @@ export class GameRoom extends Room {
       this.gameState.session.levelIndex = index; // commit only after boss setup succeeds
       logger.info({ roomId: this.roomId }, 'boss arena loaded');
     } else if (index === 2) {
-      this.gameState.session.levelIndex = index;
       this.levelObjective = 'survive-waves';
       this.totalWaves = WAVE_COUNTS['mid'];
       this.waveIndex = 0;
@@ -1068,8 +1080,8 @@ export class GameRoom extends Room {
       this.gameState.session.waveIndex = 0;
       this.gameState.session.totalWaves = this.totalWaves;
       this.spawnWave(1, 'mid', index);
+      this.gameState.session.levelIndex = index; // commit only after spawnWave succeeds
     } else {
-      this.gameState.session.levelIndex = index;
       this.levelObjective = 'clear';
       this.waveIndex = 0; this.totalWaves = 0; this.wavePauseUntil = 0;
       this.gameState.session.levelObjective = 'clear';
@@ -1077,6 +1089,7 @@ export class GameRoom extends Room {
       this.gameState.session.totalWaves = 0;
       const tier = index === 1 ? 'early' : 'late';
       this.spawnEnemies(tier, index);
+      this.gameState.session.levelIndex = index; // commit only after spawnEnemies succeeds
     }
   }
 

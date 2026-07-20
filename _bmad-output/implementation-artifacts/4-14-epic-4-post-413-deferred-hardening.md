@@ -4,7 +4,7 @@ baseline_commit: 3d22e41a41a9fae1f18e86c72cca8529ae173c96
 
 # Story 4.14: Epic 4 — Post-4.13 Deferred Hardening
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -520,38 +520,135 @@ site's gating condition (~line 1517-1524) — this task only adds the timeout ef
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1** (AC: #1) — In `loadLevel`'s level-2 branch, move
+- [x] **Task 1** (AC: #1) — In `loadLevel`'s level-2 branch, move
   `this.gameState.session.levelIndex = index;` from the branch's first statement to after
   `this.spawnWave(1, 'mid', index)` succeeds. Apply the identical move in the default branch,
   after `this.spawnEnemies(tier, index)` succeeds.
-- [ ] **Task 2** (AC: #2) — In `resetToHub()`, add the boss-body/arena-wall destruction block
+- [x] **Task 2** (AC: #2) — In `resetToHub()`, add the boss-body/arena-wall destruction block
   (mirroring `loadLevel`'s existing equivalent block).
-- [ ] **Task 3** (AC: #3) — In `loadLevel`'s per-player reset loop, add
+- [x] **Task 3** (AC: #3) — In `loadLevel`'s per-player reset loop, add
   `player.isFrozen = false;` alongside the existing unconditional `player.hp = player.maxHp`
   line.
-- [ ] **Task 4** (AC: #4) — In `ControllerScreen.tsx`'s `VotePopup`, add the
+- [x] **Task 4** (AC: #4) — In `ControllerScreen.tsx`'s `VotePopup`, add the
   `VOTE_ACCEPT_STUCK_TIMEOUT_MS` constant and the `useEffect` that resets `hasAccepted` to
   `false` after the timeout if the component is still mounted.
-- [ ] **Task 5** (AC: #5) — Add unit tests in `apps/simulation-server/tests/` (new file
+- [x] **Task 5** (AC: #5) — Add unit tests in `apps/simulation-server/tests/` (new file
   `game-room-post-413-deferred-hardening.test.ts`, following the established mirrored-logic
   pattern) for: (a) Task 1's levelIndex-commit-after-success ordering in both the level-2 and
   default branches, (b) Task 2's boss-body/arena-wall destruction in `resetToHub`, (c) Task
   3's `isFrozen` clearing in the per-player reset loop.
-- [ ] Run `npm run typecheck` (full monorepo) — confirm 0 errors.
-- [ ] Run the full Vitest suite (`npx vitest run` from monorepo root) — confirm no
+- [x] Run `npm run typecheck` (full monorepo) — confirm 0 errors.
+- [x] Run the full Vitest suite (`npx vitest run` from monorepo root) — confirm no
   regressions.
-- [ ] Manually code-trace Task 4 per the Client-UX hook (no display device required): confirm
+- [x] Manually code-trace Task 4 per the Client-UX hook (no display device required): confirm
   `VOTE_ACCEPT_STUCK_TIMEOUT_MS` comfortably exceeds a normal same-LAN vote round-trip, and
   that the timeout is cleared on unmount (no leaked timer warning path).
-- [ ] Update `deferred-work.md`: mark D-4.11-A, D-4.11-B, D1-4.12, D1-4.13 as RESOLVED by
+- [x] Update `deferred-work.md`: mark D-4.11-A, D-4.11-B, D1-4.12, D1-4.13 as RESOLVED by
   this story (do not delete entries — follow the existing RESOLVED-annotation convention).
+
+### Review Findings
+
+- [x] [Review][Defer] `loadLevel`'s unconditional `player.isFrozen = false` can un-freeze a
+  player who is genuinely still mid-disconnect-grace (inside `onLeave`'s
+  `allowReconnection` await), since `loadLevel` can run (triggered by other active players)
+  while a disconnected player's slot is held open
+  [apps/simulation-server/src/rooms/GameRoom.ts:1030-1032] — deferred, pre-existing
+  architectural characteristic already present in `resetToHub()`'s identical unconditional
+  clear (line 816) which Story 4.14's own AC3 explicitly mirrors by design; fixing this would
+  require a separate "genuinely disconnected" flag distinct from `isFrozen`, out of scope for
+  a minimal hardening diff
+- [x] [Review][Defer] `spawnWave`/`spawnEnemies` can throw partway through their spawn loop,
+  leaving already-pushed enemies in `gameState.enemies` un-rolled-back; `tick()` does not gate
+  enemy processing on `session.levelIndex`, so these orphaned enemies keep acting even though
+  the level-transition is reported as not-yet-committed by this story's AC1 fix
+  [apps/simulation-server/src/rooms/GameRoom.ts, `spawnWave`/`spawnEnemies`] — deferred,
+  pre-existing behavior of `spawnWave`/`spawnEnemies` internals, untouched by this diff (which
+  only reorders the `levelIndex` commit relative to these calls, per AC1's literal scope)
+- [x] [Review][Defer] `VotePopup`'s 6s recovery timer starts per-tap, not per overall vote
+  resolution — in sessions with more than 2 players, waiting on a slower teammate to accept
+  can exceed 6s even when this player's own vote succeeded, producing a false "your vote
+  didn't go through" impression when the button silently reverts to "Accept" with no
+  distinguishing message
+  [apps/mobile-controller/src/screens/ControllerScreen.tsx:590-594] — deferred, this is the
+  literal behavior AC4 specifies ("6 seconds elapse with the component still mounted... then
+  hasAccepted resets"), not a code deviation; worth revisiting as a UX polish follow-up if
+  reported in real multi-player play
 
 ## Dev Agent Record
 
 ### Agent Model Used
 
+Claude Sonnet 5 (claude-sonnet-5)
+
 ### Debug Log References
+
+None — no HALT conditions triggered. Typecheck passed on the first run (0 errors). Vitest
+first run surfaced 1 failure, but it was a bug in the new test itself (Task 5's
+`arenaWallBodies` test asserted against the same array reference it had just cleared in
+place, rather than a snapshot taken before cleanup) — not a regression in the Task 1-3
+implementation code. Fixed by snapshotting `[...walls]` before the mirrored cleanup call
+runs; second Vitest run passed clean (457 passed, 0 failed, 3 skipped), consistent with the
+two-strike QA policy.
 
 ### Completion Notes List
 
+- Verified all 4 target line ranges against current `GameRoom.ts`/`ControllerScreen.tsx`
+  source before editing — matched the story's documented "verified today" snippets exactly,
+  no line-number drift.
+- Task 1: moved `this.gameState.session.levelIndex = index;` to the last statement in both
+  the level-2 and default branches of `loadLevel`; `levelObjective`/wave-count fields left in
+  their original position per Non-goals. Boss branch (already fixed by 4.11) untouched.
+- Task 2: added the boss-body/arena-wall destruction block to `resetToHub()` (before the
+  "Clear game state arrays" comment, alongside the essence-sensor cleanup), mirroring
+  `loadLevel`'s existing equivalent block verbatim. Did not add `gameState.boss = null` per
+  Non-goals.
+- Task 3: added `player.isFrozen = false;` immediately after the existing unconditional
+  `player.hp = player.maxHp` line in `loadLevel`'s per-player reset loop.
+- Task 4: added the `VOTE_ACCEPT_STUCK_TIMEOUT_MS = 6000` constant and a `useEffect` in
+  `VotePopup` that arms a `setTimeout` resetting `hasAccepted` to `false` whenever it becomes
+  `true`, cleared on unmount/dependency change. No JSX, prop, or render-gate changes.
+- Task 5: added `apps/simulation-server/tests/game-room-post-413-deferred-hardening.test.ts`
+  with 10 tests mirroring the level-2/default branch ordering (AC1), the `resetToHub`
+  boss-body/arena-wall cleanup incl. no-op guard (AC2), and the `isFrozen`-clearing reset
+  loop (AC3), following the established mirrored-logic pattern (GameRoom isn't instantiable
+  outside a live Colyseus room).
+- Task 4 has no automated test per the story's Non-goals (`apps/mobile-controller` has no
+  test harness of any kind). Verified by code trace: `VOTE_ACCEPT_STUCK_TIMEOUT_MS` (6000ms)
+  comfortably exceeds a normal same-LAN vote-resolution round-trip (well under 1s in
+  practice); the effect's cleanup function clears the timer on every re-run (including
+  unmount), so there is no leaked-timer path. A live-device pass is still recommended but not
+  required to close this story, matching this project's established precedent for
+  mobile-controller-only stories with no display device available in this dev sandbox.
+- `npm run typecheck` (full monorepo): 0 errors.
+- `npx vitest run` (full monorepo): 457 passed, 0 failed, 3 skipped — no regressions.
+- Updated `deferred-work.md`: D-4.11-A, D-4.11-B, D1-4.12, D1-4.13 all marked RESOLVED with a
+  `Resolution:` line each, following the existing annotation convention (entries preserved,
+  not deleted).
+- No CONTRACT CHANGE triggered — no `packages/shared-types/**`/`packages/net-protocol/**`
+  paths touched, no session-lifecycle/reconnect/room-state/join-flow/prediction-reconciliation
+  changes; all 4 fixes are internal ordering/cleanup/UI-recovery changes with no wire-format
+  impact.
+- Confidence: 95% — all 4 target code regions matched the story's pre-verified snippets
+  exactly (no drift), the fixes are minimal and mechanical (move one line, add one cleanup
+  block, add one field clear, add one bounded timeout), and both typecheck and the full test
+  suite pass clean. The 5% residual is Task 4's lack of a live-device manual pass (by design,
+  per Non-goals/Required hooks — no display device available in this dev sandbox).
+
 ### File List
+
+- `apps/simulation-server/src/rooms/GameRoom.ts` (modified — Tasks 1-3)
+- `apps/mobile-controller/src/screens/ControllerScreen.tsx` (modified — Task 4)
+- `apps/simulation-server/tests/game-room-post-413-deferred-hardening.test.ts` (new — Task 5)
+- `_bmad-output/implementation-artifacts/deferred-work.md` (modified — RESOLVED annotations)
+
+### Change Log
+
+- Closed D-4.11-A, D-4.11-B, D1-4.12, D1-4.13 in `GameRoom.ts`/`ControllerScreen.tsx`
+  (2026-07-20): `loadLevel`'s level-2/default branches now defer the `levelIndex` commit
+  until after `spawnWave`/`spawnEnemies` succeeds, mirroring 4.11's boss-branch fix (Task 1);
+  `resetToHub()` now destroys `bossBody`/`arenaWallBodies` (Task 2); `loadLevel`'s per-player
+  reset loop now clears `isFrozen` unconditionally (Task 3); `VotePopup` now self-recovers
+  from a stuck "Waiting..." state via a bounded 6s client-side timeout (Task 4); new unit
+  test file `game-room-post-413-deferred-hardening.test.ts` covers Tasks 1-3 (Task 5).
+  Typecheck 0 errors; full Vitest suite green (457 passed, 0 failed, 3 skipped, no
+  regressions). All 4 `deferred-work.md` entries marked RESOLVED.

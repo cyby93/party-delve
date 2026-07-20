@@ -22,6 +22,13 @@ const JOYSTICK_MAX_RADIUS = 60;
 const DEADZONE_RADIUS = 8;
 const INPUT_INTERVAL_MS = 33; // ~30hz throttle to match sim tick rate
 
+// ponytail: bounded last-resort recovery for a startDungeon failure that leaves
+// gameState.runProposal unchanged (see deferred-work.md D1-4.13) — VotePopup can't rely on
+// a server signal to unmount in that case, so it self-resets after this long. Comfortably
+// exceeds a normal same-LAN vote-resolution round-trip (well under 1s in practice); revisit
+// if this ever proves too short/long in real play.
+const VOTE_ACCEPT_STUCK_TIMEOUT_MS = 6000;
+
 const SKILL_JOYSTICK_RING_PX = 80;
 const SKILL_JOYSTICK_KNOB_PX = 28;
 const SKILL_JOYSTICK_RING_RADIUS = SKILL_JOYSTICK_RING_PX / 2;
@@ -579,6 +586,13 @@ interface VotePopupProps {
 
 function VotePopup({ proposal, onAccept, onDecline }: VotePopupProps) {
   const [hasAccepted, setHasAccepted] = useState(false);
+
+  useEffect(() => {
+    if (!hasAccepted) return;
+    const timer = setTimeout(() => setHasAccepted(false), VOTE_ACCEPT_STUCK_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [hasAccepted]);
+
   const difficultyLabel: Record<string, string> = { easy: 'Easy', normal: 'Normal', hard: 'Hard' };
   return (
     <div style={{ position: 'absolute', inset: 0, background: 'rgba(15,14,16,0.85)', zIndex: 60,
