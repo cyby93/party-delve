@@ -43,6 +43,23 @@
 
 generated: 2026-06-22
 last_updated: 2026-07-20
+# 2026-07-20: code review of 1-10-epic-1-post-19-deferred-hardening (done) — Blind Hunter +
+# Edge Case Hunter + Acceptance Auditor all ran; Acceptance Auditor found zero AC violations
+# (all 5 ACs + all 4 non-goals confirmed against the diff). Edge Case Hunter surfaced 2 real,
+# narrow latent risks introduced by the fix itself: D1 leavingIntentionallyRef is a single
+# global (non-session-scoped) flag, so a rapid leave-room-A-then-join-room-B race can
+# mis-attribute B's later disconnect; D2 safeReplaceState's blanket catch means
+# handleGiveUp's stale-URL clear can silently no-op under the exact Safari throttle
+# condition AC1 was built to survive. Both are net improvements over pre-story behavior,
+# require compound-rare conditions to trigger, and a full fix would need a session-scoped
+# handler / URL-independent state respectively — both explicitly out of this story's
+# Non-goals (single boolean ref, no event bus). Deferred to deferred-work.md rather than
+# patched. Blind Hunter's other 7 findings were dismissed on triage — most matched the
+# story's own AC1/AC2/AC3 wording exactly (blanket catch, clearPersistedSession-before-
+# disconnect ordering, asymmetric URL handling) or were pre-existing/out-of-scope
+# (handleGiveUp never called session.disconnect() before this story either) — the reviewer
+# had no project context by design (blind layer) and couldn't see the spec matched intent.
+# Status: review → done.
 # 2026-07-20: created 6 deferred-hardening stories in one batch (1.10, 2.9, 3.24, 4.14, 5.9,
 # 6.10), one per epic with a genuine backlog since its last hardening pass — closing the
 # "for all unresolved deferred items" sweep of deferred-work.md's 278 logged findings.
@@ -402,7 +419,7 @@ development_status:
   1-9-epic-1-post-18-deferred-hardening: done
   # Closes 1.9's own review leftovers (D1-D3): unguarded history.replaceState at both
   # call sites, async onLeave/handleDisconnect race, handleGiveUp stale URL fallback.
-  1-10-epic-1-post-19-deferred-hardening: ready-for-dev
+  1-10-epic-1-post-19-deferred-hardening: done
   epic-1-retrospective: optional
 
   # ─── E2: Hub World & Class Selection ────────────────────────────────────────

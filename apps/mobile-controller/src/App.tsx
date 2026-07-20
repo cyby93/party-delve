@@ -19,6 +19,18 @@ type AppScreen = 'auth-choice' | 'session-entry' | 'class-select-forced' | 'cont
 // CloseCode.CONSENTED = 4000 (Colyseus intentional leave — do not show reconnect screen)
 const CLOSE_CONSENTED = 4000;
 
+// Safari (and recent Chromium) throttle history.pushState/replaceState (Safari: ~100
+// calls/30s) and throw SecurityError past the limit. Losing a URL sync is harmless;
+// letting the exception propagate mid-callback would skip whatever runs after it (e.g.
+// the setScreen call that always follows these calls in this file).
+function safeReplaceState(url: string) {
+  try {
+    history.replaceState(null, '', url);
+  } catch {
+    // no-op — see comment above
+  }
+}
+
 function PostRunMobileScreen({ isVictory, onReturnToCamp }: { isVictory: boolean; onReturnToCamp: () => void }) {
   const [returned, setReturned] = useState(false);
   return (
@@ -90,6 +102,7 @@ export function App() {
   const sessionRef = useRef<MobileSession | null>(null);
   const bondMomentLevelRef = useRef<number | null>(null);
   const gameStateRef = useRef<GameState | null>(null);
+  const leavingIntentionallyRef = useRef(false);
 
   useEffect(() => {
     return () => { session?.disconnect(); };
@@ -148,6 +161,10 @@ export function App() {
   }, []);
 
   const handleDisconnect = useCallback((code: number) => {
+    if (leavingIntentionallyRef.current) {
+      leavingIntentionallyRef.current = false;
+      return;
+    }
     if (code === CLOSE_CONSENTED) {
       clearPersistedSession();
       return;
@@ -185,7 +202,7 @@ export function App() {
         handleDisconnect,
       );
       setSession(s);
-      history.replaceState(null, '', '?session=' + roomId);
+      safeReplaceState('?session=' + roomId);
       setScreen('class-select-forced');
       setSessionEntryInitialCode(undefined);
     } catch (err) {
@@ -230,7 +247,11 @@ export function App() {
     clearPersistedSession();
     setSession(null);
     setRunVictoryEssence(null);
-    setSessionEntryInitialCode(reconnectRoomId || undefined);
+    const nextCode = reconnectRoomId || undefined;
+    if (nextCode === undefined) {
+      safeReplaceState(window.location.pathname);
+    }
+    setSessionEntryInitialCode(nextCode);
     setScreen('session-entry');
   }, [reconnectRoomId]);
 
@@ -252,9 +273,11 @@ export function App() {
     return (
       <ClassSelectionScreen
         onBack={() => {
+          if (session) leavingIntentionallyRef.current = true;
+          clearPersistedSession();
           session?.disconnect();
           setSession(null);
-          history.replaceState(null, '', window.location.pathname);
+          safeReplaceState(window.location.pathname);
           setScreen('session-entry');
         }}
         onPickClass={(classId) => {

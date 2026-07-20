@@ -4,7 +4,7 @@ baseline_commit: 3d22e41
 
 # Story 1.10: Epic 1 — Post-1.9 Deferred Hardening
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -215,37 +215,49 @@ is what every existing browser target in this project's scope hits in practice)
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1** (AC: #1, #4) — Add `safeReplaceState` helper and route all 3 URL-mutation
+- [x] **Task 1** (AC: #1, #4) — Add `safeReplaceState` helper and route all 3 URL-mutation
   call sites through it:
-  - [ ] Subtask 1.1 — Add a module-level `safeReplaceState(url: string)` function in
+  - [x] Subtask 1.1 — Add a module-level `safeReplaceState(url: string)` function in
     App.tsx (near the `CLOSE_CONSENTED` constant, ~line 20), wrapping
     `history.replaceState(null, '', url)` in try/catch with a comment explaining the
     Safari/Chromium throttling rationale (see Dev Notes for exact wording precedent).
-  - [ ] Subtask 1.2 — Replace `handleJoin`'s direct call (line 188) with
+  - [x] Subtask 1.2 — Replace `handleJoin`'s direct call (line 188) with
     `safeReplaceState('?session=' + roomId)`. Do not change its position in the function or
     any other line in `handleJoin`.
-  - [ ] Subtask 1.3 — Replace `onBack`'s direct call (line 257) with
+  - [x] Subtask 1.3 — Replace `onBack`'s direct call (line 257) with
     `safeReplaceState(window.location.pathname)`.
-- [ ] **Task 2** (AC: #2) — Close the `onBack`/`handleDisconnect` race:
-  - [ ] Subtask 2.1 — Add `const leavingIntentionallyRef = useRef(false);` alongside the
+- [x] **Task 2** (AC: #2) — Close the `onBack`/`handleDisconnect` race:
+  - [x] Subtask 2.1 — Add `const leavingIntentionallyRef = useRef(false);` alongside the
     existing refs (~line 90-92).
-  - [ ] Subtask 2.2 — In `onBack`, before `session?.disconnect()`: if `session` is non-null,
+  - [x] Subtask 2.2 — In `onBack`, before `session?.disconnect()`: if `session` is non-null,
     set `leavingIntentionallyRef.current = true`; then call `clearPersistedSession()`
     (imported already, used by `handleGiveUp`).
-  - [ ] Subtask 2.3 — In `handleDisconnect`, add a check at the very top: if
+  - [x] Subtask 2.3 — In `handleDisconnect`, add a check at the very top: if
     `leavingIntentionallyRef.current` is true, set it back to `false` and `return`
     immediately (before the existing `code === CLOSE_CONSENTED` check).
-- [ ] **Task 3** (AC: #3) — Clear stale URL in `handleGiveUp`:
-  - [ ] Subtask 3.1 — In `handleGiveUp`, compute `const nextCode = reconnectRoomId ||
+- [x] **Task 3** (AC: #3) — Clear stale URL in `handleGiveUp`:
+  - [x] Subtask 3.1 — In `handleGiveUp`, compute `const nextCode = reconnectRoomId ||
     undefined;`. If `nextCode === undefined`, call
     `safeReplaceState(window.location.pathname)` before `setSessionEntryInitialCode`.
-  - [ ] Subtask 3.2 — Pass `nextCode` to `setSessionEntryInitialCode` (replacing the current
+  - [x] Subtask 3.2 — Pass `nextCode` to `setSessionEntryInitialCode` (replacing the current
     inline `reconnectRoomId || undefined` expression).
-- [ ] Run `npm run typecheck` (full monorepo) from repo root; verify 0 errors.
-- [ ] Manual smoke test (see Testing Requirements below) — not required to reach `done` in
+- [x] Run `npm run typecheck` (full monorepo) from repo root; verify 0 errors.
+- [x] Manual smoke test (see Testing Requirements below) — not required to reach `done` in
   this sandboxed environment (no interactive browser/device), but recommended before merge.
   Verify by code trace instead: confirm `handleJoin`/`handleGuestContinue` line count and
   argument order are unchanged aside from the `safeReplaceState` wrapper.
+
+### Review Findings
+
+- [x] [Review][Defer] `leavingIntentionallyRef` is a single global, non-session-scoped flag —
+  a rapid leave-then-rejoin race can mis-attribute a later disconnect
+  [apps/mobile-controller/src/App.tsx:163-167,275-281] — deferred, pre-existing risk class
+  accepted by this story's own Non-goals (single boolean ref, no session-scoped event bus)
+- [x] [Review][Defer] `safeReplaceState`'s blanket catch means `handleGiveUp`'s stale-URL
+  clear can silently no-op under the exact Safari/Chromium throttle condition AC1 exists to
+  survive, re-prefilling an abandoned room code
+  [apps/mobile-controller/src/App.tsx:22-32,246-253] — deferred, compound rare edge case,
+  inherent to the URL-as-fallback design predating this story (Story 4.7)
 
 ---
 
@@ -462,8 +474,76 @@ const handleGiveUp = useCallback(() => {
 
 ### Agent Model Used
 
+Claude Sonnet 5 (claude-sonnet-5)
+
 ### Debug Log References
+
+- `npm run typecheck` (full monorepo, 10 tsconfig projects): exit 0, 0 errors.
+- `npm run test` (vitest run, full suite): 34/38 files passed, 430/440 tests passed (10
+  skipped). 4 e2e suite failures (`reconnect`, `ability-dispatch`, `full-run`,
+  `hub-ability-use`) all fail identically with `simulation-server did not start within 60s`
+  (`tests/helpers/server.ts:37`) — a pre-existing sandbox port-binding limitation with no
+  relation to this story's `App.tsx`-only changes, matching the same failure signature
+  logged in Story 3.23's Dev Agent Record.
 
 ### Completion Notes List
 
+- Implemented all 3 deferred findings (D1, D2, D3) from the 1.9 code review, confined
+  entirely to `apps/mobile-controller/src/App.tsx` per the story's Allowed paths.
+- Task 1: added module-level `safeReplaceState(url)` wrapping `history.replaceState` in
+  try/catch; routed `handleJoin`, `onBack`, and the new `handleGiveUp` call site through it.
+- Task 2: added `leavingIntentionallyRef` (plain `useRef(false)`, matching the existing
+  `sessionRef`/`gameStateRef` pattern); `onBack` sets it (guarded on `session` non-null) and
+  calls `clearPersistedSession()` before `session?.disconnect()`; `handleDisconnect` checks
+  and consumes the flag before its existing `CLOSE_CONSENTED` branch, short-circuiting
+  `setScreen('reconnect')` for any self-initiated leave regardless of eventual close code.
+- Task 3: `handleGiveUp` now computes `nextCode = reconnectRoomId || undefined` and, only
+  when `nextCode` is `undefined`, clears the `?session=` URL via `safeReplaceState` before
+  passing `nextCode` to `setSessionEntryInitialCode` — behavior is unchanged when a real
+  reconnect code exists.
+- All edits match the Dev Notes' prescribed diffs line-for-line; no deviation from the
+  story's Non-goals (handleJoin's URL-sync timing/args unchanged, handleGuestContinue
+  untouched, no new abstraction beyond the single ref flag and helper function).
+- **CONTRACT CHANGE flag**: set per the persistent contract-change-detection rule — this
+  story's Task 2/AC2 modifies reconnect/session-lifecycle *client handling* logic (the
+  `onBack`/`handleDisconnect` race). No `packages/shared-types/**` or `packages/net-protocol/**`
+  file was touched, no wire-format/message-schema change was made, and no new message type
+  was introduced — the fix is a purely local client-side ref flag gating an existing
+  callback, confined to `apps/mobile-controller/src/App.tsx` (Mobile Controller Engineer's
+  own ownership area) as scoped by the story itself. Per CLAUDE.md's Contract-change hook,
+  documenting the checklist here since it triggered on the "reconnect flow"/"session
+  lifecycle" keyword match:
+  - Protocol Architect review: not applicable — no protocol/schema/DTO was changed; flagging
+    for awareness only, since the underlying `DeltaEventMsg`/session message contracts this
+    logic reacts to are unmodified.
+  - Compatibility checklist: N/A — no wire format change; existing clients/servers are
+    unaffected.
+  - Spec or ADR update: N/A — no architectural or protocol decision changed; this is a
+    client bug fix within an already-approved reconnect UX (Story 4.7's cold-reload
+    contract is explicitly preserved per AC4).
+  - Contract test: N/A — no contract was added or altered; `tests/contract/**` is
+    unaffected (existing contract test suite ran green in this session).
+- Manual smoke test (see Testing Requirements) was verified by code trace, not on a physical
+  device/browser (no interactive display in this sandbox, per Story 1.9/2.7/3.23
+  precedent): confirmed `handleJoin`'s and `handleGuestContinue`'s line counts, argument
+  order, and call positions are unchanged apart from the `safeReplaceState` substitution.
+- Confidence: 95% — every diff matches the Dev Notes' prescribed code verbatim, full
+  monorepo typecheck is clean, and the full regression suite passed apart from 4
+  pre-existing, unrelated e2e sandbox failures. The 5% residual is the untested physical
+  Safari throttling path (D1) and the lack of a live-browser confirmation for AC2/AC3,
+  neither of which this sandboxed environment can exercise.
+
 ### File List
+
+- `apps/mobile-controller/src/App.tsx` (modified)
+
+## Change Log
+
+- 2026-07-20: Implemented Story 1.10 — closed all 3 deferred findings (D1 unguarded
+  `history.replaceState`, D2 `onBack`/`handleDisconnect` disconnect race, D3 stale
+  `handleGiveUp` URL) from the 1.9 code review. `safeReplaceState` helper added and used at
+  all 3 URL-mutation sites; `leavingIntentionallyRef` closes the disconnect race at its
+  root cause; `handleGiveUp` clears the URL when there's no reconnect code to override it.
+  Full monorepo typecheck: 0 errors. Full test suite: 430/440 passed, 4 pre-existing
+  unrelated e2e sandbox failures (simulation-server port-binding timeout). Status →
+  review.
