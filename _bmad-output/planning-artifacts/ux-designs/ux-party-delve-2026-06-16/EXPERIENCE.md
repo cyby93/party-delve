@@ -2,7 +2,7 @@
 title: Party Delve Experience Design
 project: party-delve
 status: final
-updated: 2026-06-18
+updated: 2026-07-20
 ---
 
 # Party Delve Experience Design
@@ -112,14 +112,22 @@ This section defines behavioral specifications. Visual anatomy is in DESIGN.md S
 ### `skill-cell`
 
 **Idle state:**
-The cell displays an ability icon (placeholder geometry in v1 alpha), the ability name (Lora 400 italic), and an input type badge (AUTO / RELEASE / TAP) in the bottom-left corner. No description, no tooltip — those live in the ability briefing panel during class selection, before the player enters the controller.
+The cell displays an ability icon (placeholder geometry in v1 alpha), the ability name (Lora 400 italic), and an input type badge (AUTO / RELEASE / TAP / AIM_CAST) in the bottom-left corner. No description, no tooltip — those live in the ability briefing panel during class selection, before the player enters the controller.
 
 **Touch behavior by input type:**
-- **Joystick-AutoFire:** On touch, a joystick ring spawns at the exact touch position within the cell. Player drags to aim; ability fires continuously while held. Ring tracks drag position. On lift, ability stops firing.
-- **Joystick-Release:** On touch, a joystick ring spawns at touch position. Player drags to set direction; ability fires on thumb-lift. Ring shows direction intent while held.
-- **Tap:** No joystick spawns. Cell acts as a tap button. A brief tap feedback animation confirms the input. No drag behavior.
 
-**Cell boundary rule:** When a player's thumb drifts outside the cell boundary during a Joystick-AutoFire or Joystick-Release hold, the ability continues to function using the last valid direction registered before the boundary was crossed. The joystick ring clamps visually to the cell edge. On thumb-lift anywhere on screen, the hold is released. This prevents accidental ability interruption from natural thumb movement.
+All three held types (AUTO, RELEASE, AIM_CAST) spawn a **joystick ring + knob** at the exact touch position within the cell on touch-down — the same visual grammar as the movement joystick (`{components.skill-cell}` in DESIGN.md), scaled to 80px ring / 28px knob. The knob tracks the live drag offset from spawn origin; direction is sampled continuously for all three, for the whole duration of the hold — what differs between them is *when the ability commits to firing*, not what the ring/knob visually track:
+
+- **AUTO:** Ring + knob in `{colors.accent-spirit}`, static. Ability fires every ~33ms tick using the live tracked direction, for as long as the touch is held. On lift, firing stops and the ring/knob disappear.
+- **RELEASE:** Ring + knob in `{colors.accent-warm}`. No fire while held — the ring/knob exist purely to let the player aim. On thumb-lift, the ability fires once, using whatever direction the knob is at in that instant (i.e. "aim continuously, commit on release" — not a snapshot taken at touch-down).
+- **AIM_CAST:** Ring + knob in `{colors.accent-spirit}`, **pulsing** (slow opacity/scale breathe, ~1.2s cycle — the Spirit Chant layer's existing idiom for a spirit-power-in-progress moment, shared with the purification pulse). Fires every ~33ms tick using the live tracked direction, same commit timing as AUTO — this is a channeled cast (the server tracks start/refresh/cancel-on-early-release state, per the ability's cooldown/channel design), and the pulse is what visually distinguishes "this is a channel" from AUTO's plain repeat, since `accent-spirit` and `interactive` share the same hex and a color-only distinction would be invisible.
+- **TAP:** No joystick ring/knob spawns — the cell acts as a pure tap button. A brief tap-flash feedback animation confirms the input. No drag behavior, no direction.
+
+**Deadzone:** 10px radius from the ring's spawn origin, for all three held types — independent of the movement joystick's 8px deadzone (see §6, Movement Joystick). Below this radius the knob stays centered on the ring and no direction is committed (AUTO/AIM_CAST don't fire; RELEASE doesn't register a directional lift).
+
+**Cell boundary rule:** When a player's thumb drifts outside the cell boundary during an AUTO, RELEASE, or AIM_CAST hold, the ability continues to function using the last valid direction registered before the boundary was crossed. The joystick ring clamps visually to the cell edge; the knob clamps with it. On thumb-lift anywhere on screen, the hold is released. This prevents accidental ability interruption from natural thumb movement.
+
+**Not specified here:** A channel-progress indicator for AIM_CAST — the server-side channel start/refresh/cancel state has no mobile visual today. This is a real gap (see `.decision-log.md` D-018) but belongs to a HUD/feedback pass, not this aiming-interaction spec.
 
 **Cooldown overlay:**
 When a skill enters cooldown, a **cell-filling conic-gradient** overlay covers the majority of the cell face — not a circular ring. The conic fills clockwise from the top as the cooldown completes, progressively revealing the ability icon and name beneath it. The remaining cooldown duration is displayed as a centered countdown value in `{colors.text-primary}`. The overlay is large — it takes up most of the cell face. Players read cooldown state at a glance without focusing on small indicators. The ring-based timer model is not used.
@@ -370,7 +378,7 @@ These are the atomic interaction patterns. All higher-level flows compose from t
 
 **Model:** Floating — the joystick ring spawns at the exact position the player's thumb touches the left zone. The ring does not live at a fixed position. This model adapts to how each player naturally holds their phone without requiring them to find a target.
 
-**Behavior:** Ring tracks thumb position. Deadzone in center (character not moving below a small radius threshold). Full-range analog — velocity scales with drag distance from spawn origin.
+**Behavior:** Ring tracks thumb position. Deadzone in center, 8px radius (character not moving below this threshold). Full-range analog — velocity scales with drag distance from spawn origin. Skill-cell joysticks (see Skill Cells, below) use a separate 10px deadzone, not this value — the two are intentionally independent, tuned for different failure costs (an accidental ability fire during combat is worse than a slightly-late movement start).
 
 **Zone:** Left ~40% of landscape screen. Any touch in this zone spawns the joystick.
 
@@ -380,9 +388,9 @@ These are the atomic interaction patterns. All higher-level flows compose from t
 
 **Model:** Fixed 2×2 grid — always the same layout regardless of class. Only cell contents (which ability) differ per class.
 
-**Three input types (see `skill-cell` in Section 4):** Joystick-AutoFire, Joystick-Release, Tap.
+**Four input types (see `skill-cell` in Section 4):** AUTO, RELEASE, AIM_CAST, TAP.
 
-**Floating joystick within cell:** For Joystick-type skills, the directional ring spawns at touch position within the cell — same floating model as the movement joystick, constrained to the cell boundaries.
+**Floating joystick within cell:** For AUTO, RELEASE, and AIM_CAST abilities, a ring + knob spawns at touch position within the cell — same floating model as the movement joystick, constrained to the cell boundaries, scaled down to fit the cell (80px ring / 28px knob vs. movement's 110px/40px). AIM_CAST's ring/knob pulses; AUTO's and RELEASE's do not. TAP never spawns one.
 
 ---
 
@@ -459,7 +467,7 @@ Floating joystick and skill cell joystick ring have no fixed target — they spa
 **Confirmed design principle (D-009, D-007):** During active gameplay (in-dungeon combat), a player must be able to use their phone controller without reading. The right zone carries only:
 - Ability icon (iconographic)
 - Ability name (Lora italic, `base` — visible but not required reading)
-- Input type badge (AUTO / RELEASE / TAP — memorizable after first session)
+- Input type badge (AUTO / RELEASE / TAP / AIM_CAST — memorizable after first session)
 - Cooldown overlay (fills the cell — scannable at a glance)
 
 **Nothing else.** No description, no tooltip, no status text during combat. Players learn their abilities in the ability briefing panel before entering the controller. Once in combat, muscle memory and icon recognition take over.
@@ -545,21 +553,22 @@ No keyboard, no mouse, no physical controller, no PC gamepad. Mobile touch is th
 │   touch position            │  ├──────────┼──────────┤      │
 │                             │  │  Skill 3 │  Skill 4 │      │
 │                             │  │          │          │      │
-│                             │  │  RELEASE │   TAP    │      │
+│                             │  │  RELEASE │ AIM_CAST │      │
 │                             │  └──────────┴──────────┘      │
 │                             │   RIGHT ZONE (~60% width)      │
 └─────────────────────────────┴───────────────────────────────┘
 ```
 
-*Input type badges (AUTO / RELEASE / TAP) shown per-cell in the bottom-left corner.*
+*Input type badges (AUTO / RELEASE / TAP / AIM_CAST) shown per-cell in the bottom-left corner. Slot 4 shown as AIM_CAST here for illustration only — actual per-class slot assignment is defined in `class-definitions.ts`, not by this diagram.*
 
-### Three Input Types
+### Four Input Types
 
-| Type | Model | Fires when |
-|---|---|---|
-| **Joystick-AutoFire** | Touch to spawn ring, drag to aim | Continuously while held |
-| **Joystick-Release** | Touch to spawn ring, drag to set direction | On thumb lift |
-| **Tap** | Pure tap | On touch down (or tap completion) |
+| Type | Model | Ring/knob | Fires when |
+|---|---|---|---|
+| **AUTO** | Touch to spawn ring, drag to aim | `accent-spirit`, static | Continuously while held |
+| **RELEASE** | Touch to spawn ring, drag to set direction | `accent-warm`, static | On thumb lift, using direction at lift |
+| **AIM_CAST** | Touch to spawn ring, drag to aim — a channeled cast | `accent-spirit`, pulsing | Continuously while held (same commit timing as AUTO; server tracks channel start/refresh/cancel) |
+| **TAP** | Pure tap, no ring | none | On touch down (or tap completion) |
 
 All four skill cells are filled by the player's class. The grid layout is fixed — the same cell positions across all classes. Only the ability content in each cell changes per class.
 

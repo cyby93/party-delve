@@ -22,6 +22,12 @@ const JOYSTICK_MAX_RADIUS = 60;
 const DEADZONE_RADIUS = 8;
 const INPUT_INTERVAL_MS = 33; // ~30hz throttle to match sim tick rate
 
+const SKILL_JOYSTICK_RING_PX = 80;
+const SKILL_JOYSTICK_KNOB_PX = 28;
+const SKILL_JOYSTICK_RING_RADIUS = SKILL_JOYSTICK_RING_PX / 2;
+// Independent from the movement joystick's DEADZONE_RADIUS (8px) — D-019 keeps these separately tunable.
+const SKILL_CELL_DEADZONE_RADIUS = 10;
+
 // iOS Safari never implements the Fullscreen API for arbitrary elements (only <video> gets
 // webkitEnterFullscreen) — document.fullscreenEnabled is always false there, so the toggle
 // button hides itself correctly, but the player still has no fullscreen path in a plain tab.
@@ -221,7 +227,7 @@ const ABILITY_BADGE_BORDER: Record<AbilityInputType, string> = {
   AUTO:     'var(--accent-spirit)',
   RELEASE:  'var(--accent-warm)',
   TAP:      'var(--border)',
-  AIM_CAST: 'var(--accent-warm)',  // hold-to-channel (Story 3.18) — warm border still reads fine for a held ability
+  AIM_CAST: 'var(--accent-spirit)',  // hold-to-channel (Story 3.18) — continuous-while-held, joins AUTO's color family
 };
 
 interface AbilityChipProps {
@@ -632,6 +638,8 @@ function SkillCell({ index, ability, cooldownState: cd, isInteractive, badgeBord
   const cellRef = useRef<HTMLDivElement>(null);
   const activeTouchRef = useRef<{ id: number; originX: number; originY: number; lastDirX: number; lastDirY: number; releaseFired: boolean } | null>(null);
   const autoIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [spawnOrigin, setSpawnOrigin] = useState<{ x: number; y: number } | null>(null);
+  const [knobOffset, setKnobOffset] = useState({ x: 0, y: 0 });
 
   const now = Date.now();
   const isOnCooldown = cd !== null && cd.expiresAt > now;
@@ -652,14 +660,18 @@ function SkillCell({ index, ability, cooldownState: cd, isInteractive, badgeBord
       const touch = e.changedTouches[0];
       if (!touch) return;
       const rect = el.getBoundingClientRect();
+      const originX = touch.clientX - rect.left;
+      const originY = touch.clientY - rect.top;
       activeTouchRef.current = {
         id: touch.identifier,
-        originX: touch.clientX - rect.left,
-        originY: touch.clientY - rect.top,
+        originX,
+        originY,
         lastDirX: 0,
         lastDirY: 0,
         releaseFired: false,
       };
+      setSpawnOrigin({ x: originX, y: originY });
+      setKnobOffset({ x: 0, y: 0 });
       if (ability.inputType === 'AUTO' || ability.inputType === 'AIM_CAST') {
         autoIntervalRef.current = setInterval(() => {
           const t = activeTouchRef.current;
@@ -681,12 +693,16 @@ function SkillCell({ index, ability, cooldownState: cd, isInteractive, badgeBord
       const rawX = touch.clientX - rect.left - t.originX;
       const rawY = touch.clientY - rect.top - t.originY;
       const dist = Math.sqrt(rawX * rawX + rawY * rawY);
-      const DEADZONE = 6;
-      if (dist >= DEADZONE) {
+      if (dist >= SKILL_CELL_DEADZONE_RADIUS) {
         const angle = Math.atan2(rawY, rawX);
         t.lastDirX = Math.cos(angle);
         t.lastDirY = Math.sin(angle);
+        const clampedDist = Math.min(dist, SKILL_JOYSTICK_RING_RADIUS);
+        setKnobOffset({ x: Math.cos(angle) * clampedDist, y: Math.sin(angle) * clampedDist });
       }
+      // else: stay below deadzone — leave knobOffset at its last position (matches
+      // lastDirX/lastDirY, which also holds steady here) instead of snapping to center,
+      // so the visual never contradicts what's still firing.
     };
 
     const onTouchEnd = (e: TouchEvent) => {
@@ -704,6 +720,8 @@ function SkillCell({ index, ability, cooldownState: cd, isInteractive, badgeBord
             autoIntervalRef.current = null;
           }
           activeTouchRef.current = null;
+          setSpawnOrigin(null);
+          setKnobOffset({ x: 0, y: 0 });
           break;
         }
       }
@@ -723,6 +741,8 @@ function SkillCell({ index, ability, cooldownState: cd, isInteractive, badgeBord
             autoIntervalRef.current = null;
           }
           activeTouchRef.current = null;
+          setSpawnOrigin(null);
+          setKnobOffset({ x: 0, y: 0 });
           break;
         }
       }
@@ -747,6 +767,8 @@ function SkillCell({ index, ability, cooldownState: cd, isInteractive, badgeBord
         autoIntervalRef.current = null;
       }
       activeTouchRef.current = null;
+      setSpawnOrigin(null);
+      setKnobOffset({ x: 0, y: 0 });
     };
   }, [isInteractive, ability, index, onAbilityFire]);
 
@@ -826,6 +848,44 @@ function SkillCell({ index, ability, cooldownState: cd, isInteractive, badgeBord
         </span>
       )}
 
+      {/* Aiming ring+knob for AUTO/RELEASE/AIM_CAST held-type abilities */}
+      {spawnOrigin !== null && ability !== null && (() => {
+        const color = ability.inputType === 'RELEASE' ? 'var(--accent-warm)' : 'var(--accent-spirit)';
+        const pulse = ability.inputType === 'AIM_CAST' ? 'skill-cell-pulse 1.2s ease-in-out infinite' : undefined;
+        return (
+          <>
+            <div
+              style={{
+                position: 'absolute',
+                left: spawnOrigin.x - SKILL_JOYSTICK_RING_RADIUS,
+                top: spawnOrigin.y - SKILL_JOYSTICK_RING_RADIUS,
+                width: SKILL_JOYSTICK_RING_PX,
+                height: SKILL_JOYSTICK_RING_PX,
+                borderRadius: '50%',
+                border: `2px solid ${color}`,
+                boxSizing: 'border-box',
+                pointerEvents: 'none',
+                zIndex: 8,
+                animation: pulse,
+              }}
+            />
+            <div
+              style={{
+                position: 'absolute',
+                left: spawnOrigin.x + knobOffset.x - SKILL_JOYSTICK_KNOB_PX / 2,
+                top: spawnOrigin.y + knobOffset.y - SKILL_JOYSTICK_KNOB_PX / 2,
+                width: SKILL_JOYSTICK_KNOB_PX,
+                height: SKILL_JOYSTICK_KNOB_PX,
+                borderRadius: '50%',
+                background: color,
+                pointerEvents: 'none',
+                zIndex: 8,
+                animation: pulse,
+              }}
+            />
+          </>
+        );
+      })()}
       {/* Cooldown overlay */}
       {isOnCooldown && (
         <div
@@ -1427,7 +1487,7 @@ export function ControllerScreen({ session, gameState, cooldowns, bondNotificati
           const badgeBorderColor = ability !== null
             ? (ability.inputType === 'AUTO' ? 'var(--accent-spirit)'
               : ability.inputType === 'RELEASE' ? 'var(--accent-warm)'
-              : ability.inputType === 'AIM_CAST' ? 'var(--accent-warm)'
+              : ability.inputType === 'AIM_CAST' ? 'var(--accent-spirit)'
               : 'var(--border)')
             : 'var(--border)';
 
