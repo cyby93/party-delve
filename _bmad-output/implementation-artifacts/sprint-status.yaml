@@ -43,6 +43,22 @@
 
 generated: 2026-06-22
 last_updated: 2026-07-20
+# 2026-07-20: created 6 deferred-hardening stories in one batch (1.10, 2.9, 3.24, 4.14, 5.9,
+# 6.10), one per epic with a genuine backlog since its last hardening pass — closing the
+# "for all unresolved deferred items" sweep of deferred-work.md's 278 logged findings.
+# Each story's candidate findings were re-verified against current source before being
+# scoped in (per the established 3.22 precedent), not trusted from deferred-work.md's text
+# alone; several were dropped or re-deferred where re-verification found them stale,
+# already resolved, or still below their own stated revisit threshold. Reopens epic-1 and
+# epic-5 (both previously "done") back to in-progress, matching this project's established
+# reopen-for-leftover-deferred-findings pattern. 1.10 (epic-1, mobile session/back-nav
+# races), 2.9 (epic-2, hub/controller cleanup + 2.8 test-gap findings), 3.24 (epic-3,
+# primary task closes the user-flagged D-3.23-A/D-3.3-B skill-cell touch-teardown bug plus
+# 3.22's e2e-hygiene/shield-guard leftovers), 4.14 (epic-4, loadLevel ordering-risk +
+# resetToHub body-leak + isFrozen-on-transition + VotePopup stuck-button hardening), 5.9
+# (epic-5, single finding: maxAchievableBonds roster-snapshot bug), 6.10 (epic-6,
+# selectBondPair re-pair fix + re-deferrals for the physics-layer projectile-vs-boss gap
+# and the cosmetic boss double-hit-per-tick). All 6 are ready-for-dev; none implemented yet.
 # 2026-07-20: code review of 3-23-skill-cell-joystick-aiming-interaction (review →
 # in-progress) — Blind Hunter + Edge Case Hunter + Acceptance Auditor all independently
 # converged on the same 2 real bugs, both now fixed: (1) the onTouchMove cell-rect clamp
@@ -374,7 +390,7 @@ development_status:
   # via QR code or session code. They appear in an empty hub world.
   # Disconnect/reconnect within grace period works.
   # FRs: FR1, FR2, FR3 (guest join), FR27, FR28, FR31, FR32, FR33, FR37, FR38
-  epic-1: done
+  epic-1: in-progress
   1-1-monorepo-architecture-clean-slate-and-package-scaffold: done
   1-2-simulation-server-session-lifecycle-and-30hz-tick-loop: done
   1-3-host-app-main-menu-and-lobby-screen: done
@@ -384,6 +400,9 @@ development_status:
   1-7-epic-1-deferred-hardening: done
   1-8-epic-1-post-17-deferred-hardening: done
   1-9-epic-1-post-18-deferred-hardening: done
+  # Closes 1.9's own review leftovers (D1-D3): unguarded history.replaceState at both
+  # call sites, async onLeave/handleDisconnect race, handleGiveUp stale URL fallback.
+  1-10-epic-1-post-19-deferred-hardening: ready-for-dev
   epic-1-retrospective: optional
 
   # ─── E2: Hub World & Class Selection ────────────────────────────────────────
@@ -399,6 +418,9 @@ development_status:
   2-6-epic-2-deferred-hardening: done
   2-7-epic-2-post-26-deferred-hardening: done
   2-8-hub-ability-use-outside-training-dummy-poi: done
+  # Closes D-2.6-A/B (rAF stale ref, spurious stopJoystick send) and D-2.8-A/C/D
+  # (isInteractive inDungeon bypass, ability-guard regression test, raceTimeout dedup).
+  2-9-epic-2-post-28-deferred-hardening: ready-for-dev
   epic-2-retrospective: optional
 
   # ─── E3: Core Combat — 4 Alpha Classes ──────────────────────────────────────
@@ -442,6 +464,11 @@ development_status:
   # UX-spec-drift closure (2026-07-20 UX update session, decision-log.md D-017-D-020) —
   # not a new PRD FR, see history note above
   3-23-skill-cell-joystick-aiming-interaction: done
+  # Primary task closes user-flagged D-3.23-A (also fixes the older, related D-3.3-B):
+  # SkillCell's touch-tracking effect tears down mid-hold on cooldown start instead of on
+  # lift. Also closes 3.22's own review leftovers (e2e cleanup/raceTimeout hygiene, shield
+  # magnitude guard) and 3.23's un-run Client-UX text-occlusion finding.
+  3-24-epic-3-post-323-deferred-hardening: ready-for-dev
   epic-3-retrospective: optional
 
   # ─── Dev infra fixes (no epic) ──────────────────────────────────────────────
@@ -474,13 +501,17 @@ development_status:
   4-11-epic-4-post-410-deferred-hardening: done
   4-12-full-hp-restore-on-level-transition: done
   4-13-vote-accept-button-submitted-state: done
+  # Closes D-4.11-A/B (loadLevel level-2/default branch commit-ordering risk, resetToHub
+  # boss-body leak), D1-4.12 (isFrozen never cleared on level transition), D1-4.13
+  # (VotePopup stuck-on-Waiting with no recovery timeout).
+  4-14-epic-4-post-413-deferred-hardening: ready-for-dev
   epic-4-retrospective: optional
 
   # ─── E5: Spirit Bond System ─────────────────────────────────────────────────
   # Bond assigned at level end, buff+price pairs, in-canvas particle tethers,
   # 3 bonds accumulate across 3 levels.
   # FRs: FR14, FR15, FR16
-  epic-5: done
+  epic-5: in-progress
   5-1-spirit-bond-shared-types-and-protocol-contracts: done
   5-2-bond-assignment-logic-and-deterministic-pair-selection: done
   5-3-per-tick-bond-effects-proximity-and-fate-bond-types: done
@@ -489,6 +520,9 @@ development_status:
   5-6-mobile-bond-card-and-continue-ux: done
   5-7-epic-5-deferred-hardening: done
   5-8-epic-5-post-57-deferred-hardening: done
+  # Closes D-5.8-A: maxAchievableBonds read the live player roster at boss-start instead
+  # of a snapshot taken when bonds were actually assigned.
+  5-9-epic-5-post-58-deferred-hardening: ready-for-dev
   epic-5-retrospective: optional
 
   # ─── E6: Grassland Boss Encounter ───────────────────────────────────────────
@@ -505,6 +539,11 @@ development_status:
   6-7-boss-combat-resolution-wiring: done
   6-8-floating-damage-numbers-regular-enemies: done
   6-9-epic-6-post-66-deferred-hardening: done
+  # Closes D-6.9-B: selectBondPair can re-pair an already-bonded pair, causing full-run.
+  # test.ts's 3-player bond-count assertion to flake. D-6.9-A/C re-deferred (physics-layer
+  # projectile-vs-boss gap; cosmetic double-hit-per-tick); D-6.9-D dropped (no 3rd instance
+  # of the duplicated isInHitZone check has appeared yet).
+  6-10-epic-6-post-69-deferred-hardening: ready-for-dev
   epic-6-retrospective: optional
 
   # ─── E7: Progression & Persistent Meta ──────────────────────────────────────
