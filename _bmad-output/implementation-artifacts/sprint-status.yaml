@@ -42,7 +42,17 @@
 # Phase2 legacy stories (old Phase-based keys) are tracked below under PHASE 2 STORIES.
 
 generated: 2026-06-22
-last_updated: 2026-07-20 (4-14 done)
+last_updated: 2026-07-20 (5-9 done)
+# 2026-07-20: code review of 5-9-epic-5-post-58-deferred-hardening (done) — Blind Hunter +
+# Edge Case Hunter + Acceptance Auditor all ran. Acceptance Auditor found zero AC violations
+# (all 8 ACs + all 4 Non-goals confirmed against the diff). Blind Hunter and Edge Case Hunter
+# independently found the same real defect: boss branch's `bondEligiblePlayerCount >= 2`
+# fallback conflated "never snapshotted" with "snapshotted at 0/1", silently reintroducing
+# D-5.8-A for solo/duo-started runs (resolveVoteIfComplete has no >=2 floor) — fixed via
+# `!== -1`. Edge Case Hunter also found `assignBond` still pairs against the live roster each
+# bond-moment, so activeBonds could exceed a frozen maxAchievableBonds for rosters growing
+# mid-run — user chose to fix now (`===` to `>=` in the boss branch). Both patched, 2 new unit
+# tests added, full suite re-verified green. 4 other findings dismissed as noise.
 # 2026-07-20: code review of 1-10-epic-1-post-19-deferred-hardening (done) — Blind Hunter +
 # Edge Case Hunter + Acceptance Auditor all ran; Acceptance Auditor found zero AC violations
 # (all 5 ACs + all 4 non-goals confirmed against the diff). Edge Case Hunter surfaced 2 real,
@@ -539,7 +549,7 @@ development_status:
   5-8-epic-5-post-57-deferred-hardening: done
   # Closes D-5.8-A: maxAchievableBonds read the live player roster at boss-start instead
   # of a snapshot taken when bonds were actually assigned.
-  5-9-epic-5-post-58-deferred-hardening: ready-for-dev
+  5-9-epic-5-post-58-deferred-hardening: done
   epic-5-retrospective: optional
 
   # ─── E6: Grassland Boss Encounter ───────────────────────────────────────────

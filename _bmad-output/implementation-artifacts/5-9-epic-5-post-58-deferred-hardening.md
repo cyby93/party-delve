@@ -4,7 +4,7 @@ baseline_commit: 3d22e41a41a9fae1f18e86c72cca8529ae173c96
 
 # Story 5.9: Epic 5 — Post-5.8 Deferred Hardening
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -157,10 +157,10 @@ removal) is left untouched — this story only changes what count feeds `maxAchi
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1** (AC: #1, #2) — Add a new private field `bondEligiblePlayerCount = -1` to
+- [x] **Task 1** (AC: #1, #2) — Add a new private field `bondEligiblePlayerCount = -1` to
   `GameRoom`, declared next to `bondMomentNextLevel` (~line 148). Reset it to `-1` in
   `startDungeon` alongside the existing `this.bondMomentNextLevel = -1;` (~line 638).
-- [ ] **Task 2** (AC: #1) — In `enterBondMoment` (~line 883), immediately after the
+- [x] **Task 2** (AC: #1) — In `enterBondMoment` (~line 883), immediately after the
   `levelIndex >= BOSS_LEVEL_INDEX` early-return block (~line 888) and before the
   `assignBond` call (~line 889), snapshot the roster once:
   ```ts
@@ -168,7 +168,7 @@ removal) is left untouched — this story only changes what count feeds `maxAchi
     this.bondEligiblePlayerCount = this.gameState.players.length;
   }
   ```
-- [ ] **Task 3** (AC: #3, #4, #5) — In `loadLevel`'s boss branch (~line 1034), replace the
+- [x] **Task 3** (AC: #3, #4, #5) — In `loadLevel`'s boss branch (~line 1034), replace the
   live read with the snapshot (fallback to live only if no snapshot exists):
   ```ts
   const playerCount = this.bondEligiblePlayerCount >= 2
@@ -177,14 +177,55 @@ removal) is left untouched — this story only changes what count feeds `maxAchi
   ```
   (Keep the rest of the `maxAchievableBonds`/`allBondsAtBossStart` formula exactly as-is —
   only the source of `playerCount` changes.)
-- [ ] **Task 4** (AC: #6) — Add unit test coverage in
+- [x] **Task 4** (AC: #6) — Add unit test coverage in
   `apps/simulation-server/tests/game-room-level-clear-guard.test.ts` per Dev Notes below.
-- [ ] **Task 5** (AC: #8) — Append a "Resolution:" note to D-5.8-A's entry in
+- [x] **Task 5** (AC: #8) — Append a "Resolution:" note to D-5.8-A's entry in
   `deferred-work.md`, matching the established convention (see D-5.7-C's, D-dev5-A's
   resolution notes for format).
-- [ ] Run `npm run typecheck` (full monorepo) — confirm 0 errors.
-- [ ] Run the full Vitest suite (`npx vitest run` from monorepo root) — confirm no
+- [x] Run `npm run typecheck` (full monorepo) — confirm 0 errors.
+- [x] Run the full Vitest suite (`npx vitest run` from monorepo root) — confirm no
   regressions.
+
+### Review Findings
+
+- [x] [Review][Decision — resolved: apply the `>=` fix now] `assignBond` can exceed the frozen `maxAchievableBonds` ceiling for
+  rosters that grow *between* bond-assignment attempts (not just right before boss) —
+  `enterBondMoment` freezes `bondEligiblePlayerCount` on first capture
+  (`GameRoom.ts:900-901`), but `assignBond` (`packages/game-rules/src/systems/bonds.ts:41`)
+  still selects pairs from the *live* `state.players` on every subsequent bond-moment call. If
+  a new player joins between level 1's and level 2's/3's bond attempts, `activeBonds.length`
+  can grow past the now-frozen `maxAchievableBonds`, making the boss branch's strict
+  `activeBonds.length === maxAchievableBonds` check (`GameRoom.ts:1058-1063`) permanently
+  false — even for sessions where, pre-fix, all achievable bonds among the eventual roster
+  were correctly detected as `true`. Confirmed by trace: 2-player start (snapshot=2,
+  `maxAchievableBonds=1`) + 3rd player joins before level 2 → `selectBondPair`'s
+  unbonded-preference logic ends up assigning all 3 possible pairs by boss time
+  (`activeBonds.length=3`) → pre-fix this correctly reported `true` (live `playerCount=3`,
+  `maxAchievableBonds=3`); post-fix this now reports `false` (3 ≠ 1) — a regression for this
+  narrow, cosmetic/achievement-only sub-case. A minimal fix (`===` → `>=` in the boss branch)
+  would resolve it, but the story's own Non-goals explicitly protect "the branch itself" from
+  being touched by this story ("only the source of `playerCount` changes"), so applying that
+  fix here would cross this story's own stated scope boundary. **Needs your call:** (a) apply
+  the `>=` fix now as an explicit scope extension, (b) log as a new deferred-work item for a
+  follow-up story (matching this story's own D-5.8-A precedent), or (c) accept as a known,
+  narrow, cosmetic limitation and dismiss.
+- [x] [Review][Patch] Sentinel fallback conflates "never snapshotted" with "snapshotted at 0
+  or 1 players" — reintroduces the exact D-5.8-A bug for solo/duo-start sessions
+  [`apps/simulation-server/src/rooms/GameRoom.ts:1055`]. The boss branch treats
+  `bondEligiblePlayerCount >= 2` as "has a snapshot," but the field's own sentinel contract is
+  `-1 = not yet snapshotted` (any other value, including 0 or 1, IS a captured snapshot).
+  `resolveVoteIfComplete` (`GameRoom.ts:620-629`) has no player-count floor beyond
+  `activePlayers.length === 0`, so a solo player can unanimously start a dungeon run. If the
+  first `enterBondMoment` call fires with fewer than 2 players present, the snapshot locks at
+  that value (0 or 1) for the rest of the run (the `=== -1` guard never re-fires), and the
+  `>= 2` check then treats that captured-but-low value identically to "-1, never captured" —
+  both fall through to the live roster for every remaining boss-branch read, silently
+  reproducing the exact stale-live-read bug (D-5.8-A) this story exists to close, for any
+  session whose first bond attempt happens solo or in a duo that later grows. Fix: change the
+  fallback condition from `this.bondEligiblePlayerCount >= 2` to
+  `this.bondEligiblePlayerCount !== -1` — the downstream `maxAchievableBonds` formula already
+  handles `playerCount < 2` correctly (returns 0), so this one-line change doesn't touch the
+  Non-goals-protected formula itself, only the fallback condition that selects its input.
 
 ---
 
@@ -392,8 +433,49 @@ Add this to the same file as the existing `allBondsAtBossStart` block (Story 5.8
 
 ### Agent Model Used
 
+Claude Sonnet 5
+
 ### Debug Log References
+
+- `npm run typecheck` (full monorepo): 0 errors.
+- `npx vitest run` (full monorepo, 3 consecutive runs — baseline, post-change, re-check):
+  each run has exactly 1 unrelated e2e test failure, a different test each time
+  (`tests/e2e/full-run.test.ts` once, `tests/e2e/ability-dispatch.test.ts` once), and the
+  `full-run.test.ts` failure reproduces identically against the pre-change baseline commit
+  (verified via `git stash`/`stash pop`) — confirmed pre-existing timing-sensitive e2e flakes,
+  unrelated to this story's change. `npx vitest run apps/simulation-server/tests/game-room-level-clear-guard.test.ts`
+  in isolation: 14/14 pass (10 existing + 4 new).
 
 ### Completion Notes List
 
+- Added `bondEligiblePlayerCount` private field (`-1` sentinel), snapshotted once in
+  `enterBondMoment` on the first bond-assignment attempt of a run, reset in `startDungeon` —
+  mirrors the existing `bondMomentNextLevel` pattern exactly, per Dev Notes.
+- `loadLevel`'s boss branch now sources `playerCount` from the snapshot (falling back to the
+  live roster only if no snapshot was ever captured), closing D-5.8-A.
+- Extended `game-room-level-clear-guard.test.ts` with the 4-test `bondEligiblePlayerCount`
+  snapshot-resolution block from Dev Notes, verifying the exact D-5.8-A repro scenario now
+  resolves correctly.
+- Appended a "Resolution:" note to D-5.8-A in `deferred-work.md`, matching the D-5.7-C/D-dev5-A
+  convention.
+- `onJoin`/`onLeave` left untouched per Non-goals; formula in the boss branch unchanged except
+  for the `playerCount` source.
+- **Code review (2026-07-20)**: Blind Hunter + Edge Case Hunter + Acceptance Auditor all ran.
+  Acceptance Auditor found zero AC violations (all 8 ACs + all 4 Non-goals confirmed against
+  the diff). Blind Hunter and Edge Case Hunter independently converged on the same real defect:
+  the boss branch's `bondEligiblePlayerCount >= 2` fallback conflated "never snapshotted" with
+  "snapshotted at 0/1 players", silently reintroducing the D-5.8-A bug for solo/duo-started
+  runs (`resolveVoteIfComplete` has no ≥2 floor). Fixed: fallback condition changed to `!== -1`.
+  Edge Case Hunter also found that `assignBond` still pairs against the live roster each
+  bond-moment, so `activeBonds.length` could exceed a frozen `maxAchievableBonds` for rosters
+  growing mid-run — user chose to extend scope and fix now: boss-branch equality check changed
+  from `===` to `>=`. Both fixes covered by 2 new unit tests; full test file re-verified at
+  16/16 pass. 4 other review findings dismissed as noise (established mirror-test convention,
+  unverified room-reuse speculation, already-verified test-run claims, story-tracking process
+  noise). Full details in "Review Findings" section above.
+
 ### File List
+
+- `apps/simulation-server/src/rooms/GameRoom.ts` (modified)
+- `apps/simulation-server/tests/game-room-level-clear-guard.test.ts` (modified)
+- `_bmad-output/implementation-artifacts/deferred-work.md` (modified)

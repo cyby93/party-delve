@@ -146,6 +146,7 @@ export class GameRoom extends Room {
   private godModePlayerIds = new Set<string>(); // debug-only, NODE_ENV-gated — see debug:toggle-god-mode
   private bondRng!: () => number;
   private bondMomentNextLevel = -1; // -1 = not in bond-moment; ≥0 = next level to load on CONTINUE
+  private bondEligiblePlayerCount = -1; // -1 = not yet snapshotted; roster size at first bond-assignment attempt (Story 5.9, D-5.8-A)
   private bossBody: Body | null = null;
   private arenaWallBodies: Body[] = [];
   private pendingBossStompEvents: BossStompedEvent[] = [];
@@ -636,6 +637,7 @@ export class GameRoom extends Room {
     this.gameState.runProposal = null;
     for (const p of this.gameState.players) p.nearPoiId = null;
     this.bondMomentNextLevel = -1;
+    this.bondEligiblePlayerCount = -1;
     try {
       const floorRng = createRng(this.gameState.session.runSeed ^ OFFSET_FLOOR_LAYOUT);
       const roomRng  = createRng(this.gameState.session.runSeed ^ OFFSET_ROOM_POOL);
@@ -895,6 +897,9 @@ export class GameRoom extends Room {
       this.broadcast(EventNames.SNAPSHOT, { type: 'snapshot', state: this.gameState } satisfies SnapshotMsg);
       return;
     }
+    if (this.bondEligiblePlayerCount === -1) {
+      this.bondEligiblePlayerCount = this.gameState.players.length;
+    }
     const result = assignBond(this.gameState, this.bondRng);
     if (!result.ok) {
       logger.warn({ roomId: this.roomId, error: result.error }, 'assignBond failed — skipping bond-moment');
@@ -1044,11 +1049,23 @@ export class GameRoom extends Room {
       // ponytail: one bond assigned per dungeon level (BOSS_LEVEL_INDEX-1 = 3 max), but a
       // 2-player session only has 1 possible pair — expect min(3, achievable pairs), not a
       // fixed 3, or AllBondsActive is permanently unreachable for 2-player sessions (D-5.7-C)
-      const playerCount = this.gameState.players.length;
+      // Story 5.9 (D-5.8-A): use the roster snapshotted at first bond assignment, not the live
+      // roster at boss-start — a mid-dungeon join/leave between bond assignment and boss start
+      // must not desync maxAchievableBonds from the bonds that were actually assigned.
+      // !== -1 (not >= 2): 0 or 1 is a legitimate captured snapshot (e.g. a solo-started run),
+      // not "never snapshotted" — falling back to the live count for a captured 0/1 would
+      // reintroduce the exact stale-read bug this story closes (code review finding, 5.9).
+      const playerCount = this.bondEligiblePlayerCount !== -1
+        ? this.bondEligiblePlayerCount
+        : this.gameState.players.length;
       const maxAchievableBonds = playerCount >= 2
         ? Math.min(BOSS_LEVEL_INDEX - 1, (playerCount * (playerCount - 1)) / 2)
         : 0;
-      this.gameState.session.allBondsAtBossStart = this.gameState.activeBonds.length === maxAchievableBonds
+      // >= (not ===): assignBond still pairs against the live roster each bond-moment, so a
+      // roster that grows between bond-assignment attempts (not just right before boss) can
+      // validly earn more bonds than the frozen playerCount snapshot anticipated — those extra
+      // bonds should still count as "all achievable bonds active" (code review finding, 5.9).
+      this.gameState.session.allBondsAtBossStart = this.gameState.activeBonds.length >= maxAchievableBonds
         && maxAchievableBonds > 0;
       // ponytail: boss is level index 4; dungeon runs levels 1-3
       this.arenaWallBodies = loadBossArena(this.physicsWorld);
