@@ -48,12 +48,14 @@ last_updated: 2026-07-21 (epic-1-retrospective done)
 # from stories 1.1-1.10's dev notes/code-review history rather than fresh memory, since
 # Epic 1 is pure infrastructure with no UI surface to recall. 2 action items created:
 # (1) isHost flag has no server-side auth check (security debt open since 1.3, relevant
-# again given Epic 7's registered-accounts scope), owner Simulation Engineer; (2)
+# again given Epic 8's registered-accounts scope), owner Simulation Engineer; (2)
 # apps/mobile-controller has zero automated test coverage as of 1.10, owner Mobile
 # Controller Engineer + QA support. Zod validation on deserialize() and the e2e
 # reconnect.test.ts it.todo stub were surfaced but left at their existing deferred-work.md
 # priority, not escalated. No epic-plan update needed — Epic 2 (the numerically next epic)
-# is already done; actual next work is Epic 7 (backlog, no stories yet). Full retro saved:
+# is already done; actual next work was Epic 7 (backlog, no stories yet) at retro time —
+# since renumbered to Epic 8 by sprint-change-proposal-2026-07-21.md, which inserted a new
+# Epic 7 (Ability & Environmental VFX Prototyping) ahead of it. Full retro saved:
 # epic-1-retro-2026-07-21.md.
 # 2026-07-20: code review of 5-9-epic-5-post-58-deferred-hardening (done) — Blind Hunter +
 # Edge Case Hunter + Acceptance Auditor all ran. Acceptance Auditor found zero AC violations
@@ -585,28 +587,38 @@ development_status:
   6-10-epic-6-post-69-deferred-hardening: done
   epic-6-retrospective: optional
 
-  # ─── E7: Progression & Persistent Meta ──────────────────────────────────────
-  # Registered accounts, Spirit Essence persistence, mastery counters, hub shop.
+  # ─── E7: Ability & Environmental VFX Prototyping ────────────────────────────
+  # Inserted by sprint-change-proposal-2026-07-21.md — shape/particle-based visual
+  # identity for all 16 shipped abilities + Grassland boss attacks + status effects,
+  # replacing today's undifferentiated flat-color circles, ahead of the final
+  # PixelLab pixel-art pass. No new FRs. Pushed Progression/Full Class Roster/
+  # Ancient Forest Biome/Polish down one slot each (old E7-E10 -> E8-E11).
   # Stories: not yet defined
   epic-7: backlog
   epic-7-retrospective: optional
 
-  # ─── E8: Full Class Roster ──────────────────────────────────────────────────
-  # Remaining 6 classes (Sunwarden, Wildshaper, Songweaver, Trailhunter,
-  # Shadowstalker, Windwalker) bringing total to 10.
+  # ─── E8: Progression & Persistent Meta ──────────────────────────────────────
+  # Registered accounts, Spirit Essence persistence, mastery counters, hub shop.
   # Stories: not yet defined
   epic-8: backlog
   epic-8-retrospective: optional
 
-  # ─── E9: Ancient Forest Biome ───────────────────────────────────────────────
-  # Second biome fully playable: enemy pool, boss, achievements, visual identity.
+  # ─── E9: Full Class Roster ───────────────────────────────────────────────────
+  # Remaining 6 classes (Sunwarden, Wildshaper, Songweaver, Trailhunter,
+  # Shadowstalker, Windwalker) bringing total to 10.
   # Stories: not yet defined
   epic-9: backlog
   epic-9-retrospective: optional
 
-  # ─── E10: Polish, Performance & Telemetry ───────────────────────────────────
-  # All NFRs verified by measurement; telemetry instruments key flows;
-  # difficulty curve playtested and tuned.
+  # ─── E10: Ancient Forest Biome ───────────────────────────────────────────────
+  # Second biome fully playable: enemy pool, boss, achievements, visual identity.
   # Stories: not yet defined
   epic-10: backlog
   epic-10-retrospective: optional
+
+  # ─── E11: Polish, Performance & Telemetry ───────────────────────────────────
+  # All NFRs verified by measurement; telemetry instruments key flows;
+  # difficulty curve playtested and tuned.
+  # Stories: not yet defined
+  epic-11: backlog
+  epic-11-retrospective: optional

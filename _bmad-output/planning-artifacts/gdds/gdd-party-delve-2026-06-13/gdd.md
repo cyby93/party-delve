@@ -354,6 +354,8 @@ Corrupted enemies and environments show dark void fractures spreading across the
 
 **No visual references provided** — [NOTE FOR DESIGNER: reference images recommended before art production begins. Consider: Hades (isometric pixel readability), Ancestor's Legacy (tribal + corrupted aesthetic), or PixelLab portfolio samples for the art style.]
 
+**Staged approach:** Epic 7 (Ability & Environmental VFX Prototyping) builds shape/particle-based programmer-art VFX for all shipped abilities ahead of this final pixel-art pass — it prototypes visual feedback and timing, not final look. Final sprites replace the Epic 7 prototypes once PixelLab production begins; they don't need to match the prototype's shapes/colors, only its readability bar.
+
 ### Audio and Music
 
 **Baseline:** Ambient natural sounds — wind, fire crackling, birdsong, insect chorus. The world breathes.
