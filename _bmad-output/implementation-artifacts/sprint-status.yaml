@@ -1,5 +1,5 @@
 # generated: 2026-06-22
-# last_updated: 2026-07-21 (6-10-epic-6-post-69-deferred-hardening code review passed, done)
+# last_updated: 2026-07-21 (epic-1-retrospective done)
 # project: party-delve
 # project_key: NOKEY
 # tracking_system: file-system
@@ -42,7 +42,19 @@
 # Phase2 legacy stories (old Phase-based keys) are tracked below under PHASE 2 STORIES.
 
 generated: 2026-06-22
-last_updated: 2026-07-20 (5-9 done)
+last_updated: 2026-07-21 (epic-1-retrospective done)
+# 2026-07-21: ran epic-1-retrospective (done) — first retrospective run on the project,
+# retroactively (Epics 1-6 all already complete by the time it ran). Synthesized findings
+# from stories 1.1-1.10's dev notes/code-review history rather than fresh memory, since
+# Epic 1 is pure infrastructure with no UI surface to recall. 2 action items created:
+# (1) isHost flag has no server-side auth check (security debt open since 1.3, relevant
+# again given Epic 7's registered-accounts scope), owner Simulation Engineer; (2)
+# apps/mobile-controller has zero automated test coverage as of 1.10, owner Mobile
+# Controller Engineer + QA support. Zod validation on deserialize() and the e2e
+# reconnect.test.ts it.todo stub were surfaced but left at their existing deferred-work.md
+# priority, not escalated. No epic-plan update needed — Epic 2 (the numerically next epic)
+# is already done; actual next work is Epic 7 (backlog, no stories yet). Full retro saved:
+# epic-1-retro-2026-07-21.md.
 # 2026-07-20: code review of 5-9-epic-5-post-58-deferred-hardening (done) — Blind Hunter +
 # Edge Case Hunter + Acceptance Auditor all ran. Acceptance Auditor found zero AC violations
 # (all 8 ACs + all 4 Non-goals confirmed against the diff). Blind Hunter and Edge Case Hunter
@@ -430,7 +442,7 @@ development_status:
   # Closes 1.9's own review leftovers (D1-D3): unguarded history.replaceState at both
   # call sites, async onLeave/handleDisconnect race, handleGiveUp stale URL fallback.
   1-10-epic-1-post-19-deferred-hardening: done
-  epic-1-retrospective: optional
+  epic-1-retrospective: done
 
   # ─── E2: Hub World & Class Selection ────────────────────────────────────────
   # Players explore the tribe village hub, interact with POIs (class selection,
