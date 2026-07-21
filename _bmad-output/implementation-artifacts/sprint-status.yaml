@@ -1,5 +1,5 @@
 # generated: 2026-06-22
-# last_updated: 2026-07-21 (epic-1-retrospective done)
+# last_updated: 2026-07-21 (7-1-vfx-engine-foundations done)
 # project: party-delve
 # project_key: NOKEY
 # tracking_system: file-system
@@ -42,7 +42,7 @@
 # Phase2 legacy stories (old Phase-based keys) are tracked below under PHASE 2 STORIES.
 
 generated: 2026-06-22
-last_updated: 2026-07-21 (epic-1-retrospective done)
+last_updated: 2026-07-21 (7-1-vfx-engine-foundations done)
 # 2026-07-21: ran epic-1-retrospective (done) — first retrospective run on the project,
 # retroactively (Epics 1-6 all already complete by the time it ran). Synthesized findings
 # from stories 1.1-1.10's dev notes/code-review history rather than fresh memory, since
@@ -593,8 +593,8 @@ development_status:
   # replacing today's undifferentiated flat-color circles, ahead of the final
   # PixelLab pixel-art pass. No new FRs. Pushed Progression/Full Class Roster/
   # Ancient Forest Biome/Polish down one slot each (old E7-E10 -> E8-E11).
-  # Stories: not yet defined
-  epic-7: backlog
+  epic-7: in-progress
+  7-1-vfx-engine-foundations: done
   epic-7-retrospective: optional
 
   # ─── E8: Progression & Persistent Meta ──────────────────────────────────────
