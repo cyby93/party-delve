@@ -12,7 +12,7 @@ import {
   CAT_BOSS, createZoneBody, createProjectileBody,
 } from '../physics/world.js';
 import type { PoiBeginContactEvent, PoiEndContactEvent, EssenceBeginContactEvent, PhysicsBodyData } from '../physics/world.js';
-import { createRng, tickEnemy, dispatchAbility, getEnemyCount, applyDamage, isInHitZone, ABILITY_HIT_RANGE_PX, ABILITY_HIT_RADIUS_PX, ABILITY_DAMAGE, applyPlayerDamage, getReviveWindowMs, ENEMY_MELEE_DAMAGE, ENEMY_MELEE_RANGE_PX, ENEMY_ATTACK_COOLDOWN_MS, REVIVE_RADIUS_PX, REVIVE_HP, SPIRIT_ABILITY_COOLDOWN_MS, generateFloorLayout, GRASSLAND_ROOM_POOL, WAVE_COUNTS, WAVE_PAUSE_MS, WAVE_ENEMY_SCALE, bondKey, getProximityBuffedPlayers, getFateBuffedPlayers, getFateBondWipeTargets, getProximityDrainTargets, BOND_PROXIMITY_RANGE_PX, BOND_DRAIN_THRESHOLD_S, BOND_DRAIN_HP_PER_TICK, BOND_DAMAGE_MULT, BOND_SPEED_MULT, assignBond, BOND_DESCRIPTIONS, BOND_MECHANICS, createBossState, tickBoss, BOSS_ADD_HP, BOSS_STOMP_DAMAGE, evaluateGrasslandAchievements, JOYSTICK_DEADBAND, createEasyLayers, createNormalLayers, createHardLayers, tickStatusEffects, getStatusEffectMagnitude, applyStatusEffect, resolveProjectileHit, isProjectileExpired, shouldZoneTick, isZoneExpired, PROJECTILE_MAX_RANGE_PX, PROJECTILE_SPEED_PX_S, ABILITY_CHAINED_ZONE, ABILITY_STATUS_EFFECT, ABILITY_DISPLACEMENT_STRENGTH, applyDisplacement, resolveMixedFactionTargets, healPlayer, calculateLifesteal, resolveExpandingRadius, ABILITY_HEAL_AMOUNT, SPIRIT_NOVA_DURATION_MS, SPIRIT_NOVA_MAX_RADIUS_PX, findSoulMendTarget, shouldCancelSoulMendChannel, reviveBySoulMend, SOUL_MEND_CHANNEL_DURATION_MS, SOUL_MEND_LIVENESS_MS, ABILITY_COOLDOWNS_MS, ABILITY_DELIVERY, ABILITY_LIFESTEAL_PCT, VOID_PULSE_PULL_STRENGTH_PX, DARK_PACT_DRAIN_PCT, STORM_EYE_ZONE_RADIUS_PX, STORM_EYE_TICK_MS, STORM_EYE_TICK_DAMAGE, STORM_EYE_DURATION_MS, STORM_EYE_STRIKE_INTERVAL_MS, STORM_EYE_STRIKE_DAMAGE, pickRandomIndex } from 'game-rules';
+import { createRng, tickEnemy, dispatchAbility, getEnemyCount, applyDamage, isInHitZone, ABILITY_HIT_RANGE_PX, ABILITY_HIT_RADIUS_PX, ABILITY_DAMAGE, applyPlayerDamage, getReviveWindowMs, ENEMY_MELEE_DAMAGE, ENEMY_MELEE_RANGE_PX, ENEMY_ATTACK_COOLDOWN_MS, REVIVE_RADIUS_PX, REVIVE_HP, SPIRIT_ABILITY_COOLDOWN_MS, generateFloorLayout, GRASSLAND_ROOM_POOL, WAVE_COUNTS, WAVE_PAUSE_MS, WAVE_ENEMY_SCALE, bondKey, getProximityBuffedPlayers, getFateBuffedPlayers, getFateBondWipeTargets, getProximityDrainTargets, BOND_PROXIMITY_RANGE_PX, BOND_DRAIN_THRESHOLD_S, BOND_DRAIN_HP_PER_TICK, BOND_SPEED_MULT, assignBond, BOND_DESCRIPTIONS, BOND_MECHANICS, createBossState, tickBoss, BOSS_ADD_HP, BOSS_STOMP_DAMAGE, evaluateGrasslandAchievements, JOYSTICK_DEADBAND, createEasyLayers, createNormalLayers, createHardLayers, tickStatusEffects, getStatusEffectMagnitude, applyStatusEffect, resolveProjectileHit, isProjectileExpired, shouldZoneTick, isZoneExpired, PROJECTILE_MAX_RANGE_PX, PROJECTILE_SPEED_PX_S, ABILITY_CHAINED_ZONE, ABILITY_STATUS_EFFECT, ABILITY_DISPLACEMENT_STRENGTH, applyDisplacement, resolveMixedFactionTargets, healPlayer, calculateLifesteal, resolveExpandingRadius, ABILITY_HEAL_AMOUNT, SPIRIT_NOVA_DURATION_MS, SPIRIT_NOVA_MAX_RADIUS_PX, findSoulMendTarget, shouldCancelSoulMendChannel, reviveBySoulMend, SOUL_MEND_CHANNEL_DURATION_MS, SOUL_MEND_LIVENESS_MS, ABILITY_COOLDOWNS_MS, ABILITY_DELIVERY, ABILITY_LIFESTEAL_PCT, VOID_PULSE_PULL_STRENGTH_PX, DARK_PACT_DRAIN_PCT, STORM_EYE_ZONE_RADIUS_PX, STORM_EYE_TICK_MS, STORM_EYE_TICK_DAMAGE, STORM_EYE_DURATION_MS, STORM_EYE_STRIKE_INTERVAL_MS, STORM_EYE_STRIKE_DAMAGE, pickRandomIndex, resolveOutgoingDamage } from 'game-rules';
 import type { BehaviorLayer, EnemyContext, EnemyAIEvent, BossEvent, BossStompedEvent, ChainedZoneConfig } from 'game-rules';
 import { BOSS_ARENA_SPAWN_POINTS, loadBossArena } from '../levels/boss-arena.js';
 import { CLASS_DEFINITIONS } from 'shared-types';
@@ -143,8 +143,10 @@ export class GameRoom extends Room {
   private totalWaves = 0;
   private wavePauseUntil = 0;
   private returnReadySet = new Set<string>();
+  private godModePlayerIds = new Set<string>(); // debug-only, NODE_ENV-gated — see debug:toggle-god-mode
   private bondRng!: () => number;
   private bondMomentNextLevel = -1; // -1 = not in bond-moment; ≥0 = next level to load on CONTINUE
+  private bondEligiblePlayerCount = -1; // -1 = not yet snapshotted; roster size at first bond-assignment attempt (Story 5.9, D-5.8-A)
   private bossBody: Body | null = null;
   private arenaWallBodies: Body[] = [];
   private pendingBossStompEvents: BossStompedEvent[] = [];
@@ -354,6 +356,20 @@ export class GameRoom extends Room {
         if (!this.gameState.boss || this.gameState.boss.isDefeated) return;
         this.gameState.boss.hp = 0;
       });
+
+      this.onMessage('debug:toggle-god-mode', (client: Client) => {
+        const player = this.gameState.players.find(p => p.id === client.sessionId);
+        if (!player) return;
+        let godMode: boolean;
+        if (this.godModePlayerIds.has(client.sessionId)) {
+          this.godModePlayerIds.delete(client.sessionId);
+          godMode = false;
+        } else {
+          this.godModePlayerIds.add(client.sessionId);
+          godMode = true;
+        }
+        logger.info({ roomId: this.roomId, clientId: client.sessionId, godMode }, 'debug:toggle-god-mode');
+      });
     }
 
     // Initialize physics world
@@ -453,6 +469,7 @@ export class GameRoom extends Room {
       this.lastKnownJoystick.delete(client.sessionId);
       this.classSelectLastAccepted.delete(client.sessionId);
       this.lastSoulMendInputAt.delete(client.sessionId);
+      this.godModePlayerIds.delete(client.sessionId);
       const leaveBody = this.playerBodies.get(client.sessionId);
       if (leaveBody) {
         this.physicsWorld.destroyBody(leaveBody);
@@ -526,6 +543,7 @@ export class GameRoom extends Room {
       this.lastKnownJoystick.delete(client.sessionId);
       this.classSelectLastAccepted.delete(client.sessionId);
       this.lastSoulMendInputAt.delete(client.sessionId);
+      this.godModePlayerIds.delete(client.sessionId);
       const expireBody = this.playerBodies.get(client.sessionId);
       if (expireBody) {
         this.physicsWorld.destroyBody(expireBody);
@@ -619,6 +637,7 @@ export class GameRoom extends Room {
     this.gameState.runProposal = null;
     for (const p of this.gameState.players) p.nearPoiId = null;
     this.bondMomentNextLevel = -1;
+    this.bondEligiblePlayerCount = -1;
     try {
       const floorRng = createRng(this.gameState.session.runSeed ^ OFFSET_FLOOR_LAYOUT);
       const roomRng  = createRng(this.gameState.session.runSeed ^ OFFSET_ROOM_POOL);
@@ -761,6 +780,15 @@ export class GameRoom extends Room {
     }
     this.essenceSensorBodies.clear();
 
+    // Destroy boss body and arena walls if a run ended mid-boss-fight or boss construction
+    // failed partway through (Story 4.14 — mirrors loadLevel's equivalent cleanup block)
+    if (this.bossBody) {
+      this.physicsWorld.destroyBody(this.bossBody);
+      this.bossBody = null;
+    }
+    for (const wall of this.arenaWallBodies) this.physicsWorld.destroyBody(wall);
+    this.arenaWallBodies.length = 0;
+
     // Clear game state arrays
     this.gameState.enemies = [];
     this.gameState.essenceDrops = [];
@@ -868,6 +896,9 @@ export class GameRoom extends Room {
       this.loadLevel(levelIndex + 1);
       this.broadcast(EventNames.SNAPSHOT, { type: 'snapshot', state: this.gameState } satisfies SnapshotMsg);
       return;
+    }
+    if (this.bondEligiblePlayerCount === -1) {
+      this.bondEligiblePlayerCount = this.gameState.players.length;
     }
     const result = assignBond(this.gameState, this.bondRng);
     if (!result.ok) {
@@ -994,10 +1025,16 @@ export class GameRoom extends Room {
         player.isDown = false;
         player.isSpirit = false;
         player.reviveTimerExpiresAt = 0;
-        player.hp = REVIVE_HP;
         // Flush class-ability cooldowns that expired during spirit form (AC7 fix)
         if (wasSpirit) this.flushExpiredClassCooldowns(player.id);
       }
+      // Full HP restore on every level transition (Story 4.12) — applies to every player,
+      // not only the isDown/isSpirit subset; matches resetToHub()'s existing pattern.
+      player.hp = player.maxHp;
+      // Clear isFrozen on every level transition too (Story 4.14) — matches
+      // resetToHub()'s existing player.isFrozen = false precedent; a disconnected/frozen
+      // player must not carry a stale freeze flag across a level boundary.
+      player.isFrozen = false;
       const spawnIdx = this.gameState.players.indexOf(player);
       const spawn = DUNGEON_SPAWN_POSITIONS[spawnIdx] ?? { x: 400, y: 540 };
       player.x = spawn.x;
@@ -1012,11 +1049,23 @@ export class GameRoom extends Room {
       // ponytail: one bond assigned per dungeon level (BOSS_LEVEL_INDEX-1 = 3 max), but a
       // 2-player session only has 1 possible pair — expect min(3, achievable pairs), not a
       // fixed 3, or AllBondsActive is permanently unreachable for 2-player sessions (D-5.7-C)
-      const playerCount = this.gameState.players.length;
+      // Story 5.9 (D-5.8-A): use the roster snapshotted at first bond assignment, not the live
+      // roster at boss-start — a mid-dungeon join/leave between bond assignment and boss start
+      // must not desync maxAchievableBonds from the bonds that were actually assigned.
+      // !== -1 (not >= 2): 0 or 1 is a legitimate captured snapshot (e.g. a solo-started run),
+      // not "never snapshotted" — falling back to the live count for a captured 0/1 would
+      // reintroduce the exact stale-read bug this story closes (code review finding, 5.9).
+      const playerCount = this.bondEligiblePlayerCount !== -1
+        ? this.bondEligiblePlayerCount
+        : this.gameState.players.length;
       const maxAchievableBonds = playerCount >= 2
         ? Math.min(BOSS_LEVEL_INDEX - 1, (playerCount * (playerCount - 1)) / 2)
         : 0;
-      this.gameState.session.allBondsAtBossStart = this.gameState.activeBonds.length === maxAchievableBonds
+      // >= (not ===): assignBond still pairs against the live roster each bond-moment, so a
+      // roster that grows between bond-assignment attempts (not just right before boss) can
+      // validly earn more bonds than the frozen playerCount snapshot anticipated — those extra
+      // bonds should still count as "all achievable bonds active" (code review finding, 5.9).
+      this.gameState.session.allBondsAtBossStart = this.gameState.activeBonds.length >= maxAchievableBonds
         && maxAchievableBonds > 0;
       // ponytail: boss is level index 4; dungeon runs levels 1-3
       this.arenaWallBodies = loadBossArena(this.physicsWorld);
@@ -1040,7 +1089,6 @@ export class GameRoom extends Room {
       this.gameState.session.levelIndex = index; // commit only after boss setup succeeds
       logger.info({ roomId: this.roomId }, 'boss arena loaded');
     } else if (index === 2) {
-      this.gameState.session.levelIndex = index;
       this.levelObjective = 'survive-waves';
       this.totalWaves = WAVE_COUNTS['mid'];
       this.waveIndex = 0;
@@ -1049,8 +1097,8 @@ export class GameRoom extends Room {
       this.gameState.session.waveIndex = 0;
       this.gameState.session.totalWaves = this.totalWaves;
       this.spawnWave(1, 'mid', index);
+      this.gameState.session.levelIndex = index; // commit only after spawnWave succeeds
     } else {
-      this.gameState.session.levelIndex = index;
       this.levelObjective = 'clear';
       this.waveIndex = 0; this.totalWaves = 0; this.wavePauseUntil = 0;
       this.gameState.session.levelObjective = 'clear';
@@ -1058,6 +1106,7 @@ export class GameRoom extends Room {
       this.gameState.session.totalWaves = 0;
       const tier = index === 1 ? 'early' : 'late';
       this.spawnEnemies(tier, index);
+      this.gameState.session.levelIndex = index; // commit only after spawnEnemies succeeds
     }
   }
 
@@ -1237,6 +1286,7 @@ export class GameRoom extends Room {
 
     const targetIdx = this.gameState.players.findIndex(p => p.id === nearest.id);
     if (targetIdx === -1) return;
+    if (this.godModePlayerIds.has(this.gameState.players[targetIdx]!.id)) return;
     const drainAmount = this.gameState.players[targetIdx]!.hp * DARK_PACT_DRAIN_PCT;
     const dmgResult = applyPlayerDamage(this.gameState.players[targetIdx]!, drainAmount, nowMs);
     if (!dmgResult.ok) return; // target became invalid this tick (e.g. concurrently downed) — no drain, no buff
@@ -1488,7 +1538,8 @@ export class GameRoom extends Room {
           }
         }
       } else if (zone.effectType === 'damage') {
-        const damage = this.zoneDamagePerTick.get(zone.id) ?? 0;
+        const rawDamage = this.zoneDamagePerTick.get(zone.id) ?? 0;
+        const damage = resolveOutgoingDamage(rawDamage, proximityBuffed.has(zone.ownerId), this.godModePlayerIds.has(zone.ownerId));
         const overlapping = this.zoneOverlapping.get(zone.id);
         if (damage > 0 && overlapping) {
           for (const targetId of overlapping) {
@@ -1530,6 +1581,23 @@ export class GameRoom extends Room {
             }
           }
         }
+
+        // Story 6.9: boss branch. The boss's physics fixture has filterMaskBits: 0
+        // (hit-scan only, see GameRoom.ts:1054) so it never appears in zoneOverlapping —
+        // this must run regardless of whether `overlapping` is empty/undefined, hence its
+        // own `if`, not nested inside the `overlapping`-gated loop above. Mirrors Spirit
+        // Nova's `bossInRing` direct-position check.
+        if (damage > 0 && this.gameState.boss && !this.gameState.boss.isDefeated &&
+            isInHitZone(zone.x, zone.y, 0, 0,
+              this.gameState.boss.position.x, this.gameState.boss.position.y,
+              zone.radius, 0, false)) {
+          this.gameState.boss.hp = Math.max(0, this.gameState.boss.hp - damage);
+          this.broadcast(EventNames.DELTA, {
+            type: 'boss:damaged' as const,
+            bossId: this.gameState.boss.id,
+            newHp: this.gameState.boss.hp,
+          } satisfies DeltaEventMsg);
+        }
       }
 
       // Storm Eye bonus lightning strike (Story 3.20): a second, longer-period
@@ -1540,6 +1608,7 @@ export class GameRoom extends Room {
       const lastStrikeAt = this.zoneStrikeTimers.get(zone.id);
       if (lastStrikeAt !== undefined && tickNowMs - lastStrikeAt >= STORM_EYE_STRIKE_INTERVAL_MS) {
         this.zoneStrikeTimers.set(zone.id, tickNowMs);
+        const strikeDamage = resolveOutgoingDamage(STORM_EYE_STRIKE_DAMAGE, proximityBuffed.has(zone.ownerId), this.godModePlayerIds.has(zone.ownerId));
         // zoneOverlapping tracks both factions (the zone sensor's filterMaskBits
         // includes CAT_PLAYER, not just CAT_ENEMY — allies can stand in the zone
         // too), but Storm Eye's 'damage' effectType only ever targets enemies
@@ -1549,47 +1618,72 @@ export class GameRoom extends Room {
         const aliveEnemyIds = overlapping
           ? Array.from(overlapping).filter(id => this.gameState.enemies.some(e => e.id === id && e.isAlive))
           : [];
-        if (aliveEnemyIds.length > 0) {
-          const targetId = aliveEnemyIds[pickRandomIndex(this.prng(), aliveEnemyIds.length)]!;
-          const ei = this.gameState.enemies.findIndex(e => e.id === targetId);
-          if (ei !== -1) {
-            const dropId = `drop-${this.tickCount}-${targetId}-strike`;
-            const dmgResult = applyDamage(this.gameState.enemies[ei]!, STORM_EYE_STRIKE_DAMAGE, dropId, tickNowMs);
-            if (dmgResult.ok) {
-              this.gameState.enemies[ei] = dmgResult.value.enemy;
+        // Story 6.9: the boss never appears in `overlapping` (filterMaskBits: 0, see
+        // the zone damage-tick boss branch above) — give it a chance at the strike
+        // via the same direct-position check, added as one extra candidate so the
+        // existing per-enemy pick distribution is unchanged when the boss is out of range.
+        const bossInRange = this.gameState.boss !== null && !this.gameState.boss.isDefeated &&
+          isInHitZone(zone.x, zone.y, 0, 0,
+            this.gameState.boss.position.x, this.gameState.boss.position.y,
+            zone.radius, 0, false);
+        const strikeCandidates: string[] = bossInRange ? [...aliveEnemyIds, '__boss__'] : aliveEnemyIds;
+        if (strikeCandidates.length > 0) {
+          const targetId = strikeCandidates[pickRandomIndex(this.prng(), strikeCandidates.length)]!;
 
-              this.broadcast(EventNames.DELTA, {
-                type: 'zone:strike' as const,
-                zoneId: zone.id,
-                targetId,
-                damage: STORM_EYE_STRIKE_DAMAGE,
-              } satisfies DeltaEventMsg);
+          if (targetId === '__boss__') {
+            this.gameState.boss!.hp = Math.max(0, this.gameState.boss!.hp - strikeDamage);
+            this.broadcast(EventNames.DELTA, {
+              type: 'zone:strike' as const,
+              zoneId: zone.id,
+              targetId: this.gameState.boss!.id,
+              damage: strikeDamage,
+            } satisfies DeltaEventMsg);
+            this.broadcast(EventNames.DELTA, {
+              type: 'boss:damaged' as const,
+              bossId: this.gameState.boss!.id,
+              newHp: this.gameState.boss!.hp,
+            } satisfies DeltaEventMsg);
+          } else {
+            const ei = this.gameState.enemies.findIndex(e => e.id === targetId);
+            if (ei !== -1) {
+              const dropId = `drop-${this.tickCount}-${targetId}-strike`;
+              const dmgResult = applyDamage(this.gameState.enemies[ei]!, strikeDamage, dropId, tickNowMs);
+              if (dmgResult.ok) {
+                this.gameState.enemies[ei] = dmgResult.value.enemy;
 
-              if (dmgResult.value.killed) {
                 this.broadcast(EventNames.DELTA, {
-                  type: 'enemy:killed' as const,
-                  enemyId: targetId,
-                  byPlayerId: zone.ownerId,
+                  type: 'zone:strike' as const,
+                  zoneId: zone.id,
+                  targetId,
+                  damage: strikeDamage,
                 } satisfies DeltaEventMsg);
-                const enemyBody = this.enemyBodies.get(targetId);
-                if (enemyBody) {
-                  this.physicsWorld.destroyBody(enemyBody);
-                  this.enemyBodies.delete(targetId);
+
+                if (dmgResult.value.killed) {
+                  this.broadcast(EventNames.DELTA, {
+                    type: 'enemy:killed' as const,
+                    enemyId: targetId,
+                    byPlayerId: zone.ownerId,
+                  } satisfies DeltaEventMsg);
+                  const enemyBody = this.enemyBodies.get(targetId);
+                  if (enemyBody) {
+                    this.physicsWorld.destroyBody(enemyBody);
+                    this.enemyBodies.delete(targetId);
+                  }
+                  this.enemyAttackCooldowns.delete(targetId);
+
+                  const drop = dmgResult.value.essenceDrop!;
+                  this.gameState.essenceDrops.push(drop);
+                  this.broadcast(EventNames.DELTA, { type: 'essence:dropped' as const, drop } satisfies DeltaEventMsg);
+                  const sensor = createEssenceSensorBody(this.physicsWorld, drop.id, drop.x, drop.y);
+                  this.essenceSensorBodies.set(drop.id, sensor);
+                } else {
+                  this.broadcast(EventNames.DELTA, {
+                    type: 'enemy:damaged' as const,
+                    enemyId: targetId,
+                    damage: strikeDamage,
+                    remainingHp: dmgResult.value.enemy.hp,
+                  } satisfies DeltaEventMsg);
                 }
-                this.enemyAttackCooldowns.delete(targetId);
-
-                const drop = dmgResult.value.essenceDrop!;
-                this.gameState.essenceDrops.push(drop);
-                this.broadcast(EventNames.DELTA, { type: 'essence:dropped' as const, drop } satisfies DeltaEventMsg);
-                const sensor = createEssenceSensorBody(this.physicsWorld, drop.id, drop.x, drop.y);
-                this.essenceSensorBodies.set(drop.id, sensor);
-              } else {
-                this.broadcast(EventNames.DELTA, {
-                  type: 'enemy:damaged' as const,
-                  enemyId: targetId,
-                  damage: STORM_EYE_STRIKE_DAMAGE,
-                  remainingHp: dmgResult.value.enemy.hp,
-                } satisfies DeltaEventMsg);
               }
             }
           }
@@ -1625,7 +1719,8 @@ export class GameRoom extends Room {
       if (!enemy.isAlive) continue;
 
       const projectile = this.gameState.projectiles[pi]!;
-      const damage = ABILITY_DAMAGE[projectile.class][projectile.abilityIndex as 0 | 1 | 2 | 3] ?? 0;
+      const rawDamage = ABILITY_DAMAGE[projectile.class][projectile.abilityIndex as 0 | 1 | 2 | 3] ?? 0;
+      const damage = resolveOutgoingDamage(rawDamage, proximityBuffed.has(projectile.ownerId), this.godModePlayerIds.has(projectile.ownerId));
       const hitResult = resolveProjectileHit(projectile, enemy, damage, tickNowMs);
       if (!hitResult.ok) continue;
 
@@ -1723,7 +1818,7 @@ export class GameRoom extends Room {
     if (this.pendingBossStompEvents.length > 0) {
       for (const stompEvt of this.pendingBossStompEvents) {
         for (const player of this.gameState.players) {
-          if (player.isDown || player.isSpirit || player.isFrozen) continue;
+          if (player.isDown || player.isSpirit || player.isFrozen || this.godModePlayerIds.has(player.id)) continue;
           const dx = player.x - stompEvt.x;
           const dy = player.y - stompEvt.y;
           if (Math.sqrt(dx * dx + dy * dy) > stompEvt.radius) continue;
@@ -1887,7 +1982,7 @@ export class GameRoom extends Room {
       }
     }
 
-    // Process ability inputs — valid in dungeon phase or near training dummy
+    // Process ability inputs — valid anywhere in the hub, or in dungeon phase
     for (const { clientId, msg } of this.inputQueue) {
       if (msg.event.type !== 'ability') continue;
       const { abilityIndex, directionX, directionY } = msg.event.ability;
@@ -1896,8 +1991,6 @@ export class GameRoom extends Room {
       if (!player || player.class === null || player.isFrozen || player.isDown || player.isSpirit) continue;
 
       const inDungeon = this.gameState.session.phase === 'dungeon';
-      const atTrainingDummy = player.nearPoiId === 'training-dummy';
-      if (!inDungeon && !atTrainingDummy) continue;
 
       const playerCooldowns = this.cooldownMap.get(clientId);
       if (!playerCooldowns) continue;
@@ -2099,9 +2192,7 @@ export class GameRoom extends Room {
         const casterY = player.y;
         const rawDamage = result.value.damage;
         if (rawDamage <= 0 && healAmount <= 0) continue;  // ponytail: skip hit-scan for buff-only abilities (damage=0, heal=0)
-        const damage = proximityBuffed.has(clientId)
-          ? Math.round(rawDamage * BOND_DAMAGE_MULT)
-          : rawDamage;
+        const damage = resolveOutgoingDamage(rawDamage, proximityBuffed.has(clientId), this.godModePlayerIds.has(clientId));
 
         // AC6: normalize direction so sub-unit joystick magnitude doesn't shrink hit range
         const mag = Math.hypot(dirX, dirY);
@@ -2161,6 +2252,19 @@ export class GameRoom extends Room {
               const sensor = createEssenceSensorBody(this.physicsWorld, drop.id, drop.x, drop.y);
               this.essenceSensorBodies.set(drop.id, sensor);
             }
+          }
+
+          // Story 6.7: boss hit-scan for the mixed-faction cone — same pattern as Task 1.
+          if (this.gameState.boss && !this.gameState.boss.isDefeated &&
+              isInHitZone(casterX, casterY, normDirX, normDirY,
+                this.gameState.boss.position.x, this.gameState.boss.position.y,
+                hitRadius, hitRange, isDirectional)) {
+            this.gameState.boss.hp = Math.max(0, this.gameState.boss.hp - damage);
+            this.broadcast(EventNames.DELTA, {
+              type: 'boss:damaged' as const,
+              bossId: this.gameState.boss.id,
+              newHp: this.gameState.boss.hp,
+            } satisfies DeltaEventMsg);
           }
 
           for (const ally of allies) {
@@ -2232,6 +2336,23 @@ export class GameRoom extends Room {
             this.essenceSensorBodies.set(drop.id, sensor);
           }
         }
+
+        // Story 6.7: boss hit-scan — closes D-6.3-0. Mirrors applyDamage's core math
+        // directly (not a call to applyDamage() itself — BossState has no isAlive/x/y/
+        // statusEffects; see this story's Non-goals for why). No essence drop, no
+        // status-effect/displacement application — boss defeat/phase transitions are
+        // handled entirely by tickBoss reading boss.hp on its own next tick.
+        if (this.gameState.boss && !this.gameState.boss.isDefeated &&
+            isInHitZone(player.x, player.y, normDirX, normDirY,
+              this.gameState.boss.position.x, this.gameState.boss.position.y,
+              hitRadius, hitRange, isDirectional)) {
+          this.gameState.boss.hp = Math.max(0, this.gameState.boss.hp - damage);
+          this.broadcast(EventNames.DELTA, {
+            type: 'boss:damaged' as const,
+            bossId: this.gameState.boss.id,
+            newHp: this.gameState.boss.hp,
+          } satisfies DeltaEventMsg);
+        }
       }
 
       logger.debug({ roomId: this.roomId, clientId, abilityIndex, dirX, dirY }, 'ability fired');
@@ -2255,16 +2376,21 @@ export class GameRoom extends Room {
           isInHitZone(nova.x, nova.y, 0, 0, e.x, e.y, currentRadius, 0, false));
         const alliesInRing = this.gatherPlayersInHitZone(nova.x, nova.y, 0, 0, currentRadius, 0, false, nova.casterId)
           .filter(p => !nova.hitIds.has(p.id));
+        // Story 6.7: boss participates in this sweep's once-per-activation hit tracking too.
+        // Computed here (not inside the `if` below) so a boss-only ring — zero enemies,
+        // zero allies — still enters the block and computes novaDamage.
+        const bossInRing = this.gameState.boss !== null && !this.gameState.boss.isDefeated &&
+          !nova.hitIds.has(this.gameState.boss.id) &&
+          isInHitZone(nova.x, nova.y, 0, 0,
+            this.gameState.boss.position.x, this.gameState.boss.position.y, currentRadius, 0, false);
 
-        if (enemiesInRing.length > 0 || alliesInRing.length > 0) {
+        if (enemiesInRing.length > 0 || alliesInRing.length > 0 || bossInRing) {
           const { allies, enemies } = resolveMixedFactionTargets(nova.casterId, [...enemiesInRing, ...alliesInRing]);
           const rawNovaDamage = ABILITY_DAMAGE[PlayerClass.SPIRITCALLER][1];
           // Same Bond proximity-damage-buff treatment as every other damaging ability
           // (see Ancestor's Voice a few lines above) — heal is intentionally unbuffed,
           // matching Ancestor's Voice's heal side (BOND_DAMAGE_MULT is a damage-only buff).
-          const novaDamage = proximityBuffed.has(nova.casterId)
-            ? Math.round(rawNovaDamage * BOND_DAMAGE_MULT)
-            : rawNovaDamage;
+          const novaDamage = resolveOutgoingDamage(rawNovaDamage, proximityBuffed.has(nova.casterId), this.godModePlayerIds.has(nova.casterId));
           const novaHeal = ABILITY_HEAL_AMOUNT[PlayerClass.SPIRITCALLER][1];
 
           for (const target of enemies) {
@@ -2307,6 +2433,17 @@ export class GameRoom extends Room {
               const sensor = createEssenceSensorBody(this.physicsWorld, drop.id, drop.x, drop.y);
               this.essenceSensorBodies.set(drop.id, sensor);
             }
+          }
+
+          // Story 6.7: boss hit — placed after the enemy loop, before the ally heal loop.
+          if (bossInRing) {
+            nova.hitIds.add(this.gameState.boss!.id);
+            this.gameState.boss!.hp = Math.max(0, this.gameState.boss!.hp - novaDamage);
+            this.broadcast(EventNames.DELTA, {
+              type: 'boss:damaged' as const,
+              bossId: this.gameState.boss!.id,
+              newHp: this.gameState.boss!.hp,
+            } satisfies DeltaEventMsg);
           }
 
           for (const ally of allies) {
@@ -2379,7 +2516,7 @@ export class GameRoom extends Room {
         let targetPlayer: (typeof this.gameState.players)[0] | null = null;
         let minDist = Infinity;
         for (const player of this.gameState.players) {
-          if (player.isDown || player.isSpirit || player.isFrozen) continue;
+          if (player.isDown || player.isSpirit || player.isFrozen || this.godModePlayerIds.has(player.id)) continue;
           const dx = player.x - enemy.x;
           const dy = player.y - enemy.y;
           const dist = Math.sqrt(dx * dx + dy * dy);
@@ -2442,6 +2579,7 @@ export class GameRoom extends Room {
                 const partnerIdx = this.gameState.players.findIndex(p => p.id === partnerId);
                 const partner = this.gameState.players[partnerIdx];
                 if (!partner) continue;
+                if (this.godModePlayerIds.has(partner.id)) continue;
                 const wipeResult = applyPlayerDamage(partner, partner.hp, nowMelee);
                 if (!wipeResult.ok) continue; // already down/spirit/frozen
                 this.gameState.players[partnerIdx] = wipeResult.value.player;
@@ -2492,7 +2630,7 @@ export class GameRoom extends Room {
         for (const playerId of [playerA, playerB]) {
           const pi = this.gameState.players.findIndex(p => p.id === playerId);
           const player = this.gameState.players[pi];
-          if (!player || player.isDown || player.isSpirit || player.isFrozen) continue;
+          if (!player || player.isDown || player.isSpirit || player.isFrozen || this.godModePlayerIds.has(player.id)) continue;
           const newHp = Math.max(1, player.hp - BOND_DRAIN_HP_PER_TICK); // ponytail: drain never kills
           if (newHp !== player.hp) {
             player.hp = newHp;

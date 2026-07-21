@@ -49,22 +49,6 @@ export function OrientationPromptScreen({ onDismiss }: OrientationPromptScreenPr
         >
           Rotate your phone to landscape to play
         </p>
-        <button
-          onClick={onDismiss}
-          style={{
-            marginTop: 'var(--spacing-5)',
-            minHeight: 44,
-            background: 'none',
-            border: 'none',
-            fontFamily: 'var(--font-body)',
-            fontSize: 'var(--text-sm)',
-            color: 'var(--text-secondary)',
-            cursor: 'pointer',
-            textDecoration: 'underline',
-          }}
-        >
-          Got it, my screen is locked
-        </button>
       </div>
     </div>
   );

@@ -22,6 +22,28 @@ const JOYSTICK_MAX_RADIUS = 60;
 const DEADZONE_RADIUS = 8;
 const INPUT_INTERVAL_MS = 33; // ~30hz throttle to match sim tick rate
 
+// ponytail: bounded last-resort recovery for a startDungeon failure that leaves
+// gameState.runProposal unchanged (see deferred-work.md D1-4.13) — VotePopup can't rely on
+// a server signal to unmount in that case, so it self-resets after this long. Comfortably
+// exceeds a normal same-LAN vote-resolution round-trip (well under 1s in practice); revisit
+// if this ever proves too short/long in real play.
+const VOTE_ACCEPT_STUCK_TIMEOUT_MS = 6000;
+
+const SKILL_JOYSTICK_RING_PX = 80;
+const SKILL_JOYSTICK_KNOB_PX = 28;
+const SKILL_JOYSTICK_RING_RADIUS = SKILL_JOYSTICK_RING_PX / 2;
+// Independent from the movement joystick's DEADZONE_RADIUS (8px) — D-019 keeps these separately tunable.
+const SKILL_CELL_DEADZONE_RADIUS = 10;
+
+// iOS Safari never implements the Fullscreen API for arbitrary elements (only <video> gets
+// webkitEnterFullscreen) — document.fullscreenEnabled is always false there, so the toggle
+// button hides itself correctly, but the player still has no fullscreen path in a plain tab.
+// navigator.standalone is a non-standard Apple-only flag: `false` means "iOS Safari, running
+// as a regular browser tab" (undefined on every other browser/OS, `true` once the PWA is
+// already installed to the Home Screen, where the manifest's display:'fullscreen' already
+// takes over). Detected once at module load since it can't change during a session.
+const IS_IOS_SAFARI_TAB = (navigator as Navigator & { standalone?: boolean }).standalone === false;
+
 interface InteractButtonProps {
   visible: boolean;
   onTap: () => void;
@@ -212,7 +234,7 @@ const ABILITY_BADGE_BORDER: Record<AbilityInputType, string> = {
   AUTO:     'var(--accent-spirit)',
   RELEASE:  'var(--accent-warm)',
   TAP:      'var(--border)',
-  AIM_CAST: 'var(--accent-warm)',  // hold-to-channel (Story 3.18) — warm border still reads fine for a held ability
+  AIM_CAST: 'var(--accent-spirit)',  // hold-to-channel (Story 3.18) — continuous-while-held, joins AUTO's color family
 };
 
 interface AbilityChipProps {
@@ -563,6 +585,14 @@ interface VotePopupProps {
 }
 
 function VotePopup({ proposal, onAccept, onDecline }: VotePopupProps) {
+  const [hasAccepted, setHasAccepted] = useState(false);
+
+  useEffect(() => {
+    if (!hasAccepted) return;
+    const timer = setTimeout(() => setHasAccepted(false), VOTE_ACCEPT_STUCK_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [hasAccepted]);
+
   const difficultyLabel: Record<string, string> = { easy: 'Easy', normal: 'Normal', hard: 'Hard' };
   return (
     <div style={{ position: 'absolute', inset: 0, background: 'rgba(15,14,16,0.85)', zIndex: 60,
@@ -584,13 +614,21 @@ function VotePopup({ proposal, onAccept, onDecline }: VotePopupProps) {
           Decline
         </button>
         <button
-          onPointerDown={e => { e.preventDefault(); onAccept(); }}
+          onPointerDown={e => {
+            if (hasAccepted) return;
+            e.preventDefault();
+            setHasAccepted(true);
+            onAccept();
+          }}
           style={{ flex: 1, minHeight: 56, borderRadius: 8, border: 'none',
-            background: 'var(--interactive)', color: 'var(--bg-base)',
+            background: hasAccepted ? 'var(--bg-surface)' : 'var(--interactive)',
+            color: hasAccepted ? 'var(--text-secondary)' : 'var(--bg-base)',
             fontFamily: 'var(--font-body)', fontWeight: 700, fontSize: 'var(--text-sm)',
-            cursor: 'pointer', touchAction: 'manipulation', boxShadow: '0 0 16px rgba(110,168,216,0.4)' }}
+            cursor: hasAccepted ? 'default' : 'pointer', touchAction: 'manipulation',
+            opacity: hasAccepted ? 0.5 : 1, pointerEvents: hasAccepted ? 'none' : 'auto',
+            boxShadow: hasAccepted ? 'none' : '0 0 16px rgba(110,168,216,0.4)' }}
         >
-          Accept
+          {hasAccepted ? 'Waiting...' : 'Accept'}
         </button>
       </div>
     </div>
@@ -602,6 +640,7 @@ interface SkillCellProps {
   ability: ClassAbilityDef | null;
   cooldownState: CooldownState | null;
   isInteractive: boolean;
+  canHoldThroughCooldown: boolean;
   badgeBorderColor: string;
   onAbilityFire: (abilityIndex: number, dirX: number, dirY: number, isContinuous: boolean) => void;
   tapFlash: boolean;
@@ -610,13 +649,17 @@ interface SkillCellProps {
   spiritGlowColor?: string;
 }
 
-function SkillCell({ index, ability, cooldownState: cd, isInteractive, badgeBorderColor, onAbilityFire, tapFlash, downedOverlay, spiritName, spiritGlowColor }: SkillCellProps) {
+function SkillCell({ index, ability, cooldownState: cd, isInteractive, canHoldThroughCooldown, badgeBorderColor, onAbilityFire, tapFlash, downedOverlay, spiritName, spiritGlowColor }: SkillCellProps) {
   const cellRef = useRef<HTMLDivElement>(null);
   const activeTouchRef = useRef<{ id: number; originX: number; originY: number; lastDirX: number; lastDirY: number; releaseFired: boolean } | null>(null);
   const autoIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [spawnOrigin, setSpawnOrigin] = useState<{ x: number; y: number } | null>(null);
+  const [knobOffset, setKnobOffset] = useState({ x: 0, y: 0 });
 
   const now = Date.now();
   const isOnCooldown = cd !== null && cd.expiresAt > now;
+  const isOnCooldownRef = useRef(isOnCooldown);
+  isOnCooldownRef.current = isOnCooldown;
   const totalDuration = cd !== null ? cd.expiresAt - cd.startAt : 1;
   const elapsed = cd !== null ? now - cd.startAt : 0;
   const pctElapsed = Math.min(elapsed / totalDuration, 1);
@@ -625,23 +668,28 @@ function SkillCell({ index, ability, cooldownState: cd, isInteractive, badgeBord
 
   useEffect(() => {
     const el = cellRef.current;
-    if (!el || !isInteractive || ability === null) return;
+    if (!el || !canHoldThroughCooldown || ability === null) return;
     if (ability.inputType === 'TAP') return;
 
     const onTouchStart = (e: TouchEvent) => {
       e.preventDefault();
       if (activeTouchRef.current !== null) return;
+      if (isOnCooldownRef.current) return;
       const touch = e.changedTouches[0];
       if (!touch) return;
       const rect = el.getBoundingClientRect();
+      const originX = touch.clientX - rect.left;
+      const originY = touch.clientY - rect.top;
       activeTouchRef.current = {
         id: touch.identifier,
-        originX: touch.clientX - rect.left,
-        originY: touch.clientY - rect.top,
+        originX,
+        originY,
         lastDirX: 0,
         lastDirY: 0,
         releaseFired: false,
       };
+      setSpawnOrigin({ x: originX, y: originY });
+      setKnobOffset({ x: 0, y: 0 });
       if (ability.inputType === 'AUTO' || ability.inputType === 'AIM_CAST') {
         autoIntervalRef.current = setInterval(() => {
           const t = activeTouchRef.current;
@@ -663,12 +711,16 @@ function SkillCell({ index, ability, cooldownState: cd, isInteractive, badgeBord
       const rawX = touch.clientX - rect.left - t.originX;
       const rawY = touch.clientY - rect.top - t.originY;
       const dist = Math.sqrt(rawX * rawX + rawY * rawY);
-      const DEADZONE = 6;
-      if (dist >= DEADZONE) {
+      if (dist >= SKILL_CELL_DEADZONE_RADIUS) {
         const angle = Math.atan2(rawY, rawX);
         t.lastDirX = Math.cos(angle);
         t.lastDirY = Math.sin(angle);
+        const clampedDist = Math.min(dist, SKILL_JOYSTICK_RING_RADIUS);
+        setKnobOffset({ x: Math.cos(angle) * clampedDist, y: Math.sin(angle) * clampedDist });
       }
+      // else: stay below deadzone — leave knobOffset at its last position (matches
+      // lastDirX/lastDirY, which also holds steady here) instead of snapping to center,
+      // so the visual never contradicts what's still firing.
     };
 
     const onTouchEnd = (e: TouchEvent) => {
@@ -686,6 +738,8 @@ function SkillCell({ index, ability, cooldownState: cd, isInteractive, badgeBord
             autoIntervalRef.current = null;
           }
           activeTouchRef.current = null;
+          setSpawnOrigin(null);
+          setKnobOffset({ x: 0, y: 0 });
           break;
         }
       }
@@ -705,6 +759,8 @@ function SkillCell({ index, ability, cooldownState: cd, isInteractive, badgeBord
             autoIntervalRef.current = null;
           }
           activeTouchRef.current = null;
+          setSpawnOrigin(null);
+          setKnobOffset({ x: 0, y: 0 });
           break;
         }
       }
@@ -718,6 +774,11 @@ function SkillCell({ index, ability, cooldownState: cd, isInteractive, badgeBord
     document.addEventListener('touchcancel', onDocumentTouchEnd, { passive: false });
 
     return () => {
+      const t = activeTouchRef.current;
+      if (t !== null && ability.inputType === 'RELEASE' && !t.releaseFired) {
+        t.releaseFired = true;
+        onAbilityFire(index, t.lastDirX, t.lastDirY, false);
+      }
       el.removeEventListener('touchstart', onTouchStart);
       el.removeEventListener('touchmove', onTouchMove);
       el.removeEventListener('touchend', onTouchEnd);
@@ -729,8 +790,10 @@ function SkillCell({ index, ability, cooldownState: cd, isInteractive, badgeBord
         autoIntervalRef.current = null;
       }
       activeTouchRef.current = null;
+      setSpawnOrigin(null);
+      setKnobOffset({ x: 0, y: 0 });
     };
-  }, [isInteractive, ability, index, onAbilityFire]);
+  }, [canHoldThroughCooldown, ability, index, onAbilityFire]);
 
   return (
     <div
@@ -762,7 +825,7 @@ function SkillCell({ index, ability, cooldownState: cd, isInteractive, badgeBord
       }}
     >
       {ability !== null ? (
-        <>
+        <div style={{ position: 'relative', zIndex: 9, display: 'flex', flexDirection: 'column' }}>
           <span
             style={{
               fontFamily: 'var(--font-body)',
@@ -793,7 +856,7 @@ function SkillCell({ index, ability, cooldownState: cd, isInteractive, badgeBord
           >
             {ability.inputType}
           </span>
-        </>
+        </div>
       ) : (
         <span
           style={{
@@ -808,6 +871,44 @@ function SkillCell({ index, ability, cooldownState: cd, isInteractive, badgeBord
         </span>
       )}
 
+      {/* Aiming ring+knob for AUTO/RELEASE/AIM_CAST held-type abilities */}
+      {spawnOrigin !== null && ability !== null && (() => {
+        const color = ability.inputType === 'RELEASE' ? 'var(--accent-warm)' : 'var(--accent-spirit)';
+        const pulse = ability.inputType === 'AIM_CAST' ? 'skill-cell-pulse 1.2s ease-in-out infinite' : undefined;
+        return (
+          <>
+            <div
+              style={{
+                position: 'absolute',
+                left: spawnOrigin.x - SKILL_JOYSTICK_RING_RADIUS,
+                top: spawnOrigin.y - SKILL_JOYSTICK_RING_RADIUS,
+                width: SKILL_JOYSTICK_RING_PX,
+                height: SKILL_JOYSTICK_RING_PX,
+                borderRadius: '50%',
+                border: `2px solid ${color}`,
+                boxSizing: 'border-box',
+                pointerEvents: 'none',
+                zIndex: 8,
+                animation: pulse,
+              }}
+            />
+            <div
+              style={{
+                position: 'absolute',
+                left: spawnOrigin.x + knobOffset.x - SKILL_JOYSTICK_KNOB_PX / 2,
+                top: spawnOrigin.y + knobOffset.y - SKILL_JOYSTICK_KNOB_PX / 2,
+                width: SKILL_JOYSTICK_KNOB_PX,
+                height: SKILL_JOYSTICK_KNOB_PX,
+                borderRadius: '50%',
+                background: color,
+                pointerEvents: 'none',
+                zIndex: 8,
+                animation: pulse,
+              }}
+            />
+          </>
+        );
+      })()}
       {/* Cooldown overlay */}
       {isOnCooldown && (
         <div
@@ -973,8 +1074,12 @@ export function ControllerScreen({ session, gameState, cooldowns, bondNotificati
   const [joystickOriginState, setJoystickOriginState] = useState<{ x: number; y: number } | null>(null);
   const [joystickKnobOffset, setJoystickKnobOffset] = useState({ x: 0, y: 0 });
   const [classSelectionOpen, setClassSelectionOpen] = useState(false);
-  const [trainingDummyActive, setTrainingDummyActive] = useState(false);
   const [dungeonEntranceOpen, setDungeonEntranceOpen] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(() => document.fullscreenElement !== null);
+  const [showIosHint, setShowIosHint] = useState(false);
+  // Debug-only, dev-build-gated (see button render below) — local echo of what we last sent,
+  // not a server-confirmed state (debug:toggle-god-mode has no ack/broadcast, by design).
+  const [godModeSent, setGodModeSent] = useState(false);
   const inDungeon = gameState?.session.phase === 'dungeon';
   const [tapFlash, setTapFlash] = useState<boolean[]>([false, false, false, false]);
   const [displayTick, setDisplayTick] = useState(0);
@@ -984,12 +1089,19 @@ export function ControllerScreen({ session, gameState, cooldowns, bondNotificati
     sessionRef.current = session;
   }, [session]);
 
-  // Clear training mode when player moves away from training dummy
   useEffect(() => {
-    if (activePoi !== 'training-dummy') {
-      setTrainingDummyActive(false);
+    const handler = () => setIsFullscreen(document.fullscreenElement !== null);
+    document.addEventListener('fullscreenchange', handler);
+    return () => document.removeEventListener('fullscreenchange', handler);
+  }, []);
+
+  const toggleFullscreen = useCallback(() => {
+    if (document.fullscreenElement) {
+      document.exitFullscreen?.().catch(() => {});
+    } else {
+      document.documentElement.requestFullscreen?.().catch(() => {});
     }
-  }, [activePoi]);
+  }, []);
 
   useEffect(() => {
     if (activePoi !== 'dungeon-entrance') {
@@ -1136,7 +1248,7 @@ export function ControllerScreen({ session, gameState, cooldowns, bondNotificati
     el.addEventListener('touchcancel', onTouchEnd, { passive: false });
 
     return () => {
-      stopJoystick();
+      if (activeTouchIdRef.current !== null) stopJoystick();
       el.removeEventListener('touchstart', onTouchStart);
       el.removeEventListener('touchmove', onTouchMove);
       el.removeEventListener('touchend', onTouchEnd);
@@ -1186,10 +1298,107 @@ export function ControllerScreen({ session, gameState, cooldowns, bondNotificati
         onTap={() => {
           if (inBondMoment && bondNotification === null) { onContinue(); return; }
           if (activePoi === 'class-select') setClassSelectionOpen(true);
-          if (activePoi === 'training-dummy' && confirmedClass !== null) setTrainingDummyActive(true);
           if (activePoi === 'dungeon-entrance') setDungeonEntranceOpen(true);
         }}
       />
+      {/* Debug-only: mirrors the server's NODE_ENV-gated debug:toggle-god-mode handler.
+          import.meta.env.DEV is Vite's build-time flag (false in production builds), so this
+          never ships — the client-side equivalent of the server's own env gate. */}
+      {import.meta.env.DEV && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 'env(safe-area-inset-top, 0px)',
+            right: 44,
+            width: 44,
+            height: 44,
+            zIndex: 45,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            touchAction: 'manipulation',
+          }}
+          onPointerDown={e => {
+            e.preventDefault();
+            session?.sendDebugToggleGodMode();
+            setGodModeSent(v => !v);
+          }}
+        >
+          <span style={{ fontSize: 18, color: godModeSent ? 'var(--accent-warm)' : 'var(--text-secondary)' }}>⚡</span>
+        </div>
+      )}
+      {document.fullscreenEnabled && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 'env(safe-area-inset-top, 0px)',
+            right: 0,
+            width: 44,
+            height: 44,
+            zIndex: 45,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            touchAction: 'manipulation',
+          }}
+          onPointerDown={e => { e.preventDefault(); toggleFullscreen(); }}
+        >
+          <span style={{ fontSize: 20, color: isFullscreen ? 'var(--accent-spirit)' : 'var(--text-secondary)' }}>⛶</span>
+        </div>
+      )}
+      {/* iOS Safari (regular tab, not installed) can never support the Fullscreen API — show a
+          tap-to-reveal hint pointing at the one path that actually works (Add to Home Screen)
+          instead of a dead toggle. */}
+      {!document.fullscreenEnabled && IS_IOS_SAFARI_TAB && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 'env(safe-area-inset-top, 0px)',
+            right: 0,
+            zIndex: 45,
+          }}
+        >
+          <div
+            style={{
+              width: 44,
+              height: 44,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              touchAction: 'manipulation',
+            }}
+            onPointerDown={e => { e.preventDefault(); setShowIosHint(v => !v); }}
+          >
+            <span style={{ fontSize: 18, color: 'var(--text-secondary)' }}>ⓘ</span>
+          </div>
+          {showIosHint && (
+            <div
+              style={{
+                position: 'absolute',
+                top: 44,
+                right: 0,
+                width: 200,
+                background: 'var(--bg-surface)',
+                border: '1px solid var(--border)',
+                borderRadius: 8,
+                padding: '10px 12px',
+                boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+                touchAction: 'manipulation',
+              }}
+              onPointerDown={e => { e.preventDefault(); setShowIosHint(false); }}
+            >
+              <span style={{
+                fontFamily: 'var(--font-body)',
+                fontSize: 'var(--text-xs)',
+                color: 'var(--text-primary)',
+                lineHeight: 1.4,
+              }}>
+                For fullscreen on iPhone: tap Share, then "Add to Home Screen".
+              </span>
+            </div>
+          )}
+        </div>
+      )}
       {/* Left zone — floating joystick (40% width) */}
       <div
         ref={joystickZoneRef}
@@ -1281,7 +1490,7 @@ export function ControllerScreen({ session, gameState, cooldowns, bondNotificati
           gap: 4,
           padding: 8,
           boxSizing: 'border-box',
-          touchAction: (trainingDummyActive || inDungeon) ? 'none' : 'auto',
+          touchAction: 'none',
           position: 'relative',
         }}
       >
@@ -1295,13 +1504,14 @@ export function ControllerScreen({ session, gameState, cooldowns, bondNotificati
           const cd = cooldowns[i] ?? null;
           const now = Date.now();
           const isOnCooldown = cd !== null && cd.expiresAt > now;
-          const isInteractive = isSpiritCell
-            ? !isOnCooldown && !isFrozen && !inBondMoment
-            : (trainingDummyActive || (inDungeon && !isDown && !isSpirit)) && ability !== null && !isOnCooldown && !inBondMoment;
+          const canHoldThroughCooldown = isSpiritCell
+            ? !isFrozen && !inBondMoment
+            : (!isDown && !isSpirit) && ability !== null && !inBondMoment;
+          const isInteractive = canHoldThroughCooldown && !isOnCooldown;
           const badgeBorderColor = ability !== null
             ? (ability.inputType === 'AUTO' ? 'var(--accent-spirit)'
               : ability.inputType === 'RELEASE' ? 'var(--accent-warm)'
-              : ability.inputType === 'AIM_CAST' ? 'var(--accent-warm)'
+              : ability.inputType === 'AIM_CAST' ? 'var(--accent-spirit)'
               : 'var(--border)')
             : 'var(--border)';
 
@@ -1317,6 +1527,7 @@ export function ControllerScreen({ session, gameState, cooldowns, bondNotificati
               ability={ability}
               cooldownState={isOnCooldown ? cd : null}
               isInteractive={isInteractive}
+              canHoldThroughCooldown={canHoldThroughCooldown}
               badgeBorderColor={badgeBorderColor}
               onAbilityFire={handleAbilityFire}
               tapFlash={tapFlash[i] ?? false}

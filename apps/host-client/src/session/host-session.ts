@@ -47,6 +47,7 @@ export async function createHostSession(
         delta.type === 'ability:fired' ||
         delta.type === 'spirit-ability:fired' ||
         delta.type === 'enemy:killed' ||
+        delta.type === 'enemy:damaged' ||
         delta.type === 'essence:dropped' ||
         delta.type === 'player:downed' ||
         delta.type === 'player:revived' ||
@@ -55,7 +56,11 @@ export async function createHostSession(
         delta.type === 'run:failed' ||
         delta.type === 'level:complete' ||
         delta.type === 'run:complete' ||
-        delta.type === 'bond:assigned'
+        delta.type === 'bond:assigned' ||
+        delta.type === 'boss:phaseChanged' ||
+        delta.type === 'boss:damaged' ||
+        delta.type === 'boss:stomped' ||
+        delta.type === 'boss:defeated'
       )) {
         onTransientDelta(delta);
       }

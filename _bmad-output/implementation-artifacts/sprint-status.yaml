@@ -1,5 +1,5 @@
 # generated: 2026-06-22
-# last_updated: 2026-07-13
+# last_updated: 2026-07-21 (epic-1-retrospective done)
 # project: party-delve
 # project_key: NOKEY
 # tracking_system: file-system
@@ -42,7 +42,218 @@
 # Phase2 legacy stories (old Phase-based keys) are tracked below under PHASE 2 STORIES.
 
 generated: 2026-06-22
-last_updated: 2026-07-15
+last_updated: 2026-07-21 (epic-1-retrospective done)
+# 2026-07-21: ran epic-1-retrospective (done) — first retrospective run on the project,
+# retroactively (Epics 1-6 all already complete by the time it ran). Synthesized findings
+# from stories 1.1-1.10's dev notes/code-review history rather than fresh memory, since
+# Epic 1 is pure infrastructure with no UI surface to recall. 2 action items created:
+# (1) isHost flag has no server-side auth check (security debt open since 1.3, relevant
+# again given Epic 7's registered-accounts scope), owner Simulation Engineer; (2)
+# apps/mobile-controller has zero automated test coverage as of 1.10, owner Mobile
+# Controller Engineer + QA support. Zod validation on deserialize() and the e2e
+# reconnect.test.ts it.todo stub were surfaced but left at their existing deferred-work.md
+# priority, not escalated. No epic-plan update needed — Epic 2 (the numerically next epic)
+# is already done; actual next work is Epic 7 (backlog, no stories yet). Full retro saved:
+# epic-1-retro-2026-07-21.md.
+# 2026-07-20: code review of 5-9-epic-5-post-58-deferred-hardening (done) — Blind Hunter +
+# Edge Case Hunter + Acceptance Auditor all ran. Acceptance Auditor found zero AC violations
+# (all 8 ACs + all 4 Non-goals confirmed against the diff). Blind Hunter and Edge Case Hunter
+# independently found the same real defect: boss branch's `bondEligiblePlayerCount >= 2`
+# fallback conflated "never snapshotted" with "snapshotted at 0/1", silently reintroducing
+# D-5.8-A for solo/duo-started runs (resolveVoteIfComplete has no >=2 floor) — fixed via
+# `!== -1`. Edge Case Hunter also found `assignBond` still pairs against the live roster each
+# bond-moment, so activeBonds could exceed a frozen maxAchievableBonds for rosters growing
+# mid-run — user chose to fix now (`===` to `>=` in the boss branch). Both patched, 2 new unit
+# tests added, full suite re-verified green. 4 other findings dismissed as noise.
+# 2026-07-20: code review of 1-10-epic-1-post-19-deferred-hardening (done) — Blind Hunter +
+# Edge Case Hunter + Acceptance Auditor all ran; Acceptance Auditor found zero AC violations
+# (all 5 ACs + all 4 non-goals confirmed against the diff). Edge Case Hunter surfaced 2 real,
+# narrow latent risks introduced by the fix itself: D1 leavingIntentionallyRef is a single
+# global (non-session-scoped) flag, so a rapid leave-room-A-then-join-room-B race can
+# mis-attribute B's later disconnect; D2 safeReplaceState's blanket catch means
+# handleGiveUp's stale-URL clear can silently no-op under the exact Safari throttle
+# condition AC1 was built to survive. Both are net improvements over pre-story behavior,
+# require compound-rare conditions to trigger, and a full fix would need a session-scoped
+# handler / URL-independent state respectively — both explicitly out of this story's
+# Non-goals (single boolean ref, no event bus). Deferred to deferred-work.md rather than
+# patched. Blind Hunter's other 7 findings were dismissed on triage — most matched the
+# story's own AC1/AC2/AC3 wording exactly (blanket catch, clearPersistedSession-before-
+# disconnect ordering, asymmetric URL handling) or were pre-existing/out-of-scope
+# (handleGiveUp never called session.disconnect() before this story either) — the reviewer
+# had no project context by design (blind layer) and couldn't see the spec matched intent.
+# Status: review → done.
+# 2026-07-20: created 6 deferred-hardening stories in one batch (1.10, 2.9, 3.24, 4.14, 5.9,
+# 6.10), one per epic with a genuine backlog since its last hardening pass — closing the
+# "for all unresolved deferred items" sweep of deferred-work.md's 278 logged findings.
+# Each story's candidate findings were re-verified against current source before being
+# scoped in (per the established 3.22 precedent), not trusted from deferred-work.md's text
+# alone; several were dropped or re-deferred where re-verification found them stale,
+# already resolved, or still below their own stated revisit threshold. Reopens epic-1 and
+# epic-5 (both previously "done") back to in-progress, matching this project's established
+# reopen-for-leftover-deferred-findings pattern. 1.10 (epic-1, mobile session/back-nav
+# races), 2.9 (epic-2, hub/controller cleanup + 2.8 test-gap findings), 3.24 (epic-3,
+# primary task closes the user-flagged D-3.23-A/D-3.3-B skill-cell touch-teardown bug plus
+# 3.22's e2e-hygiene/shield-guard leftovers), 4.14 (epic-4, loadLevel ordering-risk +
+# resetToHub body-leak + isFrozen-on-transition + VotePopup stuck-button hardening), 5.9
+# (epic-5, single finding: maxAchievableBonds roster-snapshot bug), 6.10 (epic-6,
+# selectBondPair re-pair fix + re-deferrals for the physics-layer projectile-vs-boss gap
+# and the cosmetic boss double-hit-per-tick). All 6 are ready-for-dev; none implemented yet.
+# 2026-07-20: code review of 3-23-skill-cell-joystick-aiming-interaction (review →
+# in-progress) — Blind Hunter + Edge Case Hunter + Acceptance Auditor all independently
+# converged on the same 2 real bugs, both now fixed: (1) the onTouchMove cell-rect clamp
+# box-clamped X/Y independently before computing direction, distorting the committed aim
+# angle for any drag that exits the compact cell (the common case, not an edge case) — fixed
+# by computing direction from the unclamped touch-to-origin vector (reverting to pre-3.23
+# math), relying on the pre-existing SKILL_JOYSTICK_RING_RADIUS knob clamp + the cell's
+# overflow:hidden for the visual boundary clip instead; (2) the knob snapped to center on
+# deadzone re-entry while lastDirX/lastDirY (and thus AUTO/AIM_CAST's continued fire) kept
+# the prior committed direction — fixed by leaving knobOffset untouched below the deadzone
+# instead of resetting it. A 3rd finding (zero-size getBoundingClientRect mid-touch
+# deadlocking direction) was resolved as a side effect of fix (1). Typecheck clean
+# (apps/mobile-controller). 2 items deferred to deferred-work.md (D1: required Client-UX
+# hook still not run — no display in this sandbox, own code trace corroborates a plausible
+# text-occlusion risk from the 80px ring vs ~80-100px cell height; D2/D-3.23-A: ring/knob
+# tears down mid-hold on cooldown start, pre-existing isInteractive dependency, out of this
+# story's Non-goals). Status set to in-progress, not done, pending the human Client-UX pass.
+# 2026-07-20: implemented 3-23-skill-cell-joystick-aiming-interaction (review) — ring+knob
+# aiming visual added to SkillCell for AUTO/RELEASE/AIM_CAST held input types (80px ring/
+# 28px knob, mirroring the movement joystick's ref+state pattern), a new dedicated 10px
+# SKILL_CELL_DEADZONE_RADIUS replacing the undocumented inline DEADZONE=6, a single
+# onTouchMove clamp-to-cell-rect step satisfying both the ring/knob positioning and the
+# cell-boundary rule at once, a new skill-cell-pulse 1.2s keyframe distinguishing AIM_CAST
+# from AUTO (both share accent-spirit's identical hex, so pulse — not color — is the
+# differentiator per DESIGN.md), and the AIM_CAST badge color fix (accent-warm →
+# accent-spirit) at both ABILITY_BADGE_BORDER and the live grid's inline ternary. No fire
+# cadence/timing/protocol change. Typecheck clean (all 10 monorepo tsconfig projects). Full
+# suite: 436 passed, 0 regressions; 3 pre-existing failures unrelated to this story's
+# mobile-controller-only scope (ability-dispatch/hub-ability-use e2e: simulation-server
+# port-binding timeout; full-run: the already-tracked D1 selectBondPair re-pair flakiness
+# from 2026-07-03, same pattern noted in 6.9's history above). Manual Client-UX
+# verification (per-type ring/knob color+animation+gesture check, minimal-attention
+# readability) NOT performed — no display/touch device in this sandbox, matches dev-3's
+# precedent; needs a human pass before this story can be marked done. New finding logged
+# (not fixed, out of scope): D-3.23-A — AUTO/AIM_CAST's ring+knob and touch tracking tear
+# down the instant cooldown starts (isInteractive includes !isOnCooldown and is a dependency
+# of the touch-effect), not on lift as EXPERIENCE.md §4 specifies, orphaning every
+# successful cast's still-held touch until the player lifts and re-touches. Same root cause
+# as the already-tracked D-3.3-B, much higher frequency (every AUTO/AIM_CAST cast).
+# 2026-07-20: started work on 3-23-skill-cell-joystick-aiming-interaction.
+# 2026-07-20: epic-3 reopened to in-progress — created 3-23-skill-cell-joystick-aiming-
+# interaction (ready-for-dev), a UX-spec-drift closure from the 2026-07-20 UX update
+# session (decision-log.md D-017 through D-020). Not a new PRD FR: extends the skill-cell
+# joystick ring+knob visual (already prototyped in mockups/controller-landscape-1.html but
+# never carried into the spec text or the build) to all 3 held AbilityInputTypes (AUTO,
+# RELEASE, AIM_CAST — the 4th type added by Story 3.11, given real channel semantics by
+# 3.18, but never given its own aiming visual), adds a distinct pulse so AIM_CAST doesn't
+# read as a plain AUTO repeat, gives skill-cell aiming its own dedicated 10px deadzone
+# constant (was an undocumented inline 6px, separate from the movement joystick's 8px), and
+# fixes ABILITY_BADGE_BORDER/inline badgeBorderColor's AIM_CAST color (a pre-3.18 leftover
+# still grouping it with RELEASE's accent-warm instead of AUTO's accent-spirit family).
+# Single-owner: Mobile Controller Engineer, 100% within apps/mobile-controller/**.
+# 2026-07-17: created 6-9-epic-6-post-66-deferred-hardening (ready-for-dev) — scopes
+# the two open combat-critical deferred findings since 6.6: D-dev4-B (user-flagged
+# HIGH PRIORITY — shared resolveOutgoingDamage() helper so BOND_DAMAGE_MULT/
+# DEBUG_GOD_MODE_DAMAGE_MULT apply uniformly across all 5 damage-delivery sites,
+# not just hit-scan/Spirit Nova) and D-dev5-A (Storm Eye's zone-tick damage and
+# bonus strike never reach the boss — adds a direct isInHitZone-against-
+# boss.position check, mirroring Spirit Nova's existing bossInRing pattern, since
+# the boss's physics fixture has filterMaskBits:0 and can never appear in
+# zoneOverlapping contact sets). Explicitly out of scope: projectile-vs-boss
+# collision (physics-contact-layer gap, deeper than a hardening story), the
+# eslint.config.mjs repo-wide lint gap (D3, different ownership area), and the
+# host-session.ts whitelist fragility (D-dev5-D, not yet at its stated revisit
+# trigger). Simulation Engineer single-owner story.
+# 2026-07-17: implemented 6-9-epic-6-post-66-deferred-hardening (review) — added
+# resolveOutgoingDamage(rawDamage, isBonded, isGodMode) to packages/game-rules/src/balance.ts;
+# routed all 5 GameRoom.ts damage-delivery sites (hit-scan, Spirit Nova, zone damage-tick, Storm
+# Eye bonus strike, projectile hit) through it, replacing each site's local inline mult/damage
+# ternary. Added boss branches to the zone damage-tick and Storm Eye bonus-strike loops (both use
+# the same isInHitZone-against-boss.position pattern Spirit Nova's bossInRing already used, since
+# the boss's filterMaskBits:0 fixture never appears in zoneOverlapping). Removed now-unused
+# BOND_DAMAGE_MULT/DEBUG_GOD_MODE_DAMAGE_MULT imports from GameRoom.ts. New unit test
+# (balance.test.ts, 5 cases) covers no-buff/bond-only/god-mode-only/stacked/round-only-when-mult!==1.
+# Typecheck clean across the full monorepo. Full test suite: 436 passed, 0 regressions; 3 e2e
+# files failed, all matching dev-4's documented pre-existing-environment-failure precedent
+# (ability-dispatch/hub-ability-use: simulation-server port-binding timeout; full-run: hit the
+# already-tracked D1 selectBondPair re-pair bug from 2026-07-03, confirmed via 4 repeated runs
+# against this story's changes vs 3 against unmodified baseline — same intermittent pattern on
+# both, unrelated to this story's changes). D-dev4-B and D-dev5-A marked RESOLVED in
+# deferred-work.md; new findings D-6.9-A (projectile-vs-boss still unreachable, physics-layer,
+# out of scope) and D-6.9-B (full-run.test.ts flakiness root-caused to pre-existing D1) logged.
+# 2026-07-17: code review of 6-9-epic-6-post-66-deferred-hardening (done) - 3 parallel layers
+# (Blind Hunter, Edge Case Hunter, Acceptance Auditor). 0 decision_needed, 3 patch, 2 defer,
+# 6 dismissed as noise (incl. the intended AC2 multiplier-coverage expansion to zone-tick/
+# projectile sites, correctly recognized as the story's stated purpose, not scope creep).
+# Patches applied: Storm Eye boss-strike zone:strike broadcast now sends the boss's real id
+# instead of the internal '__boss__' sentinel (was leaking into the ZoneStrikeDelta.targetId
+# wire field); AC7's rounding unit test changed from an integer to a fractional input (was
+# tautological, could not distinguish conditional-round from always-round); file-mode patch
+# skipped as a WSL2 DrvFs mount artifact (all files report 777, core.fileMode=false, not a
+# real diff). Deferred: D-6.9-C (boss can take 2 damage hits in 1 tick - pre-existing
+# dual-hit-per-tick pattern extended to boss, cosmetic double-broadcast at worst) and D-6.9-D
+# (isInHitZone boss-range check duplicated in 2 places - spec-prescribed, revisit at 3rd
+# occurrence). Full monorepo typecheck clean after patches.
+# 2026-07-17: implemented dev-4-debug-invincible-high-damage-mode (review) — debug:toggle-god-mode
+# message added to the existing NODE_ENV-gated debug block (GameRoom.ts), self-targeting only via
+# client.sessionId, room-local godModePlayerIds Set (no shared-types/net-protocol touch). Gates
+# all 5 incoming-damage paths (Dark Pact drain, enemy melee, Fate Bond wipe, boss stomp, bond
+# drain) to zero and multiplies outgoing hit-scan/mixed-faction + Spirit Nova damage by new
+# DEBUG_GOD_MODE_DAMAGE_MULT=10 (balance.ts), stacking with BOND_DAMAGE_MULT. Typecheck clean,
+# full unit/contract suite green (425 passed, 0 regressions). 4 e2e test files fail in this
+# sandbox (simulation-server never binds a port here — confirmed pre-existing/environmental via
+# stash/pop, identical failure on baseline). No new automated test (matches debug:kill-all/
+# debug:kill-boss's zero-coverage precedent). Code review (3 parallel layers): 0 decision_needed,
+# 1 patch, 1 defer, 13 dismissed as noise. Patch applied: onLeave's grace-period-expiry catch
+# block now also cleans up godModePlayerIds (was only done in the CONSENTED branch, unlike every
+# sibling field). 1 finding deferred (D-dev4-A: no guard against a stray debug message reaching
+# a production server — pre-existing, shared with debug:kill-all/debug:kill-boss). Post-review
+# addendum (user-requested): added a dev-build-only mobile button (ControllerScreen.tsx,
+# mobile-session.ts) to actually trigger the toggle, since the story shipped with no client
+# trigger at all. User live-tested and found Storm Eye's damage isn't multiplied — root cause:
+# damage is computed independently per ability-delivery type across 5 GameRoom.ts sites, only 2
+# of which apply any multiplier (BOND_DAMAGE_MULT has the identical pre-existing gap). Logged as
+# D-dev4-B in deferred-work.md — user flagged this HIGH-PRIORITY/foundational (affects every
+# future multiplicative system: buffs, debuffs, gear, crit), recommend picking up soon as its
+# own properly-scoped Simulation Engineer story (shared damage-resolution function), not left
+# indefinitely like other deferred items.
+# 2026-07-17: dev-3-controller-fullscreen-toggle (done) — auto-fullscreen on first join and
+# reconnect (T1/T2, later reverted after live-test — see below) and fullscreen toggle button
+# with fullscreenchange sync (T3) in ControllerScreen.tsx. Typecheck clean throughout ("lint
+# clean" claimed at the time was wrong — rtk was serving stale cached lint output; the real
+# repo-wide lint state has 308 pre-existing errors from a missing eslint globals config,
+# logged as D3 in deferred-work.md, unrelated to this story). Code review (3 parallel layers):
+# 0 decision_needed, 1 patch (applied — `?.` guards added to toggleFullscreen's exit/request
+# calls), 2 defer (bare-div toggle a11y gap mirrors pre-existing InteractButton convention;
+# fullscreen persistence across screen transitions is an unspecified, plausibly-correct
+# default), 19 dismissed as noise. No AC violations. No automated tests (Fullscreen API
+# needs a real user gesture, unreliable in jsdom — same precedent as dev-1/dev-2). User
+# live-tested: desktop Chrome auto-fullscreen rendered a blank page (phone was fine) — T1/T2
+# reverted, AC1-3/AC7 struck, manual toggle (T3) unaffected. iPhone toggle didn't work either
+# — confirmed as a real WebKit platform limitation (no Fullscreen API for DOM elements at
+# all), not a bug; added T4/AC9, a tap-to-reveal "Add to Home Screen" hint for iOS Safari
+# tabs (`navigator.standalone === false`) in place of the dead toggle. Manual
+# Client-UX hook checks (reconnect-while-not-fullscreen, denied-in-iframe, joystick/grid
+# non-overlap) still need a human pass on a real device — not verified in this session (no
+# display in the dev environment).
+# 2026-07-16: code review passed for dev-5-boss-transient-delta-whitelist-fix (done) — 0
+# decision_needed, 1 patch, 4 defer, 9 dismissed as noise. Patch applied: Task 2's test
+# checkbox reworded to state the actual 34/37-file result instead of an unqualified "full
+# suite green" claim. 4 defer findings logged as D-dev5-B..E in deferred-work.md
+# (single-slot transient-delta state can drop a delta under same-tick collisions, no
+# runtime payload validation, whitelist-pattern structural fragility, and a reproduction
+# of the already-tracked D7 story-template Allowed-paths gap — none block this story).
+# 2026-07-16: completed dev-5-boss-transient-delta-whitelist-fix (review) — 4-line
+# onTransientDelta whitelist addition in host-session.ts (boss:phaseChanged/damaged/
+# stomped/defeated), closing D-6.8-A. Automated checks (typecheck/build/full test suite)
+# all pass. Manual live-verification performed by the user directly (no browser/display
+# in the dev environment) — confirmed phase glow, stomp ring, and full defeat/
+# purification-pulse/reward-reveal/achievements sequence all work; damage flash confirmed
+# for every direct-hit ability. Verification surfaced one new, unrelated, out-of-scope bug
+# (logged as D-dev5-A, not fixed here): Stormcaller's Storm Eye zone deals zero damage to
+# the boss because GameRoom.ts's zone-tick damage loop only ever checks gameState.enemies,
+# never gameState.boss — Story 6.7 wired direct hit-scan abilities to the boss but never
+# extended that to zone-tick resolution. Simulation Engineer / GameRoom.ts territory, out
+# of this story's Blocked paths — needs its own follow-up story.
 # 2026-07-15: created 3.22 (epic-3-post-321-deferred-hardening) — closes the Epic 3
 # deferred-work.md backlog that accumulated since 3.10 (Stories 3.11-3.21c never had a
 # hardening pass). Re-verified every candidate D-3.x entry against current source before
@@ -228,13 +439,16 @@ development_status:
   1-7-epic-1-deferred-hardening: done
   1-8-epic-1-post-17-deferred-hardening: done
   1-9-epic-1-post-18-deferred-hardening: done
-  epic-1-retrospective: optional
+  # Closes 1.9's own review leftovers (D1-D3): unguarded history.replaceState at both
+  # call sites, async onLeave/handleDisconnect race, handleGiveUp stale URL fallback.
+  1-10-epic-1-post-19-deferred-hardening: done
+  epic-1-retrospective: done
 
   # ─── E2: Hub World & Class Selection ────────────────────────────────────────
   # Players explore the tribe village hub, interact with POIs (class selection,
   # training dummy), browse and select a class, and confirm their choice.
   # FRs: FR5, FR11 (4 alpha classes defined), FR12, FR13
-  epic-2: in-progress
+  epic-2: done
   2-1-hub-world-poi-layout-and-interact-button: done
   2-2-class-selection-flow-card-browse-and-selection: done
   2-3-class-confirmation-and-hub-controller-transition: done
@@ -242,7 +456,10 @@ development_status:
   2-5-server-persistent-joystick-vector: done
   2-6-epic-2-deferred-hardening: done
   2-7-epic-2-post-26-deferred-hardening: done
-  2-8-hub-ability-use-outside-training-dummy-poi: backlog
+  2-8-hub-ability-use-outside-training-dummy-poi: done
+  # Closes D-2.6-A/B (rAF stale ref, spurious stopJoystick send) and D-2.8-A/C/D
+  # (isInteractive inDungeon bypass, ability-guard regression test, raceTimeout dedup).
+  2-9-epic-2-post-28-deferred-hardening: done
   epic-2-retrospective: optional
 
   # ─── E3: Core Combat — 4 Alpha Classes ──────────────────────────────────────
@@ -250,7 +467,7 @@ development_status:
   # dungeon combat. Players use abilities, go down, get revived, enter spirit
   # form. "Clear" objective type is operational.
   # FRs: FR9(Clear), FR11, FR12, FR13, FR17, FR18, FR19, FR20, FR21, FR22, FR23
-  epic-3: in-progress
+  epic-3: done
   3-1-xoshiro128-prng-and-planckjs-physics-world: done
   3-2-enemy-ai-base-fsm-and-layered-difficulty-behaviors: done
   3-3-4-alpha-class-implementations-abilities-and-input-types: done
@@ -283,19 +500,33 @@ development_status:
   # Post-3.21 hardening: closes deferred-work.md backlog accumulated by 3.11-3.21c
   # (never had its own hardening pass, unlike 3.1-3.9 which got 3.9/3.10)
   3-22-epic-3-post-321-deferred-hardening: done
+  # UX-spec-drift closure (2026-07-20 UX update session, decision-log.md D-017-D-020) —
+  # not a new PRD FR, see history note above
+  3-23-skill-cell-joystick-aiming-interaction: done
+  # Primary task closes user-flagged D-3.23-A (also fixes the older, related D-3.3-B):
+  # SkillCell's touch-tracking effect tears down mid-hold on cooldown start instead of on
+  # lift. Also closes 3.22's own review leftovers (e2e cleanup/raceTimeout hygiene, shield
+  # magnitude guard) and 3.23's un-run Client-UX text-occlusion finding.
+  3-24-epic-3-post-323-deferred-hardening: done
   epic-3-retrospective: optional
 
   # ─── Dev infra fixes (no epic) ──────────────────────────────────────────────
   dev-1-mobile-controller-network-binding: done
-  dev-2-controller-rotation-lock-enforcement: backlog
-  dev-3-controller-fullscreen-toggle: backlog
-  dev-4-debug-invincible-high-damage-mode: backlog
+  dev-2-controller-rotation-lock-enforcement: done
+  dev-3-controller-fullscreen-toggle: done
+  dev-4-debug-invincible-high-damage-mode: done
+  # Closes D-6.8-A (deferred-work.md): host-session.ts's onTransientDelta
+  # whitelist is missing boss:phaseChanged/boss:damaged/boss:stomped/
+  # boss:defeated, making the already-built 6.3/6.4/6.5 boss visual-reaction
+  # code (damage flash, phase glow, stomp ring, purification pulse + reward
+  # reveal + achievements list) unreachable dead code today.
+  dev-5-boss-transient-delta-whitelist-fix: done
 
   # ─── E4: Procedural Dungeon & Full Run Structure ────────────────────────────
   # Vote to start a run, 3 procedural levels, deterministic seed system,
   # Survive the Waves objective, post-run summary.
   # FRs: FR6, FR7, FR8, FR9 (Survive Waves), FR10, FR19, FR29, FR30, FR34
-  epic-4: in-progress
+  epic-4: done
   4-1-deterministic-seed-system-and-floor-layout-generator: done
   4-2-dungeon-entrance-vote-and-run-initialisation: done
   4-3-3-level-run-structure-and-level-transitions: done
@@ -307,8 +538,12 @@ development_status:
   4-9-epic-4-deferred-hardening: done
   4-10-epic-4-post-49-deferred-hardening: done
   4-11-epic-4-post-410-deferred-hardening: done
-  4-12-full-hp-restore-on-level-transition: backlog
-  4-13-vote-accept-button-submitted-state: backlog
+  4-12-full-hp-restore-on-level-transition: done
+  4-13-vote-accept-button-submitted-state: done
+  # Closes D-4.11-A/B (loadLevel level-2/default branch commit-ordering risk, resetToHub
+  # boss-body leak), D1-4.12 (isFrozen never cleared on level transition), D1-4.13
+  # (VotePopup stuck-on-Waiting with no recovery timeout).
+  4-14-epic-4-post-413-deferred-hardening: done
   epic-4-retrospective: optional
 
   # ─── E5: Spirit Bond System ─────────────────────────────────────────────────
@@ -324,21 +559,30 @@ development_status:
   5-6-mobile-bond-card-and-continue-ux: done
   5-7-epic-5-deferred-hardening: done
   5-8-epic-5-post-57-deferred-hardening: done
+  # Closes D-5.8-A: maxAchievableBonds read the live player roster at boss-start instead
+  # of a snapshot taken when bonds were actually assigned.
+  5-9-epic-5-post-58-deferred-hardening: done
   epic-5-retrospective: optional
 
   # ─── E6: Grassland Boss Encounter ───────────────────────────────────────────
   # Behavior-tiered boss (Easy/Normal/Hard), synthesizes E3 mechanics, purification
   # pulse, reward reveal, biome achievements.
   # FRs: FR21 (boss tiers), FR24 (reward reveal), FR35 (Grassland boss + achievements), FR36
-  epic-6: in-progress
+  epic-6: done
   6-1-grassland-boss-shared-types-and-protocol-contracts: done
   6-2-grassland-boss-fsm-phase-system-and-difficulty-tiered-behaviors: done
   6-3-boss-arena-handcrafted-level-physics-geometry-and-host-rendering: done
   6-4-boss-defeat-sequence-purification-pulse-and-reward-reveal: done
   6-5-grassland-biome-achievements: done
   6-6-epic-6-deferred-hardening: done
-  6-7-boss-combat-resolution-wiring: backlog
-  6-8-floating-damage-numbers-regular-enemies: backlog
+  6-7-boss-combat-resolution-wiring: done
+  6-8-floating-damage-numbers-regular-enemies: done
+  6-9-epic-6-post-66-deferred-hardening: done
+  # Closes D-6.9-B: selectBondPair can re-pair an already-bonded pair, causing full-run.
+  # test.ts's 3-player bond-count assertion to flake. D-6.9-A/C re-deferred (physics-layer
+  # projectile-vs-boss gap; cosmetic double-hit-per-tick); D-6.9-D dropped (no 3rd instance
+  # of the duplicated isInHitZone check has appeared yet).
+  6-10-epic-6-post-69-deferred-hardening: done
   epic-6-retrospective: optional
 
   # ─── E7: Progression & Persistent Meta ──────────────────────────────────────

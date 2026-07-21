@@ -52,7 +52,10 @@ describe('GameRoom.tick() — generic level-clear guard excludes boss level (Sto
 });
 
 /**
- * Mirrors loadLevel's boss-branch `allBondsAtBossStart` computation (Story 5.8, D-5.7-C).
+ * Mirrors loadLevel's boss-branch `allBondsAtBossStart` computation (Story 5.8, D-5.7-C;
+ * updated to `>=` by Story 5.9's code review — assignBond still pairs against the live roster
+ * each bond-moment, so a roster that grows between bond-assignment attempts can validly earn
+ * more bonds than a frozen snapshot anticipated; those extra bonds must still count).
  * GameRoom isn't instantiable outside a live Colyseus room, so the formula is replicated
  * directly (same pattern as the level-clear guard above).
  */
@@ -60,7 +63,7 @@ function allBondsAtBossStart(activeBondCount: number, playerCount: number): bool
   const maxAchievableBonds = playerCount >= 2
     ? Math.min(BOSS_LEVEL_INDEX - 1, (playerCount * (playerCount - 1)) / 2)
     : 0;
-  return activeBondCount === maxAchievableBonds && maxAchievableBonds > 0;
+  return activeBondCount >= maxAchievableBonds && maxAchievableBonds > 0;
 }
 
 describe('GameRoom.loadLevel() — allBondsAtBossStart is player-count-aware (Story 5.8, D-5.7-C)', () => {
@@ -91,5 +94,51 @@ describe('GameRoom.loadLevel() — allBondsAtBossStart is player-count-aware (St
   it('is false for 0- or 1-player sessions regardless of activeBonds length', () => {
     expect(allBondsAtBossStart(0, 0)).toBe(false);
     expect(allBondsAtBossStart(0, 1)).toBe(false);
+  });
+
+  it('is true when activeBonds exceeds maxAchievableBonds (code review finding, Story 5.9)', () => {
+    // A roster that grew mid-run can earn more bonds than a frozen snapshot anticipated —
+    // exceeding the ceiling must still count as "all achievable bonds active", not fail.
+    expect(allBondsAtBossStart(2, 2)).toBe(true);
+  });
+});
+
+/**
+ * Mirrors the bondEligiblePlayerCount snapshot resolution in loadLevel's boss branch
+ * (Story 5.9, D-5.8-A; updated by Story 5.9's code review): playerCount must come from the
+ * roster snapshotted at first bond assignment, not the live roster at boss-start. Checks
+ * `!== -1` (not `>= 2`) — 0 or 1 is a legitimate captured snapshot (e.g. a solo-started run),
+ * not "never snapshotted"; falling back to the live count for a captured 0/1 would reintroduce
+ * the exact stale-read bug this story closes.
+ */
+function resolvePlayerCountForBondCheck(bondEligiblePlayerCount: number, livePlayerCount: number): number {
+  return bondEligiblePlayerCount !== -1 ? bondEligiblePlayerCount : livePlayerCount;
+}
+
+describe('GameRoom — bondEligiblePlayerCount snapshot resolution (Story 5.9, D-5.8-A)', () => {
+  it('uses the snapshot over the live roster once a snapshot exists', () => {
+    expect(resolvePlayerCountForBondCheck(2, 3)).toBe(2);
+  });
+
+  it('fixes the D-5.8-A scenario: a late-joining 3rd player no longer inflates maxAchievableBonds', () => {
+    // 2-player session assigns its 1 achievable bond; a 3rd player joins before boss start.
+    const resolvedPlayerCount = resolvePlayerCountForBondCheck(2, 3);
+    expect(allBondsAtBossStart(1, resolvedPlayerCount)).toBe(true); // was false pre-fix (live count = 3)
+  });
+
+  it('falls back to the live count only when no snapshot was ever captured (-1 sentinel)', () => {
+    expect(resolvePlayerCountForBondCheck(-1, 3)).toBe(3);
+  });
+
+  it('unchanged for a stable roster (common case): snapshot equals live count', () => {
+    expect(resolvePlayerCountForBondCheck(3, 3)).toBe(3);
+  });
+
+  it('uses a captured 0 or 1 snapshot rather than falling back to a grown live roster (code review finding, Story 5.9)', () => {
+    // A solo-started run (resolveVoteIfComplete has no >=2 floor) can snapshot at 0 or 1 —
+    // that must still count as "captured", or a later-joining 2nd/3rd player reintroduces
+    // the exact D-5.8-A stale-live-read bug this story exists to close.
+    expect(resolvePlayerCountForBondCheck(0, 3)).toBe(0);
+    expect(resolvePlayerCountForBondCheck(1, 3)).toBe(1);
   });
 });

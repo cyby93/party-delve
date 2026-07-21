@@ -1,18 +1,97 @@
-import { describe, it, beforeAll, afterAll, expect } from 'vitest';
+import { describe, it, beforeAll, afterAll, afterEach, expect } from 'vitest';
 import * as Colyseus from '@colyseus/sdk';
+import type { Room } from '@colyseus/sdk';
 import { EventNames } from 'net-protocol';
 import type { SnapshotMsg, DeltaEventMsg } from 'net-protocol';
-import { PURIFICATION_PULSE_DURATION_MS, REWARD_REVEAL_DURATION_MS } from 'shared-types';
+import { PURIFICATION_PULSE_DURATION_MS, REWARD_REVEAL_DURATION_MS, PlayerClass } from 'shared-types';
+import { ABILITY_HIT_RANGE_PX, ABILITY_HIT_RADIUS_PX } from 'game-rules';
 import { startTestServer, stopTestServer, TEST_URL } from '../helpers/server.js';
 import { waitForDelta } from '../helpers/messages.js';
+import { raceTimeout } from '../helpers/race-timeout.js';
 
-const raceTimeout = <T>(p: Promise<T>, ms: number, label: string): Promise<T> =>
-  Promise.race([p, new Promise<T>((_, reject) =>
-    setTimeout(() => reject(new Error(`timeout after ${ms}ms: ${label}`)), ms)
-  )]);
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+// Must match GameRoom.ts's tick loop `SPEED` constant (pixels/second in virtual
+// 1920x1080 space) — not exported, since it's private to the tick loop. Mirrors
+// ability-dispatch.test.ts's helper of the same name (module-private there, so
+// inlined here rather than imported — see Story 6.7 Task 4).
+const PLAYER_SPEED_PX_S = 200;
+
+// Live x/y for p1 and the boss, refreshed by 'player:moved'/'boss:moved' deltas —
+// needed because the boss patrols/charges (tickBoss), so a single snapshot read
+// goes stale. Mirrors ability-dispatch.test.ts's trackPositions, narrowed to the
+// two ids this test's aim-and-move step needs.
+function trackPlayerAndBossPositions(host: Room): { positions: Map<string, { x: number; y: number }>; stop: () => void } {
+  const positions = new Map<string, { x: number; y: number }>();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const unsub = host.onMessage(EventNames.DELTA, (d: any) => {
+    if (d.type === 'player:moved') positions.set(d.playerId, { x: d.x, y: d.y });
+    if (d.type === 'boss:moved') positions.set(d.bossId, { x: d.x, y: d.y });
+  });
+  return { positions, stop: unsub };
+}
+
+// Single timed joystick burst covering most of the distance to (toX,toY), stopping
+// `stopShortPx` short of it — same pattern as ability-dispatch.test.ts's helper.
+async function moveTowardPoint(
+  mover: Room,
+  fromX: number, fromY: number,
+  toX: number, toY: number,
+  stopShortPx: number,
+): Promise<void> {
+  const dx = toX - fromX;
+  const dy = toY - fromY;
+  const dist = Math.hypot(dx, dy);
+  const travelPx = Math.max(0, dist - stopShortPx);
+  if (travelPx === 0) return;
+  const mag = dist || 1;
+  mover.send(EventNames.INPUT, { type: 'input', event: { type: 'joystick', joystick: { x: dx / mag, y: dy / mag } } });
+  await sleep((travelPx / PLAYER_SPEED_PX_S) * 1000);
+  mover.send(EventNames.INPUT, { type: 'input', event: { type: 'joystick', joystick: { x: 0, y: 0 } } });
+  await sleep(300); // let velocity settle to zero and the final player:moved delta arrive
+}
+
+// Short closed-loop fine-tune pass — same pattern as ability-dispatch.test.ts's helper.
+async function fineTuneToDistanceBand(
+  mover: Room,
+  positions: Map<string, { x: number; y: number }>,
+  selfId: string,
+  targetId: string,
+  minDist: number,
+  maxDist: number,
+  timeoutMs: number,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const self = positions.get(selfId);
+    const target = positions.get(targetId);
+    if (self && target) {
+      const dx = target.x - self.x;
+      const dy = target.y - self.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist >= minDist && dist <= maxDist) {
+        mover.send(EventNames.INPUT, { type: 'input', event: { type: 'joystick', joystick: { x: 0, y: 0 } } });
+        await sleep(200);
+        return;
+      }
+      const sign = dist > maxDist ? 1 : -1; // too far → approach, too close → retreat
+      const mag = dist || 1; // guard exact-overlap (dist=0) from producing a NaN joystick vector
+      mover.send(EventNames.INPUT, {
+        type: 'input',
+        event: { type: 'joystick', joystick: { x: sign * (dx / mag), y: sign * (dy / mag) } },
+      });
+    }
+    await sleep(150);
+  }
+  throw new Error(`fineTuneToDistanceBand: never reached [${minDist},${maxDist}] from ${targetId} within ${timeoutMs}ms`);
+}
 
 describe('full run happy path', { timeout: 120_000 }, () => {
   let client: Colyseus.Client;
+  // Describe-scoped: every room created by a test is pushed here and force-left
+  // in afterEach, so a thrown assertion or a waitForDelta/raceTimeout timeout
+  // can't leak a live room into the next test.
+  const liveRooms: Room[] = [];
 
   beforeAll(async () => {
     await startTestServer();
@@ -21,9 +100,17 @@ describe('full run happy path', { timeout: 120_000 }, () => {
 
   afterAll(() => stopTestServer());
 
+  afterEach(async () => {
+    // Cap each leave() at 3s — a room whose connection is already dead (e.g. a
+    // manually-closed socket) can leave its leave() promise unsettled forever,
+    // which would otherwise hang this hook past its default 10s timeout.
+    await Promise.allSettled(liveRooms.splice(0).map((r) => raceTimeout(r.leave(), 3_000, 'room.leave')));
+  });
+
   it('session creation → 3 players → run vote → 3 levels → post-run → hub', async () => {
     // ── 1. Create session ─────────────────────────────────────────────────────
     const host = await client.create('game_room', { isHost: true });
+    liveRooms.push(host);
     const roomId = host.roomId;
 
     const allJoinedSnap = new Promise<SnapshotMsg>((resolve) => {
@@ -34,6 +121,7 @@ describe('full run happy path', { timeout: 120_000 }, () => {
     const p1 = await client.joinById(roomId, { playerName: 'Alice' });
     const p2 = await client.joinById(roomId, { playerName: 'Bob' });
     const p3 = await client.joinById(roomId, { playerName: 'Charlie' });
+    liveRooms.push(p1, p2, p3);
 
     const initialSnap = await raceTimeout(allJoinedSnap, 10_000, 'all 3 players joined snapshot');
     expect(initialSnap.state.session.phase).toBe('lobby');
@@ -189,14 +277,13 @@ describe('full run happy path', { timeout: 120_000 }, () => {
     expect(hubSnap.state.session.phase).toBe('hub');
     expect(hubSnap.state.enemies.length).toBe(0);
     expect(hubSnap.state.players.every((p: any) => !p.isDown && !p.isSpirit)).toBe(true);
-
-    await Promise.all([host.leave(), p1.leave(), p2.leave(), p3.leave()]);
   });
 
   // ponytail: boss defeat e2e is partial — verifies delta timing, not full AI simulation
   it('boss defeat path: BossDefeatedDelta then run:complete after delay', async () => {
     // ── Bring game to boss level (same setup as main test through L3 bond-moment) ─
     const host = await client.create('game_room', { isHost: true });
+    liveRooms.push(host);
     const roomId = host.roomId;
 
     const allJoinedSnap = new Promise<SnapshotMsg>((resolve) => {
@@ -206,6 +293,7 @@ describe('full run happy path', { timeout: 120_000 }, () => {
     });
     const p1 = await client.joinById(roomId, { playerName: 'Alice' });
     const p2 = await client.joinById(roomId, { playerName: 'Bob' });
+    liveRooms.push(p1, p2);
     await raceTimeout(allJoinedSnap, 10_000, 'players joined');
 
     p1.send(EventNames.CLASS_SELECT, { classId: 'stormcaller' });
@@ -267,6 +355,37 @@ describe('full run happy path', { timeout: 120_000 }, () => {
     expect(l4Snap.state.boss).not.toBeNull();
     expect(l4Snap.state.session.levelIndex).toBe(4);
 
+    // ── Story 6.7 (AC1+AC2): real ability damage actually reduces boss.hp ─────
+    // Move p1 into Stormcaller ability 0's (Lightning Arc) hit-scan range of the
+    // boss and cast it, then assert a real boss:damaged delta arrives — proving
+    // the hit-resolution loops now check gameState.boss, not just gameState.enemies.
+    const boss = l4Snap.state.boss!;
+    const p1Start = l4Snap.state.players.find((p: any) => p.id === p1.sessionId)!;
+    const { positions, stop } = trackPlayerAndBossPositions(host);
+    positions.set(p1.sessionId, p1Start);
+    positions.set(boss.id, boss.position);
+
+    const hitRange = ABILITY_HIT_RANGE_PX[PlayerClass.STORMCALLER][0]; // 160
+    const hitRadius = ABILITY_HIT_RADIUS_PX[PlayerClass.STORMCALLER][0]; // 60
+    const band = hitRadius - 10; // safety margin inside the true hit-radius tolerance
+
+    await moveTowardPoint(p1, p1Start.x, p1Start.y, boss.position.x, boss.position.y, hitRange);
+    await fineTuneToDistanceBand(p1, positions, p1.sessionId, boss.id, Math.max(0, hitRange - band), hitRange + band, 8_000);
+
+    const p1Pos = positions.get(p1.sessionId)!;
+    const bossPos = positions.get(boss.id)!;
+    const dirX = bossPos.x - p1Pos.x;
+    const dirY = bossPos.y - p1Pos.y;
+
+    const bossDamagedP = waitForDelta<any>(host, (d) => d.type === 'boss:damaged', 5_000);
+    p1.send(EventNames.INPUT, {
+      type: 'input',
+      event: { type: 'ability', ability: { abilityIndex: 0, directionX: dirX, directionY: dirY } },
+    });
+    const bossDamaged = await bossDamagedP;
+    expect(bossDamaged.newHp).toBeLessThan(boss.maxHp);
+    stop();
+
     // ── Defeat boss via debug endpoint ────────────────────────────────────────
     const defeatDeltaP = waitForDelta<any>(host, (d) => d.type === 'boss:defeated', 4_000);
     host.send('debug:kill-boss', {});
@@ -299,7 +418,5 @@ describe('full run happy path', { timeout: 120_000 }, () => {
       'post-run phase after boss defeat',
     );
     expect(postRunSnap.state.session.phase).toBe('post-run');
-
-    await Promise.all([host.leave(), p1.leave(), p2.leave()]);
   });
 });

@@ -14,10 +14,22 @@ export interface CooldownState {
   expiresAt: number;
 }
 
-type AppScreen = 'auth-choice' | 'session-entry' | 'class-select-forced' | 'orientation-prompt' | 'controller' | 'reconnect';
+type AppScreen = 'auth-choice' | 'session-entry' | 'class-select-forced' | 'controller' | 'reconnect';
 
 // CloseCode.CONSENTED = 4000 (Colyseus intentional leave — do not show reconnect screen)
 const CLOSE_CONSENTED = 4000;
+
+// Safari (and recent Chromium) throttle history.pushState/replaceState (Safari: ~100
+// calls/30s) and throw SecurityError past the limit. Losing a URL sync is harmless;
+// letting the exception propagate mid-callback would skip whatever runs after it (e.g.
+// the setScreen call that always follows these calls in this file).
+function safeReplaceState(url: string) {
+  try {
+    history.replaceState(null, '', url);
+  } catch {
+    // no-op — see comment above
+  }
+}
 
 function PostRunMobileScreen({ isVictory, onReturnToCamp }: { isVictory: boolean; onReturnToCamp: () => void }) {
   const [returned, setReturned] = useState(false);
@@ -83,12 +95,14 @@ export function App() {
   const [inBondMoment, setInBondMoment] = useState(false);
   const [reconnectRoomId, setReconnectRoomId] = useState<string>('');
   const [sessionEntryInitialCode, setSessionEntryInitialCode] = useState<string | undefined>(undefined);
+  const [isPortrait, setIsPortrait] = useState(() => !window.matchMedia('(orientation: landscape)').matches);
   // Ref keeps handleDelta dep-free while always reading the live playerId.
   // The callback is wired into room.onMessage once at join time — a closure
   // over `session` state would capture null and never update.
   const sessionRef = useRef<MobileSession | null>(null);
   const bondMomentLevelRef = useRef<number | null>(null);
   const gameStateRef = useRef<GameState | null>(null);
+  const leavingIntentionallyRef = useRef(false);
 
   useEffect(() => {
     return () => { session?.disconnect(); };
@@ -99,6 +113,14 @@ export function App() {
   }, [session]);
 
   useEffect(() => { gameStateRef.current = gameState; }, [gameState]);
+
+  useEffect(() => {
+    const mq = window.matchMedia('(orientation: landscape)');
+    setIsPortrait(!mq.matches);
+    const handler = (e: MediaQueryListEvent) => { setIsPortrait(!e.matches); };
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
 
   useEffect(() => {
     if (gameState?.session.phase === 'hub') {
@@ -139,6 +161,10 @@ export function App() {
   }, []);
 
   const handleDisconnect = useCallback((code: number) => {
+    if (leavingIntentionallyRef.current) {
+      leavingIntentionallyRef.current = false;
+      return;
+    }
     if (code === CLOSE_CONSENTED) {
       clearPersistedSession();
       return;
@@ -176,17 +202,13 @@ export function App() {
         handleDisconnect,
       );
       setSession(s);
-      history.replaceState(null, '', '?session=' + roomId);
+      safeReplaceState('?session=' + roomId);
       setScreen('class-select-forced');
       setSessionEntryInitialCode(undefined);
     } catch (err) {
       throw err; // re-throw so SessionCodeEntryScreen can reset its loading state and show the error
     }
   }, [handleDelta, handleCooldownUpdate, handleBondNotification, handleRunVictory, handleDisconnect]);
-
-  const handleOrientationDismiss = useCallback(() => {
-    setScreen('controller');
-  }, []);
 
   const handleReconnect = useCallback(async () => {
     const persisted = getPersistedSession();
@@ -225,7 +247,11 @@ export function App() {
     clearPersistedSession();
     setSession(null);
     setRunVictoryEssence(null);
-    setSessionEntryInitialCode(reconnectRoomId || undefined);
+    const nextCode = reconnectRoomId || undefined;
+    if (nextCode === undefined) {
+      safeReplaceState(window.location.pathname);
+    }
+    setSessionEntryInitialCode(nextCode);
     setScreen('session-entry');
   }, [reconnectRoomId]);
 
@@ -247,20 +273,19 @@ export function App() {
     return (
       <ClassSelectionScreen
         onBack={() => {
+          if (session) leavingIntentionallyRef.current = true;
+          clearPersistedSession();
           session?.disconnect();
           setSession(null);
-          history.replaceState(null, '', window.location.pathname);
+          safeReplaceState(window.location.pathname);
           setScreen('session-entry');
         }}
         onPickClass={(classId) => {
           session?.sendClassSelect({ type: 'class:select', classId });
-          setScreen('orientation-prompt');
+          setScreen('controller');
         }}
       />
     );
-  }
-  if (screen === 'orientation-prompt') {
-    return <OrientationPromptScreen onDismiss={handleOrientationDismiss} />;
   }
   if (screen === 'reconnect') {
     return (
@@ -330,6 +355,9 @@ export function App() {
         </button>
       </div>
     );
+  }
+  if (isPortrait) {
+    return <OrientationPromptScreen onDismiss={() => {}} />;
   }
   return <ControllerScreen session={session} gameState={gameState} cooldowns={cooldowns} bondNotification={bondNotification} inBondMoment={inBondMoment} onContinue={handleContinue} />;
 }

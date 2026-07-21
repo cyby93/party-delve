@@ -1,4 +1,4 @@
-import { describe, it, beforeAll, afterAll, expect } from 'vitest';
+import { describe, it, beforeAll, afterAll, afterEach, expect } from 'vitest';
 import * as Colyseus from '@colyseus/sdk';
 import type { Room } from '@colyseus/sdk';
 import { EventNames } from 'net-protocol';
@@ -12,13 +12,14 @@ import {
 } from 'game-rules';
 import { startTestServer, stopTestServer, TEST_URL } from '../helpers/server.js';
 import { waitForDelta } from '../helpers/messages.js';
-
-const raceTimeout = <T>(p: Promise<T>, ms: number, label: string): Promise<T> =>
-  Promise.race([p, new Promise<T>((_, reject) =>
-    setTimeout(() => reject(new Error(`timeout after ${ms}ms: ${label}`)), ms)
-  )]);
+import { raceTimeout } from '../helpers/race-timeout.js';
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+// Describe-scoped: every room created by a test (directly or via setupDungeonRun)
+// is pushed here and force-left in afterEach, so a thrown assertion or a
+// waitForDelta/raceTimeout timeout can't leak a live room into the next test.
+const liveRooms: Room[] = [];
 
 // Must match GameRoom.ts's tick loop `SPEED` constant (pixels/second in virtual
 // 1920x1080 space) — not exported, since it's private to the tick loop.
@@ -106,6 +107,7 @@ async function setupDungeonRun(client: Colyseus.Client, playerNames: string[], c
   dungeonSnap: SnapshotMsg;
 }> {
   const host = await client.create('game_room', { isHost: true });
+  liveRooms.push(host);
   const roomId = host.roomId;
 
   const allJoinedSnap = new Promise<SnapshotMsg>((resolve) => {
@@ -114,6 +116,7 @@ async function setupDungeonRun(client: Colyseus.Client, playerNames: string[], c
     });
   });
   const players = await Promise.all(playerNames.map((name) => client.joinById(roomId, { playerName: name })));
+  liveRooms.push(...players);
   await raceTimeout(allJoinedSnap, 10_000, 'all players joined');
 
   const classUpdates = Promise.all(
@@ -155,6 +158,13 @@ describe('live-room ability dispatch', { timeout: 120_000 }, () => {
   }, 65_000);
 
   afterAll(() => stopTestServer());
+
+  afterEach(async () => {
+    // Cap each leave() at 3s — a room whose connection is already dead (e.g. a
+    // manually-closed socket) can leave its leave() promise unsettled forever,
+    // which would otherwise hang this hook past its default 10s timeout.
+    await Promise.allSettled(liveRooms.splice(0).map((r) => raceTimeout(r.leave(), 3_000, 'room.leave')));
+  });
 
   // AC1 (closes D-3.16-A, D-3.17-B, D-3.17-C): Ancestor's Voice is a mixed-faction
   // hit-scan — one cast must damage a live enemy through GameRoom's enemy loop AND
@@ -217,7 +227,6 @@ describe('live-room ability dispatch', { timeout: 120_000 }, () => {
     expect(heal.hp).toBeGreaterThanOrEqual(allyStart.hp);
 
     stop();
-    await Promise.all([host.leave(), caster!.leave(), ally!.leave()]);
   });
 
   // AC2 (closes D-3.20-A): Storm Eye places a live ZoneState; the enemy must take
@@ -270,6 +279,5 @@ describe('live-room ability dispatch', { timeout: 120_000 }, () => {
     expect(zoneDamage.remainingHp).toBeLessThan(enemyHpBefore);
 
     stop();
-    await Promise.all([host.leave(), caster!.leave()]);
   });
 });

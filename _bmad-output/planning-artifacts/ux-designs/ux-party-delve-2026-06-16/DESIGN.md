@@ -5,7 +5,7 @@ description: >
   visual rules for the host-client and mobile-controller surfaces. Source of truth
   for all CSS custom properties and component implementations.
 status: final
-updated: 2026-06-18
+updated: 2026-07-20
 
 colors:
   bg-base:            { hex: "#0f0e10", role: "Deepest background" }
@@ -73,7 +73,7 @@ components:
     variants: [alive, spirit-form]
   skill-cell:
     description: "Single ability slot in the phone 2x2 right-zone grid"
-    variants: [idle, active-joystick, on-cooldown, disabled]
+    variants: [idle, active-joystick, active-channel, on-cooldown, disabled]
   interact-button:
     description: "Contextual slide-in button on phone — POI proximity or bond-moment Continue"
     variants: [interact, continue]
@@ -85,7 +85,7 @@ components:
     variants: [default, selected]
   ability-chip:
     description: "Compact ability tag in the ability briefing panel below class-card"
-    variants: [joystick-autofire, joystick-release, tap]
+    variants: [joystick-autofire, joystick-release, aim-cast, tap]
   post-run-card:
     description: "Player breakdown row in the host post-run summary"
     variants: [victory, failure]
@@ -329,7 +329,7 @@ The Raw Earth / Spirit Chant two-layer system maps directly to elevation and dep
 Spirit Chant glow (`accent-spirit` box-shadow or drop-shadow) appears on a UI element only when that element is in a spiritually active state:
 - A class card is selected → spirit-blue border + `bg-subtle` background tint
 - The interact / continue button is visible → the button carries a subtle spirit-blue glow
-- A skill cell joystick ring is active → ring is `accent-spirit`
+- A skill cell joystick ring is active for an AUTO or AIM_CAST ability → ring is `accent-spirit` (AIM_CAST additionally pulses; see `skill-cell` component). A RELEASE ability's ring uses `accent-warm` instead — not a Spirit Chant glow, matching its badge color.
 - The bond overlay text fades in → text carries `accent-spirit` glow
 
 Spirit Chant glow does NOT appear on idle elements, default buttons, or any decorative use.
@@ -402,17 +402,24 @@ The `accent-spirit` spirit glow is reserved for the Spirit Chant layer events li
 - Container: rectangle, `bg-surface`, `border` stroke, `rounded-lg` (8px)
 - Ability icon: top-center, placeholder geometric shape in v1 alpha; production sprites replace in later phase
 - Ability name: Lora 400 italic, `base` size, `text-primary`, bottom region of cell
-- Input type badge: Lora 400, `xs` size, `text-secondary`, bottom-left corner — displays AUTO, RELEASE, or TAP
+- Input type badge: Lora 400, `xs` size, `text-secondary`, bottom-left corner — displays AUTO, RELEASE, TAP, or AIM_CAST
 - Cooldown overlay: conic-gradient timer covering the majority of the cell face; color `bg-base` at 70% opacity over the cell; countdown value in `text-primary` centered
-- Joystick ring: appears at exact touch position when cell is touched (Joystick-AutoFire and Joystick-Release types only); ring color `accent-spirit`, 2px stroke, transparent fill
+- Joystick ring + knob: spawns at exact touch position when cell is touched (AUTO, RELEASE, and AIM_CAST types only — TAP never spawns one). Same visual grammar as the movement joystick (ring + solid draggable knob), scaled down to fit the cell: **80px ring, 28px knob** (movement is 110px/40px). Knob tracks the live drag offset from spawn origin, clamped to the ring radius. Ring clamps visually to the cell edge if the drag crosses the cell boundary (see EXPERIENCE.md §4, Cell boundary rule) — direction continues to update from the clamped position.
+  - **AUTO:** ring + knob in `accent-spirit`, static (no animation). Matches the existing AUTO badge color.
+  - **RELEASE:** ring + knob in `accent-warm`. Matches the existing RELEASE badge color.
+  - **AIM_CAST:** ring + knob in `accent-spirit` **with a slow pulse** — opacity/scale breathing at a ~1.2s cycle. `accent-spirit` and `interactive` are the same hex (see Colors section), so a color-only distinction from AUTO would be invisible; the pulse is what communicates "this is a channel, not a repeating strike." Reuses the Spirit Chant layer's existing pulse idiom (see purification pulse, Colors section) rather than inventing a new animation language.
+- Deadzone: 10px radius from spawn origin (independent of the movement joystick's 8px `DEADZONE_RADIUS` — see EXPERIENCE.md §6). Below this radius, the knob stays centered on the ring and no direction is committed.
 
 **States:**
 - `idle`: default appearance above
-- `active-joystick`: joystick ring visible at touch origin
+- `active-joystick`: AUTO or RELEASE ring+knob visible and tracking at touch origin
+- `active-channel`: AIM_CAST ring+knob visible and tracking, pulsing
 - `on-cooldown`: conic-gradient overlay active; cell content dims; interaction disabled
 - `disabled`: full `bg-base` overlay, no interaction (e.g., not yet unlocked)
 
 **Sizing:** Each cell fills ~50% of the right zone's height minus gutters. Width fills the zone with an 8px gutter between the two columns. [ASSUMPTION: target cell height ~80–100px in landscape on a standard 390px-wide phone held landscape, giving ~180px effective height zone for 2 rows. Exact sizing to be validated during build.]
+
+**Out of scope:** A channel-progress indicator for AIM_CAST (visualizing the server-side channel start/refresh/cancel state added in Story 3.18) is not specified here — this component spec covers the aim/direction interaction only. Flagged as an open gap for a future UX pass; see `.decision-log.md` D-018.
 
 ---
 
@@ -483,9 +490,9 @@ The `accent-spirit` spirit glow is reserved for the Spirit Chant layer events li
 **Anatomy:**
 - Container: inline-flex, `bg-subtle`, `rounded-sm` (4px), horizontal padding 8px, vertical padding 4px
 - Ability name: Lora 700, `sm` size, `text-primary`
-- Input type badge: Lora 400, `xs` size, `text-secondary` — AUTO, RELEASE, or TAP
+- Input type badge: Lora 400, `xs` size, `text-secondary` — AUTO, RELEASE, TAP, or AIM_CAST
 
-**Variants:** Three visual variants match the three input types — each may use a distinct subtle background tint or left-border accent color to make input type scannable at a glance. [NOTE FOR UX: specific per-type color accents not decided in session — recommend small left-border: `accent-spirit` for AUTO, `accent-warm` for RELEASE, `border` for TAP.]
+**Variants:** Four visual variants match the four input types, via a left-border accent color: `accent-spirit` for AUTO, `accent-warm` for RELEASE, `border` for TAP, `accent-spirit` for AIM_CAST (same family as AUTO — both are continuous-while-held; the chip is a static preview so AIM_CAST's live pulse doesn't apply here, the shared color alone signals the "held" family). Corrects the current build's `ABILITY_BADGE_BORDER`, which colors AIM_CAST as `accent-warm` (a pre-Story-3.18 leftover from when AIM_CAST fired on release, grouped with RELEASE) — see `.decision-log.md` D-018.
 
 ---
 
@@ -602,7 +609,7 @@ Promoted mockups are the canonical visual references. Files in `.working/` are e
 | File | Illustrates |
 |---|---|
 | `mockups/host-hud-wireframe-1.html` | Host screen HUD — minimal overlay layout, player chips, revive timer |
-| `mockups/controller-landscape-1.html` | Phone controller — landscape, 2×2 grid, floating joystick cells, idle + active states |
+| `mockups/controller-landscape-1.html` | Phone controller — landscape, 2×2 grid, floating joystick cells, idle + active states. Predates AIM_CAST (added Story 3.11, after this mock) — its `active-s2` frame shows the AUTO/RELEASE ring+knob pattern (`.skill-joystick-outer`/`.skill-joystick-inner`) that D-017 formalizes for all held types; the AIM_CAST pulse (D-018) is not represented in this mock. |
 | `mockups/class-selection-wireframe-4.html` | Class selection — hub interact button, card browse, selected + ability panel |
 | `mockups/join-flow-wireframe-1.html` | Join flow — host lobby screen, phone auth choice, phone session code entry |
 | `mockups/bond-assignment-wireframe-1.html` | Phone bond card — full-screen takeover, Fate Bond and Proximity Bond variants |

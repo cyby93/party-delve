@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "predev": "node scripts/kill-stale-dev.mjs",
     "dev": "cross-env NODEJS_CLI_WATCH_POLLING_INTERVAL=500 tsx watch src/index.ts",
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/index.js",

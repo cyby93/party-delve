@@ -21,6 +21,10 @@ export interface MobileSession {
   sendVote: (msg: VoteMsg) => void;
   sendReturnToCamp: () => void;
   sendContinue: () => void;
+  // Debug-only, dev-build-gated at the call site (see ControllerScreen.tsx) — mirrors the
+  // server's own NODE_ENV-gated 'debug:toggle-god-mode' handler (GameRoom.ts). Untyped raw
+  // string message, same precedent as debug:kill-all/debug:kill-boss — no EventNames entry.
+  sendDebugToggleGodMode: () => void;
   disconnect: () => void;
 }
 
@@ -141,6 +145,7 @@ export async function joinSession(
     sendVote: (msg: VoteMsg) => room.send(EventNames.VOTE, msg),
     sendReturnToCamp: () => room.send(EventNames.RETURN_TO_CAMP, { type: 'return:to-camp' } satisfies ReturnToCampMsg),
     sendContinue: () => room.send(EventNames.CONTINUE, { type: 'bond:continue' } satisfies ContinueMsg),
+    sendDebugToggleGodMode: () => room.send('debug:toggle-god-mode', {}),
     disconnect: () => {
       try { room.leave(); } catch { /* socket may already be closed */ }
     },
@@ -179,6 +184,7 @@ export async function reconnectToSession(
     sendVote: (msg: VoteMsg) => room.send(EventNames.VOTE, msg),
     sendReturnToCamp: () => room.send(EventNames.RETURN_TO_CAMP, { type: 'return:to-camp' } satisfies ReturnToCampMsg),
     sendContinue: () => room.send(EventNames.CONTINUE, { type: 'bond:continue' } satisfies ContinueMsg),
+    sendDebugToggleGodMode: () => room.send('debug:toggle-god-mode', {}),
     disconnect: () => {
       try { room.leave(); } catch { /* socket may already be closed */ }
     },
