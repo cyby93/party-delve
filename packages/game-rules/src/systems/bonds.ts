@@ -20,14 +20,44 @@ export function selectBondPair(players: PlayerState[], bonds: BondState[], rng: 
   const bondedIds = new Set(bonds.flatMap(b => [b.playerA, b.playerB]));
   const unbonded = players.filter(p => !bondedIds.has(p.id));
 
-  // Prefer unbonded for first pick; if 2+ unbonded also prefer unbonded for second pick
-  const poolA = unbonded.length >= 1 ? unbonded : players;
+  // A player is only a valid first pick if at least one OTHER player exists who
+  // isn't already bonded to them — otherwise every possible partner draw for them
+  // would just re-select an existing bond (D1, 2026-07-03 / D-6.9-B, 2026-07-17).
+  const bondedPartnersOf = (playerId: string): Set<string> => {
+    const ids = new Set<string>();
+    for (const b of bonds) {
+      if (b.playerA === playerId) ids.add(b.playerB);
+      else if (b.playerB === playerId) ids.add(b.playerA);
+    }
+    return ids;
+  };
+  const hasAvailablePartner = (p: PlayerState): boolean => {
+    const partners = bondedPartnersOf(p.id);
+    return players.some(other => other.id !== p.id && !partners.has(other.id));
+  };
+
+  // Prefer any unbonded player for the first pick — an unbonded player always has
+  // an available partner whenever another player exists, so no extra filtering is
+  // needed for this tier; fall back to anyone with an available partner; fall back
+  // to the full roster only when every possible pair is already bonded (pathological
+  // — a saturated small roster).
+  const anyWithPartner = players.filter(hasAvailablePartner);
+  const poolA = unbonded.length >= 1 ? unbonded
+    : anyWithPartner.length >= 1 ? anyWithPartner
+    : players;
   const idxA = Math.floor(rng() * poolA.length);
   const chosen = poolA[idxA]!;
 
-  const poolB = (unbonded.length >= 2 ? unbonded : players).filter(p => p.id !== chosen.id);
-  const idxB = Math.floor(rng() * poolB.length);
-  return [chosen.id, poolB[idxB]!.id];
+  const chosenPartners = bondedPartnersOf(chosen.id);
+  // Prefer an unbonded second pick when 2+ unbonded players exist (preserves the
+  // existing "spread bonds to fresh players first" bias for the common case), but
+  // never at the cost of re-selecting a pair already bonded to `chosen`; fall back
+  // to the full roster only when every possible pair with `chosen` is already bonded.
+  const validPoolB = (unbonded.length >= 2 ? unbonded : players)
+    .filter(p => p.id !== chosen.id && !chosenPartners.has(p.id));
+  const finalPoolB = validPoolB.length > 0 ? validPoolB : players.filter(p => p.id !== chosen.id);
+  const idxB = Math.floor(rng() * finalPoolB.length);
+  return [chosen.id, finalPoolB[idxB]!.id];
 }
 
 export function assignBond(

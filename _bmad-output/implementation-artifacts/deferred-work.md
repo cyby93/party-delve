@@ -4,6 +4,16 @@ Items surfaced during reviews that are real findings but pre-exist the triggerin
 
 ---
 
+## Deferred from: code review of 6-10-epic-6-post-69-deferred-hardening (2026-07-21)
+
+**D-6.10-A — `selectBondPair` assumes unique `PlayerState.id` values across the roster** [`packages/game-rules/src/systems/bonds.ts:43-62`]
+The new id-based filters (`bondedPartnersOf`, `hasAvailablePartner`, and every `p.id !== chosen.id` / `!chosenPartners.has(p.id)` predicate) implicitly assume no two players in the roster share an `id`. A duplicate id can make the final fallback pool come up empty (crash on `finalPoolB[idxB]!.id`) or silently re-select an already-bonded pair (the id-based exclusion can't distinguish the duplicate from `chosen`). Pre-existing assumption — the pre-fix code relied on the same implicit uniqueness via `Set`-based membership checks — not introduced or worsened by this story's diff, and no caller in the codebase currently allows duplicate ids to reach this function. Revisit only if a real path to duplicate `PlayerState.id`s is ever found (e.g. a room-join race).
+
+**D-6.10-B — `selectBondPair` still throws for 0 or 1 player rosters** [`packages/game-rules/src/systems/bonds.ts:60-62`]
+With `players.length` 0 or 1, every fallback pool (`unbondedWithPartner`, `anyWithPartner`, `preferredPoolB`, `poolB`, `finalPoolB`) collapses to empty, and `finalPoolB[idxB]!.id` dereferences `undefined`, throwing a TypeError. Identical crash existed in the pre-fix implementation at the same input sizes — not introduced by this story's diff — and it's unreachable in production: `assignBond` (the only caller) guards `state.players.length < 2` before ever calling `selectBondPair`. Revisit only if `selectBondPair` gains a caller that doesn't enforce that guard.
+
+---
+
 ## Deferred from: code review of 3-24-epic-3-post-323-deferred-hardening (2026-07-20)
 
 **D-3.24-A — `afterEach`'s per-room `leave()` unconditionally races against a 3s cap** [`tests/e2e/reconnect.test.ts`, `tests/e2e/ability-dispatch.test.ts`, `tests/e2e/full-run.test.ts`]
@@ -101,6 +111,7 @@ This story fixed the *multiplier* at the projectile hit-resolution call site (`~
 
 **D-6.9-B — `tests/e2e/full-run.test.ts`'s 3-player bond-count assertion is flaky due to the pre-existing `selectBondPair` re-pair bug (D1, 2026-07-03)** [`packages/game-rules/src/systems/bonds.ts:19-31`, exercised via `tests/e2e/full-run.test.ts:240`]
 Observed while verifying this story's test suite: `full-run.test.ts`'s 3-player happy-path test asserts `activeBonds.length === 3` after the 3rd bond-moment, but `assignBond`'s "skip duplicate bond assignment" fallback (`bonds.ts:52-57`) fires whenever `selectBondPair`'s 3rd draw happens to re-pick an already-bonded pair — the already-documented D1 bug ("`selectBondPair` can re-pair an already-bonded pair when all players are bonded", deferred 2026-07-03). When that fires, `bond:assigned` still broadcasts (with the *existing* bond's info) but `activeBonds.length` doesn't increment, failing the assertion. Confirmed pre-existing and unrelated to this story: `runSeed` is freshly randomized every room creation (`GameRoom.ts:192`), so the 3rd draw's collision odds are pure chance every run, independent of any production code path this story touches (verified via 4 repeated runs against this story's changes and 3 against unmodified `main`, both showing the same intermittent pattern). Not fixed here — `bonds.ts` is outside this story's Allowed paths and D1 already tracks the root cause. Revisit by fixing D1 (`selectBondPair` should filter `poolB` to exclude players already bonded to `chosen`, not just fall back to the full player pool).
+Resolution: `selectBondPair` now filters the first pick to players who still have at least one available (not-already-bonded-to-them) partner, and filters the second pick to exclude players already bonded to the first pick — falling back to the full roster only in the genuinely-saturated case, where `assignBond`'s existing duplicate-dedup fallback continues to absorb it unchanged. Preserves the existing "prefer unbonded players" bias and the exact 2-`rng()`-call contract. New unit coverage in `packages/game-rules/tests/unit/bonds.test.ts` proves the 3-player D-6.9-B/D1 repro now deterministically resolves to the one remaining unbonded pair. Surfaced during implementation: the story's own suggested `poolB` formula (drop the "prefer unbonded" bias for the 2nd pick entirely) regressed an existing test in `tests/unit/bonds.test.ts` ("prioritizes unbonded players") that the story context didn't know existed — fixed by keeping an unbonded-preferred `poolB` step ahead of the not-already-bonded-to-chosen filter, verified against the full suite (467 passing, 0 regressions).
 
 ---
 

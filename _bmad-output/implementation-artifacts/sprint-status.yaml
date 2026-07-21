@@ -1,5 +1,5 @@
 # generated: 2026-06-22
-# last_updated: 2026-07-16 (dev-2-controller-rotation-lock-enforcement code review passed, done)
+# last_updated: 2026-07-21 (6-10-epic-6-post-69-deferred-hardening code review passed, done)
 # project: party-delve
 # project_key: NOKEY
 # tracking_system: file-system
@@ -417,7 +417,7 @@ development_status:
   # via QR code or session code. They appear in an empty hub world.
   # Disconnect/reconnect within grace period works.
   # FRs: FR1, FR2, FR3 (guest join), FR27, FR28, FR31, FR32, FR33, FR37, FR38
-  epic-1: in-progress
+  epic-1: done
   1-1-monorepo-architecture-clean-slate-and-package-scaffold: done
   1-2-simulation-server-session-lifecycle-and-30hz-tick-loop: done
   1-3-host-app-main-menu-and-lobby-screen: done
@@ -436,7 +436,7 @@ development_status:
   # Players explore the tribe village hub, interact with POIs (class selection,
   # training dummy), browse and select a class, and confirm their choice.
   # FRs: FR5, FR11 (4 alpha classes defined), FR12, FR13
-  epic-2: in-progress
+  epic-2: done
   2-1-hub-world-poi-layout-and-interact-button: done
   2-2-class-selection-flow-card-browse-and-selection: done
   2-3-class-confirmation-and-hub-controller-transition: done
@@ -455,7 +455,7 @@ development_status:
   # dungeon combat. Players use abilities, go down, get revived, enter spirit
   # form. "Clear" objective type is operational.
   # FRs: FR9(Clear), FR11, FR12, FR13, FR17, FR18, FR19, FR20, FR21, FR22, FR23
-  epic-3: in-progress
+  epic-3: done
   3-1-xoshiro128-prng-and-planckjs-physics-world: done
   3-2-enemy-ai-base-fsm-and-layered-difficulty-behaviors: done
   3-3-4-alpha-class-implementations-abilities-and-input-types: done
@@ -514,7 +514,7 @@ development_status:
   # Vote to start a run, 3 procedural levels, deterministic seed system,
   # Survive the Waves objective, post-run summary.
   # FRs: FR6, FR7, FR8, FR9 (Survive Waves), FR10, FR19, FR29, FR30, FR34
-  epic-4: in-progress
+  epic-4: done
   4-1-deterministic-seed-system-and-floor-layout-generator: done
   4-2-dungeon-entrance-vote-and-run-initialisation: done
   4-3-3-level-run-structure-and-level-transitions: done
@@ -538,7 +538,7 @@ development_status:
   # Bond assigned at level end, buff+price pairs, in-canvas particle tethers,
   # 3 bonds accumulate across 3 levels.
   # FRs: FR14, FR15, FR16
-  epic-5: in-progress
+  epic-5: done
   5-1-spirit-bond-shared-types-and-protocol-contracts: done
   5-2-bond-assignment-logic-and-deterministic-pair-selection: done
   5-3-per-tick-bond-effects-proximity-and-fate-bond-types: done
@@ -556,7 +556,7 @@ development_status:
   # Behavior-tiered boss (Easy/Normal/Hard), synthesizes E3 mechanics, purification
   # pulse, reward reveal, biome achievements.
   # FRs: FR21 (boss tiers), FR24 (reward reveal), FR35 (Grassland boss + achievements), FR36
-  epic-6: in-progress
+  epic-6: done
   6-1-grassland-boss-shared-types-and-protocol-contracts: done
   6-2-grassland-boss-fsm-phase-system-and-difficulty-tiered-behaviors: done
   6-3-boss-arena-handcrafted-level-physics-geometry-and-host-rendering: done
@@ -570,7 +570,7 @@ development_status:
   # test.ts's 3-player bond-count assertion to flake. D-6.9-A/C re-deferred (physics-layer
   # projectile-vs-boss gap; cosmetic double-hit-per-tick); D-6.9-D dropped (no 3rd instance
   # of the duplicated isInHitZone check has appeared yet).
-  6-10-epic-6-post-69-deferred-hardening: ready-for-dev
+  6-10-epic-6-post-69-deferred-hardening: done
   epic-6-retrospective: optional
 
   # ─── E7: Progression & Persistent Meta ──────────────────────────────────────

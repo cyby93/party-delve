@@ -4,7 +4,7 @@ baseline_commit: 3d22e41a41a9fae1f18e86c72cca8529ae173c96
 
 # Story 6.10: Epic 6 — Post-6.9 Deferred Hardening
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -198,7 +198,7 @@ so that a 3-player session's 3rd bond moment reliably assigns the one remaining 
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1** (AC: 1, 2, 3, 4) — Fix `selectBondPair` in `packages/game-rules/src/systems/bonds.ts` (currently lines 19-31):
+- [x] **Task 1** (AC: 1, 2, 3, 4) — Fix `selectBondPair` in `packages/game-rules/src/systems/bonds.ts` (currently lines 19-31):
   ```ts
   export function selectBondPair(players: PlayerState[], bonds: BondState[], rng: () => number): [string, string] {
     const bondedIds = new Set(bonds.flatMap(b => [b.playerA, b.playerB]));
@@ -239,10 +239,15 @@ so that a 3-player session's 3rd bond moment reliably assigns the one remaining 
     return [chosen.id, finalPoolB[idxB]!.id];
   }
   ```
-  - [ ] Confirm exactly 2 `rng()` calls remain in every branch (AC3) — one for `idxA`, one for `idxB`, matching the pre-fix call count.
-  - [ ] Do not touch `assignBond` (lines 33-65) or anything below it in the file — only `selectBondPair` changes.
+  > **Note (added at code review):** the shipped implementation diverges from the verbatim code
+  > block above — this suggested `poolB` formula drops the "prefer unbonded second pick" bias,
+  > which regresses the pre-existing `tests/unit/bonds.test.ts` "prioritizes unbonded players"
+  > case. See the Dev Agent Record's Debug Log / Completion Notes below for the actual shipped
+  > logic and why it differs.
+  - [x] Confirm exactly 2 `rng()` calls remain in every branch (AC3) — one for `idxA`, one for `idxB`, matching the pre-fix call count.
+  - [x] Do not touch `assignBond` (lines 33-65) or anything below it in the file — only `selectBondPair` changes.
 
-- [ ] **Task 2** (AC: 5) — Add `packages/game-rules/tests/unit/bonds.test.ts` (new file; no existing test file for this module):
+- [x] **Task 2** (AC: 5) — Add `packages/game-rules/tests/unit/bonds.test.ts` (new file; no existing test file for this module):
   ```ts
   import { describe, it, expect } from 'vitest';
   import type { PlayerState, BondState } from 'shared-types';
@@ -313,11 +318,18 @@ so that a 3-player session's 3rd bond moment reliably assigns the one remaining 
     });
   });
   ```
-  - [ ] Run `npx vitest run packages/game-rules/tests/unit/bonds.test.ts` — confirm all 4 cases pass.
+  - [x] Run `npx vitest run packages/game-rules/tests/unit/bonds.test.ts` — confirm all 4 cases pass.
 
-- [ ] **Task 3** (AC: 7) — Run `npm run typecheck` (full monorepo) and `npx vitest run` (full suite) from repo root. Confirm 0 typecheck errors and no new test regressions (pre-existing e2e environment failures documented in 6.9's own Debug Log — `ability-dispatch.test.ts`, `hub-ability-use.test.ts` port-binding timeouts — are not this story's concern; `full-run.test.ts` should now pass its bond-count assertion deterministically rather than intermittently).
+- [x] **Task 3** (AC: 7) — Run `npm run typecheck` (full monorepo) and `npx vitest run` (full suite) from repo root. Confirm 0 typecheck errors and no new test regressions (pre-existing e2e environment failures documented in 6.9's own Debug Log — `ability-dispatch.test.ts`, `hub-ability-use.test.ts` port-binding timeouts — are not this story's concern; `full-run.test.ts` should now pass its bond-count assertion deterministically rather than intermittently).
 
-- [ ] **Task 4** (AC: 8) — Append a "Resolution:" note to D-6.9-B's entry in `deferred-work.md` (section "Deferred from: dev implementation of 6-9-epic-6-post-66-deferred-hardening"), matching the exact style used for D-dev4-B/D-dev5-A's resolution notes. Do not touch D1's own original entry (2026-07-03 section) beyond what the existing project convention does for a referenced-but-not-owning finding — D-6.9-B is the entry this story resolves; D1 is its root-cause reference, already correctly cross-linked in D-6.9-B's own text.
+- [x] **Task 4** (AC: 8) — Append a "Resolution:" note to D-6.9-B's entry in `deferred-work.md` (section "Deferred from: dev implementation of 6-9-epic-6-post-66-deferred-hardening"), matching the exact style used for D-dev4-B/D-dev5-A's resolution notes. Do not touch D1's own original entry (2026-07-03 section) beyond what the existing project convention does for a referenced-but-not-owning finding — D-6.9-B is the entry this story resolves; D1 is its root-cause reference, already correctly cross-linked in D-6.9-B's own text.
+
+### Review Findings
+
+- [x] [Review][Patch] Story's embedded Task 1 code block is stale vs. the shipped implementation — a reader skimming the code block (not Completion Notes) would see the pre-fix-adjacent formula, not what actually shipped [`_bmad-output/implementation-artifacts/6-10-epic-6-post-69-deferred-hardening.md` Task 1 code block] — fixed: added an inline note pointing to the Dev Agent Record
+- [x] [Review][Patch] `selectBondPair`'s pool-building has redundant/near-duplicate filter logic — `unbondedWithPartner` is provably identical to `unbonded` for every reachable (2+ player) input, and `preferredPoolB`/`poolB`/`finalPoolB` repeat near-identical `p.id !== chosen.id [&& !chosenPartners.has(p.id)]` predicates that could collapse into fewer pools [`packages/game-rules/src/systems/bonds.ts:43-62`] — fixed: removed the redundant `unbondedWithPartner` filter (proven identical to `unbonded`) and the dead `poolB` fallback tier (proven always equal to its own preferred pool)
+- [x] [Review][Defer] `selectBondPair` assumes unique `PlayerState.id` values across the roster — a duplicate id can make the id-based filters crash (empty `finalPoolB`) or silently re-select an already-bonded pair [`packages/game-rules/src/systems/bonds.ts:43-62`] — deferred, pre-existing (no caller currently allows duplicate ids to reach this function; not introduced or worsened by this diff)
+- [x] [Review][Defer] `selectBondPair` still throws via non-null assertion for 0 or 1 player rosters [`packages/game-rules/src/systems/bonds.ts:60-62`] — deferred, pre-existing (identical crash existed pre-fix; unreachable in production since `assignBond` guards `state.players.length < 2` before calling)
 
 ## Dev Notes
 
@@ -468,8 +480,48 @@ new `bonds.test.ts`, consistent with how `player-health.test.ts` itself doesn't 
 
 ### Agent Model Used
 
+Claude Sonnet 5
+
 ### Debug Log References
+
+- `npx vitest run packages/game-rules/tests/unit/bonds.test.ts`: 4/4 pass.
+- `npm run typecheck` (full monorepo, 10 project references): 0 errors.
+- `npx vitest run` (full monorepo): 467 passed, 0 failed, 3 skipped. Only
+  `tests/e2e/ability-dispatch.test.ts` and `tests/e2e/hub-ability-use.test.ts` suites failed
+  to even start (pre-existing port-binding timeouts, documented as non-blocking in 6.9's own
+  Debug Log). `tests/e2e/full-run.test.ts` — the story's target flaky assertion — passed.
 
 ### Completion Notes List
 
+- Fixed `selectBondPair` (`packages/game-rules/src/systems/bonds.ts`): the first pick is now
+  restricted to players who still have at least one available (not-already-bonded-to-them)
+  partner; the second pick excludes players already bonded to the first pick, preferring an
+  unbonded second pick when 2+ unbonded players exist. Falls back to the full roster only when
+  the roster is genuinely saturated, where `assignBond`'s existing duplicate-dedup fallback
+  (unchanged) continues to absorb it. Exactly 2 `rng()` calls preserved in every branch (AC3).
+- Discrepancy found during implementation: the story's own Task 1 code block (verbatim) drops
+  the "prefer unbonded player for the 2nd pick" bias entirely, which regressed a pre-existing
+  test in `tests/unit/bonds.test.ts` ("prioritizes unbonded players — with 4 players and
+  p0+p1 bonded, always picks p2 and p3") that the story's Dev Notes didn't know existed (it
+  states "No test file exists yet for bonds.ts's pure functions" — true for the
+  `packages/game-rules/tests/unit/` path, but a separate root-level `tests/unit/bonds.test.ts`
+  already covers this module extensively). Fixed per Step 7 (regression must be resolved before
+  continuing) by keeping an unbonded-preferred second-pick pool ahead of the
+  not-already-bonded-to-`chosen` filter — this preserves both AC1 (never re-select an
+  already-bonded pair while a valid pair exists) and AC4 (common case unchanged), verified by
+  re-running the full suite (467 passing, 0 regressions). Did not modify the story's Allowed
+  paths or touch `assignBond`.
+- Added `packages/game-rules/tests/unit/bonds.test.ts` exactly as specified in Task 2 — 4 new
+  tests (D-6.9-B/D1 repro, saturated 2-player, common-case unchanged, RNG-call-count contract),
+  all pass against the refined implementation.
+- Appended a "Resolution:" note to D-6.9-B in `deferred-work.md`, matching the
+  D-5.7-C/D-dev4-B/D-dev5-A convention, including a note on the test-regression discrepancy
+  found and fixed during implementation.
+- `assignBond`, `selectBondType`, `bondKey`, and the per-tick bond-effect helpers were not
+  touched, per Non-goals.
+
 ### File List
+
+- `packages/game-rules/src/systems/bonds.ts` (modified)
+- `packages/game-rules/tests/unit/bonds.test.ts` (added)
+- `_bmad-output/implementation-artifacts/deferred-work.md` (modified)
