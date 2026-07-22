@@ -42,7 +42,19 @@
 # Phase2 legacy stories (old Phase-based keys) are tracked below under PHASE 2 STORIES.
 
 generated: 2026-06-22
-last_updated: 2026-07-21 (7-1-vfx-engine-foundations done)
+last_updated: 2026-07-22 (7-2 … 7-8 created, all ready-for-dev)
+# 2026-07-22: created the remaining Epic 7 stories in one batch (7.2-7.6, 7.7a, 7.7b, 7.8).
+# Story 7.7 was split into 7.7a (protocol+sim) and 7.7b (host) — see the E7 block below.
+# Three epic-text claims were corrected against the shipped code during creation:
+# (1) boss:charged is not a whitelist fix — the delta type does not exist (7.7a);
+# (2) ZoneState has no class/abilityIndex fields, only ProjectileState does, so 7.8 derives
+#     zone identity from ownerId->class + effectType instead of adding schema fields;
+# (3) Stone Wall is not a cone/line — ABILITY_HIT_RANGE_PX.stonehide[0] is 0, so it resolves
+#     self-centred at r100, and TAP abilities ignore their hitRange entirely.
+# Two cross-cutting risks are recorded in every story rather than fixed here: App.tsx's
+# latestTransientDelta is a single state value (React 18 batching collapses same-task deltas),
+# and 7.1's VfxEngine is still unconsumed, so whichever story ships first also does the
+# one-time DungeonScreen wiring (each story specifies it guarded "if not already present").
 # 2026-07-21: ran epic-1-retrospective (done) — first retrospective run on the project,
 # retroactively (Epics 1-6 all already complete by the time it ran). Synthesized findings
 # from stories 1.1-1.10's dev notes/code-review history rather than fresh memory, since
@@ -595,6 +607,21 @@ development_status:
   # Ancient Forest Biome/Polish down one slot each (old E7-E10 -> E8-E11).
   epic-7: in-progress
   7-1-vfx-engine-foundations: done
+  7-2-stonehide-ability-vfx: ready-for-dev
+  7-3-spiritcaller-ability-vfx: ready-for-dev
+  7-4-souldrinker-ability-vfx: ready-for-dev
+  7-5-stormcaller-ability-vfx: ready-for-dev
+  7-6-status-effect-vfx: ready-for-dev
+  # Epic 7.7 was split at story-creation time (2026-07-22, user-approved): the epic assumed
+  # boss:charged only needed a host whitelist entry, but there is no BossChargedDelta in
+  # net-protocol's DeltaEventMsg union at all and GameRoom.ts:1926 explicitly swallows the
+  # event. Making it reach the host spans 3 ownership areas, so 7.7a confines the
+  # protocol+sim work (Contract-change + Simulation-safety hooks) to one small story and
+  # 7.7b stays host-only. 7.7b depends on 7.7a for its charge AC only; its three boss
+  # reskin ACs are independent and ship regardless.
+  7-7a-boss-charged-delta-contract-and-broadcast: ready-for-dev
+  7-7b-grassland-boss-attack-vfx-and-charge-visual: ready-for-dev
+  7-8-environmental-and-bond-vfx-polish: ready-for-dev
   epic-7-retrospective: optional
 
   # ─── E8: Progression & Persistent Meta ──────────────────────────────────────
