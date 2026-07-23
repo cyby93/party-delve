@@ -4,7 +4,7 @@ baseline_commit: 884dacbd8b7793465697ca9163ee299bfc02dce8
 
 # Story 7.3: Spiritcaller Ability VFX
 
-Status: in-progress
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 

@@ -1,4 +1,4 @@
-import { PlayerClass } from 'shared-types';
+import { PlayerClass, ABILITY_HIT_RANGE_PX, ABILITY_HIT_RADIUS_PX } from 'shared-types';
 import type { StatusEffect } from 'shared-types';
 
 /**
@@ -6,14 +6,33 @@ import type { StatusEffect } from 'shared-types';
  * stays a thin dispatcher and the mapping/placement math is testable without a
  * canvas.
  *
- * Every number below is an authoring-time transcription of
- * `packages/game-rules/src/balance.ts` — `apps/host-client` never imports
- * `packages/game-rules`. Colors are PixiJS numeric literals, never CSS strings.
+ * The spatial geometry below (hit range / hit radius) is **imported live** from
+ * the shared ability presentation contract in `shared-types`
+ * (`ABILITY_HIT_RANGE_PX` / `ABILITY_HIT_RADIUS_PX`, Story 7.9 / ADR-0003) — the
+ * same values the sim resolves hits with, so tuning a range/radius moves the VFX
+ * automatically instead of drifting from a hand-copied literal (`D-7.2-A`). The
+ * host still never imports game-rules *logic*; only this shared spatial contract.
+ * Colors, stroke widths, alphas and cosmetic fade durations stay local. Colors
+ * are PixiJS numeric literals, never CSS strings.
  *
  * Story 7.2 fills in Stonehide only. 7.3-7.5 add their four entries each; every
  * class/index without an entry returns `null`, which is the single source of
  * truth for "fall back to the legacy ABILITY_FLASH_MS cast flash".
  */
+
+// Stonehide's real hit geometry, read live from the shared contract (Story 7.9).
+// Rule for `hitRangePx`, mirroring the sim's own `isDirectional = inputType !== 'TAP'`
+// (GameRoom.ts:2185, combat.ts `isInHitZone`): a *directional* ability (RELEASE /
+// AUTO) offsets its hit circle to `caster + aim × range`, so its VFX reads the
+// contract range and tracks a re-tune. A *TAP* ability hits a circle on the caster
+// and the sim ignores its range entirely, so its VFX uses a hard `0`.
+//   slot 0 Stone Wall  — RELEASE → directional → reads STONEHIDE_RANGE[0]
+//   slot 1 Tremor Stomp — TAP     → hard 0 (sim ignores its range 160)
+//   slot 2 Iron Skin    — TAP     → hard 0 (sim ignores its range)
+//   slot 3 Avalanche    — AUTO    → directional → reads STONEHIDE_RANGE[3]
+// Radii always track the contract regardless of delivery.
+const STONEHIDE_RANGE = ABILITY_HIT_RANGE_PX[PlayerClass.STONEHIDE];
+const STONEHIDE_RADIUS = ABILITY_HIT_RADIUS_PX[PlayerClass.STONEHIDE];
 
 // ── Palette: Stonehide's earth register ──────────────────────────────────────
 /** The `accent-warm` design token (#c07d35) — firelight/ochre. Impact color. */
@@ -105,11 +124,11 @@ const STONEHIDE_VFX: readonly AbilityVfxConfig[] = [
   // The only imploding effect in the kit: the ring starts at the real hit radius
   // and collapses onto the caster along the same vector the displacement pulls.
   {
-    hitRangePx: 0,
+    hitRangePx: STONEHIDE_RANGE[0], // directional RELEASE — reads the contract range (0 today → hits at caster)
     rings: [
-      { at: 'caster', startRadius: 100, maxRadius: 26, lineWidth: 6, filled: false, color: STONEHIDE_DUST, alpha: 0.95, durationMs: 320 },
+      { at: 'caster', startRadius: STONEHIDE_RADIUS[0], maxRadius: 26, lineWidth: 6, filled: false, color: STONEHIDE_DUST, alpha: 0.95, durationMs: 320 },
     ],
-    beam: { originOffsetPx: 100, target: 'caster', width: 5, color: STONEHIDE_DUST, alpha: 0.8, durationMs: 260 },
+    beam: { originOffsetPx: STONEHIDE_RADIUS[0], target: 'caster', width: 5, color: STONEHIDE_DUST, alpha: 0.8, durationMs: 260 },
     burst: {
       at: 'caster', colors: [STONEHIDE_DUST, STONEHIDE_OCHRE], count: 8,
       // Near-static (~13 px of travel) so the dust reads as ground breaking
@@ -117,13 +136,16 @@ const STONEHIDE_VFX: readonly AbilityVfxConfig[] = [
       speed: 0.04, spread: 1.2, particleRadius: 5, alpha: 0.9, durationMs: 320,
     },
   },
-  // 1 — Tremor Stomp (TAP, hitRange 160 is dead data, hitRadius 60, slow 0.4).
-  // Pure outward motion from the body — the exact opposite vector of Stone Wall.
+  // 1 — Tremor Stomp (TAP, hitRadius 60, slow 0.4). hitRangePx is a hard 0, not
+  // STONEHIDE_RANGE[1] (=160): a TAP ability hits a circle on the caster and the
+  // sim ignores its hitRange entirely, so its 160 is dead data — a delivery
+  // semantic, not geometry the VFX should read. Pure outward motion from the
+  // body, the exact opposite vector of Stone Wall.
   {
     hitRangePx: 0,
     rings: [
-      { at: 'caster', startRadius: 0, maxRadius: 60, lineWidth: 7, filled: false, color: STONEHIDE_OCHRE, alpha: 1, durationMs: 380 },
-      { at: 'caster', startRadius: 0, maxRadius: 60, lineWidth: 0, filled: true, color: STONEHIDE_DUST, alpha: 0.35, durationMs: 260 },
+      { at: 'caster', startRadius: 0, maxRadius: STONEHIDE_RADIUS[1], lineWidth: 7, filled: false, color: STONEHIDE_OCHRE, alpha: 1, durationMs: 380 },
+      { at: 'caster', startRadius: 0, maxRadius: STONEHIDE_RADIUS[1], lineWidth: 0, filled: true, color: STONEHIDE_DUST, alpha: 0.35, durationMs: 260 },
     ],
     burst: {
       at: 'caster', colors: [STONEHIDE_OCHRE, STONEHIDE_DUST], count: 14,
@@ -134,18 +156,18 @@ const STONEHIDE_VFX: readonly AbilityVfxConfig[] = [
   // Cast moment only: armour snapping shut. The 3000 ms state itself is the
   // persistent shell in renderFrame, driven from GameState (AC4).
   {
-    hitRangePx: 0,
+    hitRangePx: 0, // TAP — sim ignores range, hits at caster (see the hitRangePx rule above the table)
     rings: [
-      { at: 'caster', startRadius: 120, maxRadius: 30, lineWidth: 5, filled: false, color: STONEHIDE_SLATE, alpha: 0.9, durationMs: 300 },
+      { at: 'caster', startRadius: STONEHIDE_RADIUS[2], maxRadius: 30, lineWidth: 5, filled: false, color: STONEHIDE_SLATE, alpha: 0.9, durationMs: 300 },
     ],
   },
   // 3 — Avalanche (AUTO, 1000 ms CD, directional at range 200, hitRadius 50).
   // Translational motion, and deliberately the only effect with no particle
   // burst: it fires once a second for the whole run. Do not add sparks.
   {
-    hitRangePx: 200,
+    hitRangePx: STONEHIDE_RANGE[3], // 200 — directional reach, read live
     rings: [
-      { at: 'hit', startRadius: 0, maxRadius: 50, lineWidth: 4, filled: false, color: STONEHIDE_OCHRE, alpha: 0.85, durationMs: 180 },
+      { at: 'hit', startRadius: 0, maxRadius: STONEHIDE_RADIUS[3], lineWidth: 4, filled: false, color: STONEHIDE_OCHRE, alpha: 0.85, durationMs: 180 },
     ],
     beam: { originOffsetPx: 0, target: 'hit', width: 6, color: STONEHIDE_OCHRE, alpha: 0.75, durationMs: 140 },
   },

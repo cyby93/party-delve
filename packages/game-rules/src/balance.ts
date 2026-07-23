@@ -1,4 +1,24 @@
 import type { PlayerClass, BondType, ZoneEffectType, StatusEffectType } from 'shared-types';
+import { VOID_PULSE_ZONE_RADIUS_PX } from 'shared-types';
+
+// ── Ability presentation contract (Story 7.9 / ADR-0003) ─────────────────────
+// The ability spatial + delivery + spatial-sweep constants now live in
+// `shared-types` so the host renderer and the sim read the SAME values (VFX
+// tracks balance; resolves D-7.2-A). Re-exported here so every existing
+// `import { ABILITY_HIT_RANGE_PX, ... } from 'game-rules'` keeps resolving with
+// zero sim churn — the public surface of game-rules is unchanged.
+export {
+  ABILITY_HIT_RANGE_PX,
+  ABILITY_HIT_RADIUS_PX,
+  ABILITY_DELIVERY,
+  PROJECTILE_SPEED_PX_S,
+  PROJECTILE_MAX_RANGE_PX,
+  VOID_PULSE_ZONE_RADIUS_PX,
+  SPIRIT_NOVA_DURATION_MS,
+  SPIRIT_NOVA_MAX_RADIUS_PX,
+  STORM_EYE_ZONE_RADIUS_PX,
+} from 'shared-types';
+export type { AbilityDeliveryType } from 'shared-types';
 
 // ── Movement ──────────────────────────────────────────────────────────────────
 export const JOYSTICK_DEADBAND = 0.05;
@@ -95,42 +115,9 @@ export const STOMP_ACTIVATION_RANGE = 80;     // pixels — player must be this 
 export const STOMP_RADIUS = 150;              // pixels — AoE radius of stomp effect
 export const STOMP_COOLDOWN_TICKS = 240;      // 8 seconds at 30hz
 
-// ── Ability hit zones (alpha tuning values) ───────────────────────────────────
-// Directional abilities: hit circle at (player + direction * hitRange), radius = hitRadius
-// TAP abilities: hit circle at player position, radius = hitRadius (hitRange unused)
-export const ABILITY_HIT_RANGE_PX: Record<PlayerClass, readonly [number, number, number, number]> = {
-  stonehide:    [  0, 160,   0, 200],
-  spiritcaller: [180,   0, 200,   0],
-  souldrinker:  [150, 180, 180,   0], // Dark Pact (slot 2) now aims a forward cone for its ally-target search (Story 3.19)
-  stormcaller:  [160, 200,   0, 160],
-};
-
-export const ABILITY_HIT_RADIUS_PX: Record<PlayerClass, readonly [number, number, number, number]> = {
-  stonehide:    [100, 60, 120,  50],
-  spiritcaller: [ 50, 90,  60,  90],
-  souldrinker:  [ 50, 65,  80,  80],
-  stormcaller:  [ 60, 70, 110,  80],
-};
-
-// ── Ability delivery type ────────────────────────────────────────────────────
-// Story 3.19: the first abilities to resolve via a spawned ProjectileState
-// (Story 3.13) instead of the default same-tick hit-scan. Declarative so
-// GameRoom branches on this table instead of special-casing any one ability.
-// Story 3.20: extended with 'zone' — Storm Eye places a ZoneState directly
-// (via createZoneBody in GameRoom's dispatch block) rather than through a
-// spawned ProjectileState like the 'projectile' abilities above.
-export type AbilityDeliveryType = 'hitscan' | 'projectile' | 'zone';
-
-export const ABILITY_DELIVERY: Record<PlayerClass, readonly [AbilityDeliveryType, AbilityDeliveryType, AbilityDeliveryType, AbilityDeliveryType]> = {
-  stonehide:    ['hitscan', 'hitscan', 'hitscan', 'hitscan'],
-  spiritcaller: ['hitscan', 'hitscan', 'hitscan', 'hitscan'],
-  souldrinker:  ['projectile', 'hitscan', 'hitscan', 'projectile'], // Blood Spike, Void Pulse
-  stormcaller:  ['hitscan', 'hitscan', 'hitscan', 'zone'], // Storm Eye
-};
-
-// ── Projectiles ───────────────────────────────────────────────────────────────
-export const PROJECTILE_SPEED_PX_S = 600;
-export const PROJECTILE_MAX_RANGE_PX = 800;
+// ABILITY_HIT_RANGE_PX, ABILITY_HIT_RADIUS_PX, ABILITY_DELIVERY (+ AbilityDeliveryType),
+// PROJECTILE_SPEED_PX_S, PROJECTILE_MAX_RANGE_PX moved to shared-types/ability-geometry.ts
+// (Story 7.9 / ADR-0003) and are re-exported at the top of this file.
 
 // ── Declarative projectile→zone chaining ─────────────────────────────────────
 // Populated per-ability by Story 3.19 (Void Pulse); all-null until then so
@@ -145,7 +132,7 @@ export interface ChainedZoneConfig {
 export const ABILITY_CHAINED_ZONE: Record<PlayerClass, readonly [ChainedZoneConfig | null, ChainedZoneConfig | null, ChainedZoneConfig | null, ChainedZoneConfig | null]> = {
   stonehide:    [null, null, null, null],
   spiritcaller: [null, null, null, null],
-  souldrinker:  [null, null, null, { effectType: 'pull', radius: 150, tickIntervalMs: 500, durationMs: 2000 }], // Void Pulse
+  souldrinker:  [null, null, null, { effectType: 'pull', radius: VOID_PULSE_ZONE_RADIUS_PX, tickIntervalMs: 500, durationMs: 2000 }], // Void Pulse
   stormcaller:  [null, null, null, null],
 };
 
@@ -164,12 +151,9 @@ export const DARK_PACT_DRAIN_PCT = 0.10;
 // special-casing any one ability by class/index.
 export type StatusEffectScope = 'self' | 'enemies-in-zone' | 'allies-in-zone';
 
-// ── Spirit Nova expanding-radius sweep (Story 3.17) ──────────────────────────
-// Plain named constants, not a per-class table — Spirit Nova is the only ability
-// in the full spec that uses this delivery type (see resolveExpandingRadius in
-// targeting.ts); a 4-tuple table would be mostly-unused ceremony for one consumer.
-export const SPIRIT_NOVA_DURATION_MS = 600;
-export const SPIRIT_NOVA_MAX_RADIUS_PX = 220;
+// SPIRIT_NOVA_DURATION_MS / SPIRIT_NOVA_MAX_RADIUS_PX moved to
+// shared-types/ability-geometry.ts (Story 7.9) — the visible sweep must match the
+// real swept radius, so they are contract values. Re-exported at the top of this file.
 
 // ── Soul Mend hold-to-channel revive (Story 3.18) ────────────────────────────
 // Plain named constants, not a per-class table — Soul Mend is the only AIM_CAST
@@ -185,7 +169,9 @@ export const SOUL_MEND_LIVENESS_MS = 150;
 // STORM_EYE_TICK_DAMAGE is separate from ABILITY_DAMAGE's stormcaller[3]=0 entry:
 // that table is read by the hit-scan path only, which this ability's 'zone'
 // delivery never reaches (see GameRoom.ts's ABILITY_DELIVERY branch).
-export const STORM_EYE_ZONE_RADIUS_PX = 150;
+// STORM_EYE_ZONE_RADIUS_PX moved to shared-types/ability-geometry.ts (Story 7.9) —
+// the visible zone radius is a contract value; its tick cadence/damage/duration below
+// stay balance-only. Re-exported at the top of this file.
 export const STORM_EYE_TICK_MS = 500;
 export const STORM_EYE_TICK_DAMAGE = 10;
 export const STORM_EYE_DURATION_MS = 5000;

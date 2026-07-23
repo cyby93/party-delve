@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PlayerClass } from 'shared-types';
+import { PlayerClass, ABILITY_HIT_RANGE_PX } from 'shared-types';
 import type { StatusEffect } from 'shared-types';
 import {
   getAbilityVfxConfig,
@@ -10,19 +10,11 @@ import {
 
 // Pure mapping + placement math only — no canvas, no PixiJS display objects.
 // Rendering correctness is verified by the Client-UX manual pass (story 7.2).
-
-// Authoring-time transcription of packages/game-rules/src/balance.ts:33.
-// Deliberately hardcoded: apps/host-client must never import game-rules.
-const STONEHIDE_COOLDOWNS_MS = [2000, 4000, 6000, 1000];
-
-/** Every duration the config can put on screen for one cast. */
-function durationsOf(cfg: AbilityVfxConfig): number[] {
-  return [
-    ...cfg.rings.map(r => r.durationMs),
-    ...(cfg.beam ? [cfg.beam.durationMs] : []),
-    ...(cfg.burst ? [cfg.burst.durationMs] : []),
-  ];
-}
+//
+// The cooldown-budget invariant (every effect shorter than its cooldown) moved to
+// tests/contract/ability-vfx-budget.test.ts (Story 7.9) — the one tier allowed to
+// import both game-rules and the host constants, so it asserts against the LIVE
+// ABILITY_COOLDOWNS_MS instead of a hand-copied literal here.
 
 /** Shape+color+motion signature used for the AC1 distinctness assertion. */
 function signatureOf(cfg: AbilityVfxConfig): string {
@@ -62,14 +54,6 @@ describe('getAbilityVfxConfig', () => {
     expect(getAbilityVfxConfig(PlayerClass.STONEHIDE, NaN)).toBeNull();
   });
 
-  it('keeps every effect shorter than its own cooldown, so at most one is live per player (AC5)', () => {
-    for (let i = 0; i < 4; i++) {
-      const cfg = getAbilityVfxConfig(PlayerClass.STONEHIDE, i)!;
-      const longest = Math.max(...durationsOf(cfg));
-      expect(longest, `index ${i}`).toBeLessThan(STONEHIDE_COOLDOWNS_MS[i]!);
-    }
-  });
-
   it('gives Avalanche no particle burst — the AUTO-fire volume decision (AC5)', () => {
     expect(getAbilityVfxConfig(PlayerClass.STONEHIDE, 3)!.burst).toBeUndefined();
   });
@@ -86,10 +70,13 @@ describe('resolveAbilityVfxPlacement', () => {
     }
   });
 
-  it('puts Avalanche at caster + normalizedDirection x 200 for a non-unit direction (AC2)', () => {
+  it('puts Avalanche at caster + normalizedDirection x the live contract range for a non-unit direction (AC2/AC4)', () => {
+    // Reads the shared contract, not a literal 200 — proves the VFX placement is
+    // driven by the same value the sim resolves the hit with (Story 7.9 / D-7.2-A).
+    const range = ABILITY_HIT_RANGE_PX.stonehide[3];
     const p = place(3, 3, 4)!; // magnitude 5 — proves normalization
-    expect(p.hitX).toBeCloseTo(500 + (3 / 5) * 200, 6);
-    expect(p.hitY).toBeCloseTo(400 + (4 / 5) * 200, 6);
+    expect(p.hitX).toBeCloseTo(500 + (3 / 5) * range, 6);
+    expect(p.hitY).toBeCloseTo(400 + (4 / 5) * range, 6);
     expect(p.casterX).toBe(500);
     expect(p.casterY).toBe(400);
   });

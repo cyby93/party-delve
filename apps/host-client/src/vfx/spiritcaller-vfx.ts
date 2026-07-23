@@ -1,12 +1,22 @@
-import { PlayerClass } from 'shared-types';
+import {
+  PlayerClass,
+  ABILITY_HIT_RANGE_PX,
+  ABILITY_HIT_RADIUS_PX,
+  SPIRIT_NOVA_MAX_RADIUS_PX,
+  SPIRIT_NOVA_DURATION_MS,
+} from 'shared-types';
 import { VfxEngine } from './engine';
 import { createBeam, createParticleBurst, createRingShockwave, createTintPulse, type TintTarget } from './primitives';
 
 /**
  * Spiritcaller ability VFX — pure planning/classification plus thin primitive
- * composers. Rendering only; no game logic. Every geometry number is transcribed
- * at authoring time from `packages/game-rules/src/balance.ts` — `apps/host-client`
- * never imports `game-rules`.
+ * composers. Rendering only; no game logic. The spatial hit geometry (hit range,
+ * hit radius, the Spirit Nova sweep) is imported live from the shared ability
+ * presentation contract in `shared-types` (Story 7.9 / ADR-0003), so the effect
+ * tracks the sim's real geometry instead of drifting from a hand-copied literal.
+ * Colors, stroke widths, alphas, cosmetic accent radii and fallback durations
+ * (which correspond to no real sim value) stay local. The host still never
+ * imports game-rules *logic*; only this shared spatial contract.
  *
  * Ancestor's Voice / Spirit Nova / Warding Cry are delta-driven (`ability:fired`).
  * Soul Mend is channel-driven from `PlayerState.channelingAbility` and lives in
@@ -23,14 +33,22 @@ export const ANCESTOR_BONE = 0xd8d0e8;
 /** `text-secondary` — a failed channel reads as "nothing happened", never damage. */
 export const FIZZLE_ASH = 0xa89ec0;
 
-// ── Geometry / timing constants (authoring-time transcription of balance.ts) ──
-export const ANCESTORS_VOICE_RANGE_PX = 180;
-export const ANCESTORS_VOICE_RADIUS_PX = 50;
-export const SPIRIT_NOVA_MAX_RADIUS_VFX_PX = 220;
-export const SPIRIT_NOVA_DURATION_VFX_MS = 600;
-export const SOUL_MEND_RANGE_PX = 200;
-export const SOUL_MEND_CHANNEL_VFX_MS = 2500; // fallback only — prefer the state/delta durationMs
-export const WARDING_CRY_RADIUS_PX = 90;
+// ── Geometry constants (derived live from the shared ability presentation
+//    contract in shared-types, Story 7.9 / ADR-0003 — not transcribed) ─────────
+const SPIRITCALLER_RANGE = ABILITY_HIT_RANGE_PX[PlayerClass.SPIRITCALLER];
+const SPIRITCALLER_RADIUS = ABILITY_HIT_RADIUS_PX[PlayerClass.SPIRITCALLER];
+export const ANCESTORS_VOICE_RANGE_PX = SPIRITCALLER_RANGE[0];    // real hit range 180
+export const ANCESTORS_VOICE_RADIUS_PX = SPIRITCALLER_RADIUS[0];  // real hit radius 50
+export const SPIRIT_NOVA_MAX_RADIUS_VFX_PX = SPIRIT_NOVA_MAX_RADIUS_PX; // visible sweep == real swept radius 220
+export const SPIRIT_NOVA_DURATION_VFX_MS = SPIRIT_NOVA_DURATION_MS;     // sweep duration 600
+// Soul Mend (slot 2, AIM_CAST) needs no host range constant: its channel VFX draws
+// a beam to the *actual* downed ally the sim selected via findSoulMendTarget (which
+// uses ABILITY_HIT_RANGE_PX.spiritcaller[2] = 200), so the visual tracks a range
+// re-tune implicitly — the beam follows wherever the real target is.
+export const WARDING_CRY_RADIUS_PX = SPIRITCALLER_RADIUS[3];      // real hit radius 90
+// Cosmetic-only, no corresponding sim value: a fallback used when the state/delta
+// carries no channel duration (prefer the real durationMs when present).
+export const SOUL_MEND_CHANNEL_VFX_MS = 2500;
 export const MAX_FACTION_ACCENTS_PER_CAST = 8;
 export const FACTION_ACCENT_RADIUS_PX = 70;
 export const FACTION_ACCENT_WINDOW_MS = 420;
@@ -166,9 +184,9 @@ export function triggerSpiritcallerCast(
     })); // leading edge == real swept radius
     engine.add(createRingShockwave({
       x: plan.originX, y: plan.originY, color: SPIRIT_HEAL,
-      startRadius: 0, maxRadius: 190, lineWidth: 8,
+      startRadius: 0, maxRadius: SPIRIT_NOVA_MAX_RADIUS_VFX_PX - 30, lineWidth: 8,
       durationMs: SPIRIT_NOVA_DURATION_VFX_MS, alpha: 0.5, startedAt,
-    })); // warm halo trailing inside the edge
+    })); // warm halo trailing 30 px inside the real swept edge (cosmetic)
     engine.add(createParticleBurst({
       x: plan.originX, y: plan.originY, color: [SPIRIT_HEAL, SPIRIT_HARM, ANCESTOR_BONE],
       count: 16, speed: 0.28, spread: 0.7, particleRadius: 5,
@@ -185,7 +203,8 @@ export function triggerSpiritcallerCast(
   // warding-cry
   engine.add(createRingShockwave({
     x: plan.originX, y: plan.originY, color: SPIRIT_HEAL,
-    startRadius: 150, maxRadius: WARDING_CRY_RADIUS_PX, lineWidth: 6,
+    // Cosmetic overshoot: starts wide and snaps inward onto the real shield radius.
+    startRadius: WARDING_CRY_RADIUS_PX + 60, maxRadius: WARDING_CRY_RADIUS_PX, lineWidth: 6,
     durationMs: 420, alpha: 0.9, startedAt,
   }));
   engine.add(createRingShockwave({

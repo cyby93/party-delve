@@ -310,6 +310,7 @@ Story 7.1 shipped `apps/host-client/src/vfx/` and **nothing consumes it yet** (i
 
 - **Ownership:** `apps/host-client/**` = Host Experience Engineer. Blocked: simulation-server, game-rules, mobile-controller, shared-types, net-protocol.
 - **Never import `packages/game-rules` in `apps/host-client`.** The ability numbers quoted in Task 7.2 (Iron Skin 0.3/3000 ms, Tremor Stomp 0.4/2000 ms, Warding Cry 30 HP/4000 ms, Dark Pact 0.25/4000 ms) are for choosing visual parameters and writing the manual test plan **at authoring time only**. `SHIELD_REFERENCE_HP = 30` is a local host visual constant in `status-aura.ts`, not an import of `balance.ts`. `shared-types` **is** importable and already used (`DungeonScreen.tsx:3-4`).
+  - **Update — Story 7.9 / ADR-0003:** the rule is refined to *never import `game-rules` **logic***. Status *magnitudes* (0.3, 0.4, 30, 0.25) are pure balance and stay host-forbidden — keep them as authoring-time references / local visual constants as before. But if any aura needs ability *spatial geometry* (a hit range/radius), **import it from the shared ability presentation contract in `shared-types`** (`ABILITY_HIT_RANGE_PX`/`ABILITY_HIT_RADIUS_PX`), not a transcribed literal.
 - **PixiJS host renderer:** no game logic, cooldown tracking, or collision checks inside display objects. This story reads `statusEffects` and maps it to visual parameters; it makes no rule decisions.
 - **Host is a pure client:** no `GameState` mutation, no game-rule checks, no physics reads.
 - **`Math.random()` is permitted here** — "host UI animations, cosmetic effects" is the one allowed place (used for the orbit phase and inside `createParticleBurst`).
@@ -368,3 +369,4 @@ Story 7.1 shipped `apps/host-client/src/vfx/` and **nothing consumes it yet** (i
 | Date | Change |
 |---|---|
 | 2026-07-22 | Story 7.6 drafted — four shape-distinct status auras (contracting armour ring / orbiting drag arc / ember sparks / filled dome) composed from the Story 7.1 primitives, driven from the `GameState` snapshot, with fixed per-type radius slots, a bounded one-handle-per-(entity,effect) model answering D-7.1-D, and a full colour reshuffle off the session-colour collisions onto UX tokens. |
+| 2026-07-23 | Story 7.9 re-point: refined the host/game-rules boundary — status *magnitudes* stay host-forbidden balance as before, but ability *spatial geometry* now lives in the shared **ability presentation contract** in `shared-types` (ADR-0003) and must be **imported** if any aura needs it. Dev Notes guidance note added; no AC/Task-status change. |

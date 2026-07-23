@@ -4,7 +4,7 @@ baseline_commit: 6113cbda39af55999ae9194c16e9457b3a5cd54f
 
 # Story 7.9: Shared Ability-Geometry Contract — VFX Tracks Balance Dynamically
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -42,40 +42,49 @@ This is viable with no dependency cycle: `packages/game-rules` already imports `
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Define the shared ability-geometry contract (AC: 1)**
-  - [ ] 1.1: Create `packages/shared-types/src/ability-geometry.ts`. Move the definitions of `ABILITY_HIT_RANGE_PX`, `ABILITY_HIT_RADIUS_PX`, `ABILITY_DELIVERY` (and its `AbilityDeliveryType` union), `STORM_EYE_ZONE_RADIUS_PX`, `SPIRIT_NOVA_MAX_RADIUS_PX`, `SPIRIT_NOVA_DURATION_MS`, `PROJECTILE_SPEED_PX_S`, `PROJECTILE_MAX_RANGE_PX`, and the Void Pulse chained-zone **radius** (extract the radius field out of `ABILITY_CHAINED_ZONE` into a named constant, or move the whole table if it carries no game-logic-only fields — decide in the ADR) from `balance.ts` into this module, **values byte-identical**. Keep the `Record<PlayerClass, readonly [...]>` typing; `PlayerClass` is already in `shared-types`.
-  - [ ] 1.2: Re-export the new module from `packages/shared-types/src/index.ts` (`export * from './ability-geometry.js';`).
-  - [ ] 1.3: **Decision to record in the ADR (Task 6), not code:** cooldowns/damage/heal/status-magnitude/displacement/lifesteal/self-cost **stay in `balance.ts`** — they are pure balance the host never renders as geometry. The contract is the *spatial + delivery + spatial-sweep-timing* subset only.
+- [x] **Task 1 — Define the shared ability-geometry contract (AC: 1)**
+  - [x] 1.1: Created `packages/shared-types/src/ability-geometry.ts` with byte-identical `ABILITY_HIT_RANGE_PX`, `ABILITY_HIT_RADIUS_PX`, `ABILITY_DELIVERY` (+ `AbilityDeliveryType`), `STORM_EYE_ZONE_RADIUS_PX`, `SPIRIT_NOVA_MAX_RADIUS_PX`, `SPIRIT_NOVA_DURATION_MS`, `PROJECTILE_SPEED_PX_S`, `PROJECTILE_MAX_RANGE_PX`. Void Pulse chained-zone radius extracted to a named `VOID_PULSE_ZONE_RADIUS_PX` (the table's game-logic fields — effectType/tickIntervalMs/durationMs — stay in `balance.ts` and reference it; rationale in ADR). `Record<PlayerClass, readonly [...]>` typing kept; `PlayerClass` imported from `./player.js`.
+  - [x] 1.2: Re-exported from the barrel (`export * from './ability-geometry.js';`).
+  - [x] 1.3: Recorded in ADR: cooldowns/damage/heal/status-magnitude/displacement/lifesteal/self-cost stay in `balance.ts`, host-forbidden.
 
-- [ ] **Task 2 — Rewire `game-rules` to re-export, sim behaviour unchanged (AC: 2)**
-  - [ ] 2.1: In `balance.ts`, delete the moved definitions and re-export them from `shared-types` so existing `from 'game-rules'` imports keep resolving: `export { ABILITY_HIT_RANGE_PX, ABILITY_HIT_RADIUS_PX, ABILITY_DELIVERY, ... } from 'shared-types';` (and re-export the `AbilityDeliveryType` type). Confirm `packages/game-rules/src/index.ts`'s public surface is unchanged.
-  - [ ] 2.2: `apps/simulation-server/src/rooms/GameRoom.ts` and `packages/game-rules/src/systems/combat.ts` should compile **untouched** (they import from `game-rules`, which still re-exports). If any sim file imported a moved constant by a path that no longer resolves, update that import to `shared-types` and note it — but prefer the re-export so sim churn is zero.
-  - [ ] 2.3: Run the deterministic tick test + any hit-detection/replay tests and confirm byte-identical results (AC2, AC8). This is the simulation-safety gate.
+- [x] **Task 2 — Rewire `game-rules` to re-export, sim behaviour unchanged (AC: 2)**
+  - [x] 2.1: `balance.ts` deletes the moved definitions and re-exports them (+ the `AbilityDeliveryType` type) from `shared-types`. `packages/game-rules/src/index.ts` re-exports the same names from `./balance.js` untouched — public surface unchanged.
+  - [x] 2.2: `GameRoom.ts` and `combat.ts` compile **untouched** — zero sim import churn (they import from `game-rules`, which still re-exports). No sim file needed a path change.
+  - [x] 2.3: Simulation-safety gate green — `apps/simulation-server` 81 tests pass (incl. deterministic tick), `packages/game-rules` 62 pass. Byte-identical relocation ⇒ identical hits.
 
-- [ ] **Task 3 — Host VFX imports the contract; delete transcriptions (AC: 3, 4)**
-  - [ ] 3.1: `ability-vfx.ts`: replace the transcribed `hitRangePx` literals in the Stonehide config table with values read from the imported `ABILITY_HIT_RANGE_PX.stonehide[i]` (and hit radii where the ring sizes currently hardcode them). Keep colors, stroke widths, alphas, and cosmetic durations local. Update the file header comment: the geometry is now imported, not transcribed.
-  - [ ] 3.2: `spiritcaller-vfx.ts`: replace `ANCESTORS_VOICE_RANGE_PX`, `SPIRIT_NOVA_MAX_RADIUS_VFX_PX`, `SPIRIT_NOVA_DURATION_VFX_MS`, `SOUL_MEND_RANGE_PX`, `WARDING_CRY_RADIUS_PX` with values derived from the shared contract (`ABILITY_HIT_RANGE_PX.spiritcaller[i]`, `ABILITY_HIT_RADIUS_PX.spiritcaller[i]`, `SPIRIT_NOVA_MAX_RADIUS_PX`, `SPIRIT_NOVA_DURATION_MS`). Where a VFX value must intentionally differ from the sim value, keep it local **with a comment stating why** (e.g. a purely cosmetic overshoot); default is to use the contract.
-  - [ ] 3.3: Grep the host for any remaining numeric copy of a moved value (`grep -n "180\|200\|220\|150" apps/host-client/src/vfx/*.ts` and review each hit) — any that is a sim-geometry duplicate must become an import.
-  - [ ] 3.4: Update `ability-vfx.test.ts` / `spiritcaller-vfx.test.ts` so the placement assertions read the contract constant rather than a literal (proving the live link — AC4), e.g. assert Avalanche's hit centre equals `caster + normDir × ABILITY_HIT_RANGE_PX.stonehide[3]`.
+- [x] **Task 3 — Host VFX imports the contract; delete transcriptions (AC: 3, 4)**
+  - [x] 3.1: `ability-vfx.ts` imports `ABILITY_HIT_RANGE_PX`/`ABILITY_HIT_RADIUS_PX` from `shared-types`; Stonehide `hitRangePx` + ring/beam radii read `STONEHIDE_RANGE[i]`/`STONEHIDE_RADIUS[i]`. Tremor Stomp's `hitRangePx` stays a hard `0` (TAP delivery ignores its 160 range — a delivery semantic, not geometry; commented). Header comment updated: imported, not transcribed.
+  - [x] 3.2: `spiritcaller-vfx.ts` derives `ANCESTORS_VOICE_RANGE_PX`/`_RADIUS_PX`, `SPIRIT_NOVA_MAX_RADIUS_VFX_PX`, `SPIRIT_NOVA_DURATION_VFX_MS`, `SOUL_MEND_RANGE_PX`, `WARDING_CRY_RADIUS_PX` from the contract. Cosmetic overshoots re-expressed relative to the contract (nova halo `SPIRIT_NOVA_MAX_RADIUS_VFX_PX - 30`; warding-cry start `WARDING_CRY_RADIUS_PX + 60`) with comments; `SOUL_MEND_CHANNEL_VFX_MS` kept local as a documented cosmetic fallback.
+  - [x] 3.3: Grepped both vfx files for `180|200|220|160|150`; every remaining hit is a cosmetic duration (ms) or a comment. The lone `120` (Soul Mend progress-ring start) is cosmetic, not Soul Mend's sim geometry (range 200 / radius 60).
+  - [x] 3.4: `ability-vfx.test.ts` Avalanche placement now reads `ABILITY_HIT_RANGE_PX.stonehide[3]` (not literal 200); `spiritcaller-vfx.test.ts` gains an assertion that `ANCESTORS_VOICE_RANGE_PX === ABILITY_HIT_RANGE_PX.spiritcaller[0]` — both prove the live link (AC4).
 
-- [ ] **Task 4 — Cross-package contract test for the budget invariant (AC: 5)**
-  - [ ] 4.1: Add `tests/contract/ability-vfx-budget.test.ts` (or extend an existing contract test) that imports `ABILITY_COOLDOWNS_MS` from `game-rules` **and** the host's per-ability effect durations, and asserts every effect's longest `durationMs` is strictly less than that ability's cooldown (the 7.2 AC5 invariant), for all four classes.
-  - [ ] 4.2: Remove the now-redundant hardcoded `STONEHIDE_COOLDOWNS_MS` literal from `ability-vfx.test.ts` (the contract test owns that invariant now). Leave the pure planner/placement unit tests in place.
-  - [ ] 4.3: Confirm `tests/contract/**` is permitted to import both packages (it is the integration-test tier; verify against `tests/tsconfig.json` / `tests/vitest.config.ts`).
+- [x] **Task 4 — Cross-package contract test for the budget invariant (AC: 5)**
+  - [x] 4.1: Added `tests/contract/ability-vfx-budget.test.ts` — imports `ABILITY_COOLDOWNS_MS` from `game-rules` and `getAbilityVfxConfig` from the host (PixiJS-free), iterates every class/index, and asserts each bespoke config's longest effect duration < its live cooldown. A guard test fails if the config set is silently empty. (Coverage grows as 7.4/7.5 add their config tables; Stonehide's four abilities are covered now.)
+  - [x] 4.2: Removed the hardcoded `STONEHIDE_COOLDOWNS_MS` literal (and the now-orphaned `durationsOf` helper + budget `it`) from `ability-vfx.test.ts`; the pure planner/placement tests stay.
+  - [x] 4.3: Confirmed `tests/contract/**` imports both packages — precedent `boss-arena-6-3.test.ts` imports `../../apps/simulation-server/...`; `tests/tsconfig.json` includes `contract/**`, deps include `game-rules`.
 
-- [ ] **Task 5 — Update the unimplemented sibling story specs (AC: 7)**
-  - [ ] 5.1: In `7-4`, `7-5`, `7-6`, `7-8` (all `ready-for-dev`, unimplemented), change the Dev Notes "transcribe from `balance.ts` / never import `game-rules`" guidance to "import the spatial geometry from `shared-types` (the ability presentation contract, Story 7.9); never import `game-rules` *logic*." Do **not** touch their Tasks/Subtasks status or ACs beyond this guidance note. Add a one-line Change Log entry to each.
-  - [ ] 5.2: Do **not** modify any `done` story or 7.7a/7.7b's protocol scope.
+- [x] **Task 5 — Update the unimplemented sibling story specs (AC: 7)**
+  - [x] 5.1: Re-pointed the Dev Notes guidance in `7-4`, `7-5` (bullet + Task 2.2), `7-6`, `7-8` from "transcribe / never import game-rules" to "import the spatial geometry from `shared-types`; never import `game-rules` *logic*", with a one-line Change Log entry in each. Task/AC status untouched.
+  - [x] 5.2: No `done` story and no 7.7a/7.7b protocol scope touched.
 
-- [ ] **Task 6 — ADR + deferred-work bookkeeping (AC: 6)**
-  - [ ] 6.1: Write `docs/adr/ADR-0003-ability-presentation-contract.md` following the ADR-0001/0002 format: Context (the transcription-drift problem, `D-7.2-A`), Decision (the spatial/delivery/sweep subset lives in `shared-types`; the refined host-import rule), Consequences (VFX tracks balance; the host/game-rules boundary is now "no logic import" rather than "no import"; pure balance stays host-forbidden), and Alternatives considered (a contract test alone — rejected as it only *detects* drift; a new `game-config` package — rejected as `shared-types` is the existing importable home).
-  - [ ] 6.2: In `deferred-work.md`, mark `D-7.2-A` **resolved by Story 7.9** (do not delete the entry; annotate it).
+- [x] **Task 6 — ADR + deferred-work bookkeeping (AC: 6)**
+  - [x] 6.1: Wrote `docs/adr/ADR-0003-ability-presentation-contract.md` (Status/Context/Decision/refined boundary rule + table/Consequences/Alternatives) in the ADR-0001/0002 format.
+  - [x] 6.2: Annotated `D-7.2-A` in `deferred-work.md` as **RESOLVED by Story 7.9** (entry preserved, not deleted).
 
-- [ ] **Task 7 — Full validation (AC: 8)**
-  - [ ] 7.1: `npm run typecheck` at the repo root (all 10 tsconfigs).
-  - [ ] 7.2: `npm test` at the repo root — full suite green (note the known WSL2 e2e flake if seen; it touches no code this story changes except the sim, which must stay deterministic — so if a *deterministic* sim test regresses, that is real and blocks).
-  - [ ] 7.3: `npx vitest run` in `apps/host-client` — the VFX unit tests green.
-  - [ ] 7.4: Confirm no host file numerically duplicates a moved constant (final grep).
+- [x] **Task 7 — Full validation (AC: 8)**
+  - [x] 7.1: `npm run typecheck` — all 10 tsconfigs clean.
+  - [x] 7.2: Ran the suites this story touches — game-rules 62, simulation-server 81 (deterministic), all `tests/contract` 115 — green. Did **not** run the WSL2-flaky e2e boot (explicitly out of scope per Dev Notes); no deterministic sim test regressed.
+  - [x] 7.3: `npx vitest run` in `apps/host-client` — 43 pass, 0 fail.
+  - [x] 7.4: Final grep confirms no host file numerically duplicates a moved constant (see 3.3).
+
+### Review Findings
+
+_Code review 2026-07-23 (Blind Hunter + Edge Case Hunter + Acceptance Auditor). Acceptance Auditor: no AC violations. 4 patch findings, 6 dismissed as noise/false-positive, 0 decision-needed. The Blind Hunter's sole "High" (new module/ADR/contract-test "absent from the diff") was a diff-generation artifact — `git diff <baseline>` omits untracked new files; the files exist, typecheck passes 10/10, and both file-access reviewers confirmed byte-identity — so it is dismissed, not a code defect._
+
+- [x] [Review][Patch] Strengthen the tautological Spiritcaller live-link test — now asserts `planSpiritcallerCast(...).focusX === caster + ABILITY_HIT_RANGE_PX.spiritcaller[0]` (the planner's placement math), not `export === export` [apps/host-client/src/vfx/spiritcaller-vfx.test.ts] — **fixed**
+- [x] [Review][Patch] Make Stonehide VFX slots consistent by delivery type [apps/host-client/src/vfx/ability-vfx.ts] — **fixed, then corrected**. The review patch initially hard-`0`'d slots 0 AND 2 (following the Blind Hunter's project-blind claim that Stone Wall and Iron Skin were "the same self-centred case"). **That was wrong for Stone Wall:** Stone Wall is `RELEASE` → `isDirectional` in the sim (`GameRoom.ts:2185`), so its hit is `caster + aim × range`; hard-`0` VFX would drift from the sim if its range were re-tuned non-zero (surfaced by manual testing). Corrected to the sim's own rule: **directional (RELEASE/AUTO) slots 0 & 3 read `STONEHIDE_RANGE[i]`; TAP slots 1 & 2 use hard `0`** (the sim ignores a TAP's range). Radii always track. Re-verified: typecheck clean, host 43.
+- [x] [Review][Patch] Correct the `spiritcaller-vfx.ts` header over-claim — reworded to "the spatial hit geometry is imported; cosmetic accent radii / fallback durations stay local", matching `ability-vfx.ts` [apps/host-client/src/vfx/spiritcaller-vfx.ts:5] — **fixed**
+- [x] [Review][Patch] Extend the budget contract test — added a Spirit Nova sweep assertion via the importable `SPIRIT_NOVA_DURATION_MS`, and hardened the guard to fail on an empty *assertion* set (contract test now 6 green) [tests/contract/ability-vfx-budget.test.ts] — **fixed**
 
 ## Dev Notes
 
@@ -148,14 +157,49 @@ Land this **before** implementing 7.4/7.5/7.8 so they consume the contract from 
 
 ### Agent Model Used
 
+claude-opus-4-8 (gds-dev-story workflow)
+
 ### Debug Log References
+
+- `npm run typecheck` — all 10 tsconfigs clean.
+- `npx vitest run --root apps/host-client` — 43 pass / 0 fail.
+- `npx vitest run --root packages/game-rules` — 62 pass / 0 fail.
+- `npx vitest run --root apps/simulation-server` — 81 pass / 0 fail (deterministic tick incl.).
+- `npx vitest run --root tests contract/` — 115 pass / 0 fail (incl. new `ability-vfx-budget`, 5).
 
 ### Completion Notes List
 
+- **Contract-change hook — TRIGGERED (compile-time constant relocation, behaviourally inert). `Protocol Architect review required`.** No wire message, schema field, session-lifecycle, reconnect, room-state, join-flow, or prediction/reconciliation surface changed. Compatibility checklist:
+  - Every existing `import { … } from 'game-rules'` still resolves — `balance.ts` re-exports the moved names (and the `AbilityDeliveryType` type) from `shared-types`; `packages/game-rules/src/index.ts` is untouched, so the public surface is byte-for-byte identical.
+  - `apps/simulation-server` compiled and ran with **zero** import churn (its 81 tests, incl. deterministic tick, pass).
+  - New ADR written (ADR-0003, AC6) and a cross-package contract test added (`tests/contract/ability-vfx-budget.test.ts`, AC5) — both hook requirements met.
+- **Simulation-safety hook — TRIGGERED.** Byte-identical relocation ⇒ identical hits/zones/determinism. Proven by game-rules (62) + simulation-server (81, deterministic) green, not assumed. No perf-relevant code path changed (compile-time re-export only).
+- **Values relocated byte-identical:** `ABILITY_HIT_RANGE_PX`, `ABILITY_HIT_RADIUS_PX`, `ABILITY_DELIVERY` (+`AbilityDeliveryType`), `PROJECTILE_SPEED_PX_S`, `PROJECTILE_MAX_RANGE_PX`, `SPIRIT_NOVA_MAX_RADIUS_PX`, `SPIRIT_NOVA_DURATION_MS`, `STORM_EYE_ZONE_RADIUS_PX`, and a new named `VOID_PULSE_ZONE_RADIUS_PX` (= the former inline `radius: 150` in `ABILITY_CHAINED_ZONE`). No ability balance (damage/cooldown/heal/status magnitude/displacement/lifesteal/self-cost) changed (AC8).
+- **One deliberate non-import kept:** Tremor Stomp's VFX `hitRangePx` is a hard `0`, not `ABILITY_HIT_RANGE_PX.stonehide[1]` (=160). A TAP ability hits a circle on the caster and the sim ignores its `hitRange` entirely, so 160 is dead data — reading it would *mis-place* the effect. This is a delivery semantic, not a transcription; commented in-code.
+- **Contract test scope:** the budget test covers abilities whose durations are exposed via `getAbilityVfxConfig` (Stonehide today; PixiJS-free). Spiritcaller's durations live inside an imperative composer that imports PixiJS, so they are not pulled into the node-env contract test; a guard test prevents a silently-empty pass, and coverage grows automatically as 7.4/7.5 ship config tables in the `getAbilityVfxConfig` shape.
+- **Confidence: 92%** — relocation is mechanical and every touched suite is green including the deterministic sim gate; the ~8% is the WSL2-flaky e2e boot I did not run (explicitly out of scope; it exercises no code this story changed beyond the sim, which stays deterministic).
+
 ### File List
+
+- `packages/shared-types/src/ability-geometry.ts` (NEW)
+- `packages/shared-types/src/index.ts` (barrel export added)
+- `packages/game-rules/src/balance.ts` (moved defs deleted → re-exported from `shared-types`; Void Pulse radius → `VOID_PULSE_ZONE_RADIUS_PX`)
+- `apps/host-client/src/vfx/ability-vfx.ts` (imports contract; Stonehide geometry read live)
+- `apps/host-client/src/vfx/ability-vfx.test.ts` (Avalanche placement reads contract; cooldown literal + budget test removed)
+- `apps/host-client/src/vfx/spiritcaller-vfx.ts` (imports contract; geometry derived, cosmetics tied to contract)
+- `apps/host-client/src/vfx/spiritcaller-vfx.test.ts` (live-link assertion added)
+- `tests/contract/ability-vfx-budget.test.ts` (NEW — cross-package budget invariant)
+- `docs/adr/ADR-0003-ability-presentation-contract.md` (NEW)
+- `_bmad-output/implementation-artifacts/deferred-work.md` (`D-7.2-A` marked resolved)
+- `_bmad-output/implementation-artifacts/7-4-souldrinker-ability-vfx.md`, `7-5-stormcaller-ability-vfx.md`, `7-6-status-effect-vfx.md`, `7-8-environmental-and-bond-vfx-polish.md` (Dev Notes guidance re-pointed + Change Log)
+- `_bmad-output/implementation-artifacts/7-9-shared-ability-geometry-contract.md` (this story)
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` (status → in-progress → review)
 
 ## Change Log
 
 | Date | Change |
 |---|---|
 | 2026-07-23 | Story drafted — move ability spatial/presentation geometry (`ABILITY_HIT_RANGE_PX`/`RADIUS_PX`/`DELIVERY`, nova + zone + projectile radii) from `game-rules/balance.ts` into `shared-types` as a host-importable contract, so VFX tracks balance dynamically (resolves `D-7.2-A`, user "Option B" decision). Sim reads via re-export (byte-identical, deterministic); host imports and deletes its transcriptions; budget invariant moves to a `tests/contract` test; ADR-0003 records the boundary; unimplemented siblings 7.4/7.5/7.6/7.8 re-pointed at the contract. |
+| 2026-07-23 | Post-review correction (surfaced by manual testing): the code-review patch had hard-`0`'d Stone Wall's VFX `hitRangePx` alongside Iron Skin, but Stone Wall is `RELEASE` (directional in the sim, hit = `caster + aim × range`) — only Iron Skin/Tremor are `TAP` (range ignored). Stone Wall now reads `STONEHIDE_RANGE[0]` like Avalanche, so its VFX tracks a range re-tune. Rule in `ability-vfx.ts` rewritten to mirror the sim's `isDirectional = inputType !== 'TAP'`. Typecheck clean, host 43 green. |
+| 2026-07-23 | Code review (Blind Hunter + Edge Case Hunter + Acceptance Auditor). Acceptance Auditor: 0 AC violations. Blind Hunter's "High" (files absent from diff) dismissed as a `git diff` untracked-file artifact. 4 patch findings applied: tautological live-link test strengthened to assert planner placement; self-centred Stonehide slots 0/2 made consistent (hard-0, only directional slot 3 reads the range); `spiritcaller-vfx.ts` header over-claim corrected; budget contract test extended (Spirit Nova sweep + hardened empty-assertion guard, now 6 green). 6 findings dismissed. Re-validated: typecheck clean, host 43, contract budget 6. Status → done. |
+| 2026-07-23 | Implemented. Created `shared-types/ability-geometry.ts` (byte-identical relocation, Void Pulse radius → named `VOID_PULSE_ZONE_RADIUS_PX`); `balance.ts` re-exports it (zero sim churn — GameRoom/combat untouched). Host `ability-vfx.ts`/`spiritcaller-vfx.ts` import the contract; Stonehide/Spiritcaller geometry read live; cosmetic overshoots tied to contract values; Tremor Stomp keeps a hard-0 `hitRangePx` (TAP ignores range — commented). Tests read the contract (Avalanche + Ancestor's Voice live-link, AC4); cooldown-budget invariant moved to `tests/contract/ability-vfx-budget.test.ts` against live `ABILITY_COOLDOWNS_MS`. ADR-0003 written; `D-7.2-A` resolved. Validation green: typecheck 10/10, host 43, game-rules 62, sim 81 (deterministic), contract 115. Status → review. Contract-change + Simulation-safety hooks TRIGGERED — Protocol Architect review required. |
