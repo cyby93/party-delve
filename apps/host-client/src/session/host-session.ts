@@ -57,6 +57,13 @@ export async function createHostSession(
         delta.type === 'level:complete' ||
         delta.type === 'run:complete' ||
         delta.type === 'bond:assigned' ||
+        // Story 7.3: forward the three cast deltas so the host can drive Soul
+        // Mend's channel/terminal visuals. This is host-local delivery filtering
+        // only — applyDelta runs unconditionally below (:67) and already handles
+        // all three (apply-delta.ts:260,271,280), so mirror state is unchanged.
+        delta.type === 'cast:started' ||
+        delta.type === 'cast:cancelled' ||
+        delta.type === 'cast:completed' ||
         delta.type === 'boss:phaseChanged' ||
         delta.type === 'boss:damaged' ||
         delta.type === 'boss:stomped' ||

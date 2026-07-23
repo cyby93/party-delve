@@ -9,6 +9,7 @@ import {
   createRingShockwave,
   createBeam,
   createParticleBurst,
+  progress,
   getAbilityVfxConfig,
   resolveAbilityVfxPlacement,
   ownsIronSkinShell,
@@ -16,6 +17,19 @@ import {
   IRON_SKIN_SHELL_RADIUS,
   IRON_SKIN_FADE_MS,
   IRON_SKIN_BREATHE_MS,
+  planSpiritcallerCast,
+  factionAccentFor,
+  triggerSpiritcallerCast,
+  triggerFactionAccent,
+  triggerSoulMendStart,
+  triggerSoulMendLink,
+  triggerSoulMendTerminal,
+  renderShieldAura,
+  SPIRIT_NOVA_MAX_RADIUS_VFX_PX,
+  SPIRIT_NOVA_DURATION_VFX_MS,
+  MAX_FACTION_ACCENTS_PER_CAST,
+  SOUL_MEND_BEAM_INTERVAL_MS,
+  type SpiritcallerCastPlan,
 } from '../vfx';
 
 interface DungeonScreenProps {
@@ -94,6 +108,32 @@ interface PurificationParticle {
   vy: number;
 }
 
+// ── Story 7.3 Spiritcaller VFX context (per-frame runtime state, not Graphics) ──
+interface ActiveCast extends SpiritcallerCastPlan {
+  startedAt: number;
+  accentsSpawned: number;
+}
+interface SoulMendVisual {
+  targetPlayerId: string;
+  localStartedAt: number;
+  durationMs: number;
+  nextBeamAt: number;
+  lastTargetX: number;
+  lastTargetY: number;
+  progressRingId: number; // cancel the imploding progress ring on early termination
+}
+/** The Epic 7 engine + correlation state threaded into renderFrame. Extends 7.2's
+ *  `{ ironSkinGraphics }` object rather than adding a second positional param. */
+interface VfxContext {
+  ironSkinGraphics: Map<string, Graphics>;
+  engine: VfxEngine | null;
+  hpMemory: Map<string, number>;            // entityId -> last observed hp
+  activeCasts: Map<string, ActiveCast>;     // casterId -> cast inside its accent window
+  soulMend: Map<string, SoulMendVisual>;    // casterId -> channel visual state
+  soulMendTerminal: Map<string, 'completed' | 'cancelled'>; // casterId -> observed terminal delta
+  shieldPulseAt: Map<string, number>;       // entityId -> next allowed shield pulse time
+}
+
 function renderFrame(
   state: GameState,
   app: Application,
@@ -106,7 +146,7 @@ function renderFrame(
   projectileGraphics: Map<string, Graphics>,
   zoneGraphics: Map<string, Graphics>,
   damageNumberGraphics: Map<string, DamageNumberEntry>,
-  vfxRefs: { ironSkinGraphics: Map<string, Graphics> },
+  vfxRefs: VfxContext,
 ): void {
   app.stage.scale.set(app.screen.width / VIRTUAL_W, app.screen.height / VIRTUAL_H);
 
@@ -357,6 +397,131 @@ function renderFrame(
     g.circle(0, 0, IRON_SKIN_SHELL_RADIUS + 5).stroke({ color: STONEHIDE_SLATE, width: 1, alpha: 0.25 * fade * dim });
   }
 
+  // ── Spiritcaller: Soul Mend channel indicator (Story 7.3, Task 6) ─────────────
+  // State-driven (from player.channelingAbility), not delta-driven, so it is
+  // correct after reconnect/late-join and immune to latestTransientDelta batching.
+  const vfxEngine = vfxRefs.engine;
+  if (vfxEngine) {
+    const channelingIds = new Set(
+      state.players.filter(p => p.channelingAbility !== null).map(p => p.id),
+    );
+    // Start a visual for each newly-channeling caster.
+    for (const player of state.players) {
+      const channel = player.channelingAbility;
+      if (!channel || vfxRefs.soulMend.has(player.id)) continue;
+      const target = state.players.find(p => p.id === channel.targetPlayerId);
+      const tx = target ? (target.bodyX ?? target.x) : player.x;
+      const ty = target ? (target.bodyY ?? target.y) : player.y;
+      const progressRingId = triggerSoulMendStart(vfxEngine, player.x, player.y, tx, ty, channel.durationMs);
+      vfxRefs.soulMend.set(player.id, {
+        targetPlayerId: channel.targetPlayerId,
+        localStartedAt: now, // host clock; never the server-epoch channel.startedAt (clock contract)
+        durationMs: channel.durationMs,
+        nextBeamAt: now + SOUL_MEND_BEAM_INTERVAL_MS,
+        lastTargetX: tx,
+        lastTargetY: ty,
+        progressRingId,
+      });
+    }
+    // Advance / terminate existing channel visuals.
+    for (const [casterId, visual] of vfxRefs.soulMend) {
+      const caster = state.players.find(p => p.id === casterId);
+      const target = state.players.find(p => p.id === visual.targetPlayerId);
+      if (target) {
+        visual.lastTargetX = target.bodyX ?? target.x;
+        visual.lastTargetY = target.bodyY ?? target.y;
+      }
+      const stillChanneling = channelingIds.has(casterId) && caster !== undefined;
+      if (stillChanneling && caster) {
+        // Re-trigger the link beam on its cadence, following both live positions.
+        if (now >= visual.nextBeamAt) {
+          triggerSoulMendLink(vfxEngine, caster.x, caster.y, visual.lastTargetX, visual.lastTargetY);
+          visual.nextBeamAt = now + SOUL_MEND_BEAM_INTERVAL_MS;
+        }
+        continue;
+      }
+      // Terminated: pick the terminal effect. Prefer an observed cast delta,
+      // else infer from the target's revived state (the load-bearing path — a
+      // cast:completed usually collapses with player:revived under batching).
+      const marker = vfxRefs.soulMendTerminal.get(casterId);
+      let outcome: 'success' | 'fizzle';
+      if (marker === 'completed') outcome = 'success';
+      else if (marker === 'cancelled') outcome = 'fizzle';
+      else outcome = target && !target.isDown ? 'success' : 'fizzle';
+      // Cancel the imploding progress ring so it doesn't keep animating after an
+      // early end (safe no-op if it already completed and was reaped).
+      vfxEngine.remove(visual.progressRingId);
+      triggerSoulMendTerminal(vfxEngine, visual.lastTargetX, visual.lastTargetY, outcome);
+      vfxRefs.soulMendTerminal.delete(casterId);
+      vfxRefs.soulMend.delete(casterId);
+    }
+    // Prune orphan terminal markers (code review 2026-07-23): a cast:completed /
+    // cast:cancelled delta whose channel visual was already resolved by the isDown
+    // inference — or was never created — leaves a marker with no live soulMend
+    // entry. Without this it would leak unboundedly and, keyed by casterId, mis-
+    // resolve this caster's NEXT channel (a fizzle painted as success). A marker
+    // for a still-live visual is kept (consumed by the termination loop above).
+    for (const id of [...vfxRefs.soulMendTerminal.keys()]) {
+      if (!vfxRefs.soulMend.has(id)) vfxRefs.soulMendTerminal.delete(id);
+    }
+
+    // ── Spiritcaller: Warding Cry persistent shield aura (Task 7) ───────────────
+    // Additive to the generic status badge (7.6 owns replacing that). At most one
+    // live pulse per entity — the concrete D-7.1-D answer for this story.
+    const shieldedIds = new Set<string>();
+    for (const player of state.players) {
+      if (!player.statusEffects.some(e => e.type === 'shield')) continue;
+      if (player.isDown || (player.isSpirit && !isPurified)) continue;
+      shieldedIds.add(player.id);
+      // Single named function so Story 7.6 adopts it verbatim (Task 7.2 / §7).
+      renderShieldAura(vfxEngine, vfxRefs.shieldPulseAt, player.id, player.x, player.y, now);
+    }
+    for (const id of [...vfxRefs.shieldPulseAt.keys()]) {
+      if (!shieldedIds.has(id)) vfxRefs.shieldPulseAt.delete(id);
+    }
+
+    // ── Spiritcaller: best-effort mixed-faction accents (Task 5) ────────────────
+    // A COSMETIC CORRELATION HEURISTIC, never a rule check: it reads only `hp`,
+    // and may mis-attribute another source's HP change that overlaps a cast in
+    // time and space, or miss a change that nets to zero in the window. Accents
+    // are capped per cast. See Story 7.3 §5.
+    for (const [casterId, cast] of [...vfxRefs.activeCasts]) {
+      if (now - cast.startedAt > cast.accentWindowMs) vfxRefs.activeCasts.delete(casterId);
+    }
+    const anyActiveCast = vfxRefs.activeCasts.size > 0;
+    const hpEntities: { id: string; x: number; y: number; hp: number }[] = [
+      ...state.players.map(p => ({ id: p.id, x: p.x, y: p.y, hp: p.hp })),
+      ...state.enemies.filter(e => e.isAlive).map(e => ({ id: e.id, x: e.x, y: e.y, hp: e.hp })),
+    ];
+    const liveEntityIds = new Set(hpEntities.map(e => e.id));
+    for (const entity of hpEntities) {
+      const before = vfxRefs.hpMemory.get(entity.id);
+      vfxRefs.hpMemory.set(entity.id, entity.hp);
+      if (before === undefined) continue; // seed silently — no accent on first sight / reconnect
+      if (!anyActiveCast) continue;
+      const kind = factionAccentFor(before, entity.hp);
+      if (!kind) continue;
+      for (const cast of vfxRefs.activeCasts.values()) {
+        if (cast.accentsSpawned >= MAX_FACTION_ACCENTS_PER_CAST) continue;
+        // Spirit Nova accents track the visible ring edge; the others use a fixed radius.
+        const gate = cast.ability === 'spirit-nova'
+          ? SPIRIT_NOVA_MAX_RADIUS_VFX_PX * progress(now, cast.startedAt, SPIRIT_NOVA_DURATION_VFX_MS)
+          : cast.accentRadiusPx;
+        const dx = entity.x - cast.focusX;
+        const dy = entity.y - cast.focusY;
+        if (dx * dx + dy * dy > gate * gate) continue;
+        triggerFactionAccent(vfxEngine, kind, entity.x, entity.y - 8, now);
+        cast.accentsSpawned++;
+        break; // one accent per entity per frame
+      }
+    }
+    // Prune HP memory for entities no longer present (leave, death) so a respawned
+    // id re-seeds silently rather than firing a phantom accent.
+    for (const id of [...vfxRefs.hpMemory.keys()]) {
+      if (!liveEntityIds.has(id)) vfxRefs.hpMemory.delete(id);
+    }
+  }
+
   // ── Projectiles ───────────────────────────────────────────────────────────────
   const activeProjectileIds = new Set(state.projectiles.map(p => p.id));
   for (const [id, g] of projectileGraphics) {
@@ -448,6 +613,12 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
   const damageNumberGraphicsRef = useRef<Map<string, DamageNumberEntry>>(new Map());
   const ironSkinGraphicsRef = useRef<Map<string, Graphics>>(new Map());
   const vfxEngineRef = useRef<VfxEngine | null>(null);
+  // Story 7.3 Spiritcaller correlation/channel state (runtime, not Graphics).
+  const hpMemoryRef = useRef<Map<string, number>>(new Map());
+  const activeCastsRef = useRef<Map<string, ActiveCast>>(new Map());
+  const soulMendRef = useRef<Map<string, SoulMendVisual>>(new Map());
+  const soulMendTerminalRef = useRef<Map<string, 'completed' | 'cancelled'>>(new Map());
+  const shieldPulseAtRef = useRef<Map<string, number>>(new Map());
   const damageNumberIdCounterRef = useRef(0);
   const latestGameStateRef = useRef<GameState | null>(null);
   latestGameStateRef.current = gameState;
@@ -490,17 +661,8 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
       // app.stage structurally satisfies VfxStage (vfx/types.ts:21-24)
       vfxEngineRef.current = new VfxEngine(app.stage);
       app.ticker.add(() => {
-        // CLOCK CONTRACT (vfx/types.ts:26-34): effects advance on the same clock
-        // renderFrame and the delta handler use — Date.now(), not performance.now().
-        //
-        // Deliberately ABOVE the null-state guard (overrides Task 1.7, code review
-        // 2026-07-22): effects that were live when gameState went null would
-        // otherwise freeze on the stage and never be reaped.
-        vfxEngineRef.current?.update(Date.now());
-
         const state = latestGameStateRef.current;
-        if (!state) return;
-        renderFrame(
+        if (state) renderFrame(
           state,
           app,
           playerGraphicsRef.current,
@@ -512,8 +674,27 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
           projectileGraphicsRef.current,
           zoneGraphicsRef.current,
           damageNumberGraphicsRef.current,
-          { ironSkinGraphics: ironSkinGraphicsRef.current },
+          {
+            ironSkinGraphics: ironSkinGraphicsRef.current,
+            engine: vfxEngineRef.current,
+            hpMemory: hpMemoryRef.current,
+            activeCasts: activeCastsRef.current,
+            soulMend: soulMendRef.current,
+            soulMendTerminal: soulMendTerminalRef.current,
+            shieldPulseAt: shieldPulseAtRef.current,
+          },
         );
+
+        // CLOCK CONTRACT (vfx/types.ts:26-34): Date.now(), never performance.now().
+        // Placed AFTER renderFrame (code review 2026-07-23): renderFrame rewrites
+        // circle.alpha every frame, so a borrowed-target tint pulse (Spirit Nova /
+        // Warding Cry casts) must be applied after it or it is clobbered within the
+        // same frame (7.1 clock contract + Task 1.5). It still runs when state is
+        // null — outside the guard below — so effects live at that moment keep
+        // advancing and get reaped (the Story 7.2 review concern that first moved
+        // this call up; satisfied here without shadowing the tint pulses).
+        vfxEngineRef.current?.update(Date.now());
+        if (!state) return;
 
         // Boss sprite — managed in ticker to keep renderFrame signature stable
         if (state.boss && !bossDefeatedRef.current) {
@@ -609,6 +790,11 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
       statusBadgeGraphicsRef.current.clear();
       damageNumberGraphicsRef.current.clear();
       ironSkinGraphicsRef.current.clear();
+      hpMemoryRef.current.clear();
+      activeCastsRef.current.clear();
+      soulMendRef.current.clear();
+      soulMendTerminalRef.current.clear();
+      shieldPulseAtRef.current.clear();
     };
   }, []);
 
@@ -640,8 +826,23 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
       const entry = playerGraphicsRef.current.get(d.playerId);
       // AbilityFiredDelta carries no class — resolve the caster from state.
       const caster = gameState?.players.find(p => p.id === d.playerId);
-      const cfg = caster ? getAbilityVfxConfig(caster.class, d.abilityIndex) : null;
       const engine = vfxEngineRef.current;
+
+      // Story 7.3: Spiritcaller owned delta-casts (idx 0/1/3) take the planner
+      // path and never fall back to flashUntil (AC1). Soul Mend (idx 2) is
+      // channel-driven and never emits ability:fired, so it is excluded here.
+      if (caster && engine && caster.class === PlayerClass.SPIRITCALLER && d.abilityIndex !== 2) {
+        const plan = planSpiritcallerCast(caster, d.abilityIndex, d.directionX, d.directionY);
+        if (plan) {
+          // Delta-triggered → stamp startedAt at trigger (BACKGROUNDED-TICKER rule).
+          const triggeredAt = Date.now();
+          triggerSpiritcallerCast(engine, plan, triggeredAt, entry?.circle ?? null);
+          // Register for the best-effort mixed-faction accent window (Task 5).
+          activeCastsRef.current.set(caster.id, { ...plan, startedAt: triggeredAt, accentsSpawned: 0 });
+        }
+        // plan === null → zero-aim Ancestor's Voice: SILENT (no effect, no flash).
+      } else {
+      const cfg = caster ? getAbilityVfxConfig(caster.class, d.abilityIndex) : null;
       if (!cfg || !caster || !engine) {
         // Legacy path, unchanged: any class 7.3-7.5 has not reached yet; the
         // late-join/reconnect race where the caster is not in state; and the
@@ -717,6 +918,13 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
           }
         }
       }
+      }
+    } else if (latestTransientDelta.type === 'cast:cancelled') {
+      // Story 7.3: record the terminal so renderFrame picks the fizzle effect.
+      // Often collapsed by batching — renderFrame's isDown inference is the backstop.
+      soulMendTerminalRef.current.set(latestTransientDelta.casterId, 'cancelled');
+    } else if (latestTransientDelta.type === 'cast:completed') {
+      soulMendTerminalRef.current.set(latestTransientDelta.casterId, 'completed');
     } else if (latestTransientDelta.type === 'spirit-ability:fired') {
       const entry = playerGraphicsRef.current.get(latestTransientDelta.playerId);
       if (entry) entry.flashUntil = Date.now() + SPIRIT_ABILITY_FLASH_MS;

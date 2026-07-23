@@ -27,6 +27,28 @@ export type {
   BeamSpec,
   BurstSpec,
 } from './ability-vfx';
+export {
+  SPIRIT_HEAL,
+  SPIRIT_HARM,
+  ANCESTOR_BONE,
+  FIZZLE_ASH,
+  ANCESTORS_VOICE_RANGE_PX,
+  SPIRIT_NOVA_MAX_RADIUS_VFX_PX,
+  SPIRIT_NOVA_DURATION_VFX_MS,
+  MAX_FACTION_ACCENTS_PER_CAST,
+  SOUL_MEND_BEAM_INTERVAL_MS,
+  SHIELD_PULSE_INTERVAL_MS,
+  planSpiritcallerCast,
+  factionAccentFor,
+  triggerSpiritcallerCast,
+  triggerFactionAccent,
+  triggerSoulMendStart,
+  triggerSoulMendLink,
+  triggerSoulMendTerminal,
+  triggerShieldPulse,
+  renderShieldAura,
+} from './spiritcaller-vfx';
+export type { SpiritcallerCastPlan, SpiritcallerAbility } from './spiritcaller-vfx';
 export type {
   ParticleBurstParams,
   TrailParams,
