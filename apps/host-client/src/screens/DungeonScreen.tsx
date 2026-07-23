@@ -4,6 +4,19 @@ import type { GameState, PlayerState, StatusEffectType } from 'shared-types';
 import { SessionColor, CLASS_DEFINITIONS, PlayerClass, BossPhase, PURIFICATION_PULSE_DURATION_MS, REWARD_REVEAL_DURATION_MS } from 'shared-types';
 import type { HostSession } from '../session/host-session';
 import type { DeltaEventMsg } from 'net-protocol';
+import {
+  VfxEngine,
+  createRingShockwave,
+  createBeam,
+  createParticleBurst,
+  getAbilityVfxConfig,
+  resolveAbilityVfxPlacement,
+  ownsIronSkinShell,
+  STONEHIDE_SLATE,
+  IRON_SKIN_SHELL_RADIUS,
+  IRON_SKIN_FADE_MS,
+  IRON_SKIN_BREATHE_MS,
+} from '../vfx';
 
 interface DungeonScreenProps {
   gameState: GameState | null;
@@ -93,6 +106,7 @@ function renderFrame(
   projectileGraphics: Map<string, Graphics>,
   zoneGraphics: Map<string, Graphics>,
   damageNumberGraphics: Map<string, DamageNumberEntry>,
+  vfxRefs: { ironSkinGraphics: Map<string, Graphics> },
 ): void {
   app.stage.scale.set(app.screen.width / VIRTUAL_W, app.screen.height / VIRTUAL_H);
 
@@ -287,6 +301,62 @@ function renderFrame(
     });
   }
 
+  // ── Iron Skin shell (Story 7.2) ──────────────────────────────────────────────
+  // COMPOSITION CONTRACT: 7.2 owns Stonehide's Iron Skin cast-and-persist visual;
+  // 7.6 owns the generic four-type status treatment. If 7.6 ships second, its
+  // damageReduction aura must exclude players for which ownsIronSkinShell() is
+  // true, or replace this shell outright and delete this block — never render both.
+  //
+  // Deliberately a state-driven Graphics rather than a VFX primitive: the
+  // primitives are fixed-duration one-shots, and the shell must come from the
+  // snapshot (AC4) so it survives reconnect, late join and batched-delta loss.
+  // The badge pattern above is copied verbatim: create-on-first-seen /
+  // cleanup-on-missing, mutate in place, never allocate per frame.
+  const ironSkinPlayers = state.players.filter(
+    p => ownsIronSkinShell(p) && !p.isDown && !(p.isSpirit && !isPurified),
+  );
+  const ironSkinIds = new Set(ironSkinPlayers.map(p => p.id));
+  for (const [id, g] of vfxRefs.ironSkinGraphics) {
+    if (!ironSkinIds.has(id)) {
+      app.stage.removeChild(g);
+      g.destroy();
+      vfxRefs.ironSkinGraphics.delete(id);
+    }
+  }
+  for (const player of ironSkinPlayers) {
+    const effect = player.statusEffects.find(e => e.type === 'damageReduction');
+    if (!effect) continue;
+    let g = vfxRefs.ironSkinGraphics.get(player.id);
+    if (!g) {
+      g = new Graphics();
+      // Plain addChild, per Task 4.4. addChildAt(g, 0) was tried and reverted
+      // (code review 2026-07-22): index 0 is the absolute bottom, so bodies,
+      // tethers and zones — which also insert at 0 — would land above the shell
+      // whenever they are created later in the effect's 3 s life. The shell's
+      // strokes span r 28-35, entirely outside the opaque r24 player fill, so
+      // sitting above the sprites occludes nothing.
+      app.stage.addChild(g);
+      vfxRefs.ironSkinGraphics.set(player.id, g);
+    }
+    // expiresAtMs is stamped by the server clock, so clamp: host/server skew may
+    // mis-time the fade but must never yield a negative alpha. Removal is the
+    // sim's job — the effect leaves statusEffects and the prune above runs.
+    // Math.max/min pass NaN through, so a non-finite expiry is caught explicitly
+    // and shown at full strength rather than painting alpha: NaN (code review
+    // 2026-07-22). Not reachable today — applyStatusEffect rejects a non-finite
+    // expiry — but the clamp is what the comment promises, so it must be true.
+    const remaining = effect.expiresAtMs - now;
+    const fade = Number.isFinite(remaining)
+      ? Math.max(0, Math.min(1, remaining / IRON_SKIN_FADE_MS))
+      : 1;
+    const breathe = 0.55 + 0.25 * Math.abs(Math.cos(now / IRON_SKIN_BREATHE_MS));
+    const dim = player.isFrozen ? 0.3 : 1; // preserve the disconnect cue
+    g.position.set(player.x, player.y);
+    g.clear();
+    g.circle(0, 0, IRON_SKIN_SHELL_RADIUS).stroke({ color: STONEHIDE_SLATE, width: 4, alpha: breathe * fade * dim });
+    g.circle(0, 0, IRON_SKIN_SHELL_RADIUS + 5).stroke({ color: STONEHIDE_SLATE, width: 1, alpha: 0.25 * fade * dim });
+  }
+
   // ── Projectiles ───────────────────────────────────────────────────────────────
   const activeProjectileIds = new Set(state.projectiles.map(p => p.id));
   for (const [id, g] of projectileGraphics) {
@@ -376,6 +446,8 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
   const projectileGraphicsRef = useRef<Map<string, Graphics>>(new Map());
   const zoneGraphicsRef = useRef<Map<string, Graphics>>(new Map());
   const damageNumberGraphicsRef = useRef<Map<string, DamageNumberEntry>>(new Map());
+  const ironSkinGraphicsRef = useRef<Map<string, Graphics>>(new Map());
+  const vfxEngineRef = useRef<VfxEngine | null>(null);
   const damageNumberIdCounterRef = useRef(0);
   const latestGameStateRef = useRef<GameState | null>(null);
   latestGameStateRef.current = gameState;
@@ -415,7 +487,17 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
       }
       canvasContainerRef.current.appendChild(app.canvas);
       pixiAppRef.current = app;
+      // app.stage structurally satisfies VfxStage (vfx/types.ts:21-24)
+      vfxEngineRef.current = new VfxEngine(app.stage);
       app.ticker.add(() => {
+        // CLOCK CONTRACT (vfx/types.ts:26-34): effects advance on the same clock
+        // renderFrame and the delta handler use — Date.now(), not performance.now().
+        //
+        // Deliberately ABOVE the null-state guard (overrides Task 1.7, code review
+        // 2026-07-22): effects that were live when gameState went null would
+        // otherwise freeze on the stage and never be reaped.
+        vfxEngineRef.current?.update(Date.now());
+
         const state = latestGameStateRef.current;
         if (!state) return;
         renderFrame(
@@ -430,6 +512,7 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
           projectileGraphicsRef.current,
           zoneGraphicsRef.current,
           damageNumberGraphicsRef.current,
+          { ironSkinGraphics: ironSkinGraphicsRef.current },
         );
 
         // Boss sprite — managed in ticker to keep renderFrame signature stable
@@ -503,6 +586,9 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
       cancelled = true;
       const app = pixiAppRef.current;
       if (app) {
+        // Before app.destroy: clear() calls stage.removeChild on a live stage.
+        vfxEngineRef.current?.clear();
+        vfxEngineRef.current = null;
         app.canvas.remove();
         app.destroy(true, { children: true });
         pixiAppRef.current = null;
@@ -522,6 +608,7 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
       tetherGraphicsRef.current.clear();
       statusBadgeGraphicsRef.current.clear();
       damageNumberGraphicsRef.current.clear();
+      ironSkinGraphicsRef.current.clear();
     };
   }, []);
 
@@ -549,8 +636,87 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
     } else if (latestTransientDelta.type === 'level:complete') {
       setLevelClearFlash(true);
     } else if (latestTransientDelta.type === 'ability:fired') {
-      const entry = playerGraphicsRef.current.get(latestTransientDelta.playerId);
-      if (entry) entry.flashUntil = Date.now() + ABILITY_FLASH_MS;
+      const d = latestTransientDelta;
+      const entry = playerGraphicsRef.current.get(d.playerId);
+      // AbilityFiredDelta carries no class — resolve the caster from state.
+      const caster = gameState?.players.find(p => p.id === d.playerId);
+      const cfg = caster ? getAbilityVfxConfig(caster.class, d.abilityIndex) : null;
+      const engine = vfxEngineRef.current;
+      if (!cfg || !caster || !engine) {
+        // Legacy path, unchanged: any class 7.3-7.5 has not reached yet; the
+        // late-join/reconnect race where the caster is not in state; and the
+        // engine being absent (a delta landing inside the await app.init()
+        // window, or after teardown nulled the ref). That last case is an
+        // implementation state, not a deliberate skip, so it still deserves
+        // the cast flash (code review 2026-07-22).
+        if (entry) entry.flashUntil = Date.now() + ABILITY_FLASH_MS;
+      } else {
+        const place = resolveAbilityVfxPlacement(cfg, caster.x, caster.y, d.directionX, d.directionY);
+        // place === null: the sim skipped this cast's hit too (zero direction on
+        // a ranged ability, GameRoom.ts:2203) — render nothing rather than lie.
+        // No flash either: reviewed and kept spec-literal (Task 3.4).
+        if (place) {
+          // Stamped once at trigger rather than captured on the first update()
+          // (overrides Task 3.5, code review 2026-07-22): the ticker stops with
+          // requestAnimationFrame on a backgrounded tab while deltas keep
+          // arriving, so effects that never got a first update() would pile up
+          // un-started and un-reaped, then all play at once on resume. An
+          // absolute deadline self-expires instead — the same property the
+          // legacy flashUntil path and the damage numbers already rely on.
+          // Date.now() is mandatory here: it must match VfxEngine.update()'s clock.
+          const triggeredAt = Date.now();
+          const anchor = (at: 'caster' | 'hit') =>
+            at === 'hit' ? { x: place.hitX, y: place.hitY } : { x: place.casterX, y: place.casterY };
+          for (const ring of cfg.rings) {
+            const { x, y } = anchor(ring.at);
+            engine.add(createRingShockwave({
+              x, y,
+              color: ring.color,
+              alpha: ring.alpha,
+              durationMs: ring.durationMs,
+              startedAt: triggeredAt,
+              startRadius: ring.startRadius,
+              maxRadius: ring.maxRadius,
+              lineWidth: ring.lineWidth,
+              filled: ring.filled,
+            }));
+          }
+          if (cfg.beam) {
+            const beam = cfg.beam;
+            const target = anchor(beam.target);
+            const originX = place.casterX + place.normX * beam.originOffsetPx;
+            const originY = place.casterY + place.normY * beam.originOffsetPx;
+            // A rim-anchored beam with no aim direction collapses to a point —
+            // skip it rather than draw a zero-length line.
+            if (beam.originOffsetPx === 0 || place.normX !== 0 || place.normY !== 0) {
+              engine.add(createBeam({
+                x: originX, y: originY,
+                toX: target.x, toY: target.y,
+                color: beam.color,
+                alpha: beam.alpha,
+                durationMs: beam.durationMs,
+                startedAt: triggeredAt,
+                width: beam.width,
+              }));
+            }
+          }
+          if (cfg.burst) {
+            const burst = cfg.burst;
+            const { x, y } = anchor(burst.at);
+            engine.add(createParticleBurst({
+              x, y,
+              color: burst.colors,
+              alpha: burst.alpha,
+              durationMs: burst.durationMs,
+              startedAt: triggeredAt,
+              count: burst.count,
+              speed: burst.speed,
+              spread: burst.spread,
+              particleRadius: burst.particleRadius,
+            }));
+          }
+        }
+      }
     } else if (latestTransientDelta.type === 'spirit-ability:fired') {
       const entry = playerGraphicsRef.current.get(latestTransientDelta.playerId);
       if (entry) entry.flashUntil = Date.now() + SPIRIT_ABILITY_FLASH_MS;

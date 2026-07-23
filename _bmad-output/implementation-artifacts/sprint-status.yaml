@@ -42,7 +42,7 @@
 # Phase2 legacy stories (old Phase-based keys) are tracked below under PHASE 2 STORIES.
 
 generated: 2026-06-22
-last_updated: 2026-07-22 (7-2 … 7-8 created, all ready-for-dev)
+last_updated: 2026-07-22 (7-2-stonehide-ability-vfx in-progress — code review done, Client-UX manual pass outstanding)
 # 2026-07-22: created the remaining Epic 7 stories in one batch (7.2-7.6, 7.7a, 7.7b, 7.8).
 # Story 7.7 was split into 7.7a (protocol+sim) and 7.7b (host) — see the E7 block below.
 # Three epic-text claims were corrected against the shipped code during creation:
@@ -607,7 +607,7 @@ development_status:
   # Ancient Forest Biome/Polish down one slot each (old E7-E10 -> E8-E11).
   epic-7: in-progress
   7-1-vfx-engine-foundations: done
-  7-2-stonehide-ability-vfx: ready-for-dev
+  7-2-stonehide-ability-vfx: in-progress
   7-3-spiritcaller-ability-vfx: ready-for-dev
   7-4-souldrinker-ability-vfx: ready-for-dev
   7-5-stormcaller-ability-vfx: ready-for-dev
