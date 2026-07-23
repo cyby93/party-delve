@@ -42,7 +42,7 @@
 # Phase2 legacy stories (old Phase-based keys) are tracked below under PHASE 2 STORIES.
 
 generated: 2026-06-22
-last_updated: 2026-07-23 (7-9-shared-ability-geometry-contract done — code review passed, 4 patches applied)
+last_updated: 2026-07-24 (7-4-souldrinker-ability-vfx → done: code review patches applied + Task 8.3 Client-UX manual pass performed by user)
 # 2026-07-22: created the remaining Epic 7 stories in one batch (7.2-7.6, 7.7a, 7.7b, 7.8).
 # Story 7.7 was split into 7.7a (protocol+sim) and 7.7b (host) — see the E7 block below.
 # Three epic-text claims were corrected against the shipped code during creation:
@@ -609,7 +609,7 @@ development_status:
   7-1-vfx-engine-foundations: done
   7-2-stonehide-ability-vfx: done
   7-3-spiritcaller-ability-vfx: done
-  7-4-souldrinker-ability-vfx: ready-for-dev
+  7-4-souldrinker-ability-vfx: done
   7-5-stormcaller-ability-vfx: ready-for-dev
   7-6-status-effect-vfx: ready-for-dev
   # Epic 7.7 was split at story-creation time (2026-07-22, user-approved): the epic assumed
@@ -629,6 +629,10 @@ development_status:
   # kept as one story because a constant relocation is atomic. Should land BEFORE 7.4/7.5/7.8
   # so they consume the contract rather than transcribe (Task 5 re-points their specs).
   7-9-shared-ability-geometry-contract: done
+  # 7.10 (2026-07-23): defect found in the 7.4 playtest — projectiles simulate server-side but
+  # have no projectile:moved delta, so the host dot freezes/teleports (only the 5 s snapshot syncs
+  # it). Protocol + Simulation joint story (mirrors 7.7a); unblocks projectile visuals in 7.4/7.8.
+  7-10-projectile-position-streaming: ready-for-dev
   epic-7-retrospective: optional
 
   # ─── E8: Progression & Persistent Meta ──────────────────────────────────────

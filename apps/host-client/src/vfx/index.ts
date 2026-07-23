@@ -49,6 +49,29 @@ export {
   renderShieldAura,
 } from './spiritcaller-vfx';
 export type { SpiritcallerCastPlan, SpiritcallerAbility } from './spiritcaller-vfx';
+export {
+  BLOOD,
+  BLOOD_DARK,
+  VOID,
+  VOID_DIM,
+  DARK_PACT_COST_CUE_WINDOW_MS,
+  planSouldrinkerCast,
+  planBloodSpikeImpact,
+  planBloodSpikeSplash,
+  planVoidPulseImpact,
+  planDamageBuffOnset,
+  planHpLossCue,
+  planHpGainCue,
+  classifyHpChanges,
+  spawnSouldrinkerVfx,
+} from './souldrinker-vfx';
+export type { CastInput, VfxSpec, HpChange } from './souldrinker-vfx';
+export {
+  SOULDRINKER_PALETTE,
+  PROJECTILE_APPEARANCE,
+  ZONE_APPEARANCE,
+} from './ability-vfx-config';
+export type { ProjectileAppearance, ZoneAppearance } from './ability-vfx-config';
 export type {
   ParticleBurstParams,
   TrailParams,

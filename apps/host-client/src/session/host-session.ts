@@ -53,6 +53,12 @@ export async function createHostSession(
         delta.type === 'player:revived' ||
         delta.type === 'player:spirit' ||
         delta.type === 'player:hp-updated' ||
+        // Story 7.4: forward projectile:hit so the host can drive Souldrinker's
+        // Blood Spike lifesteal-return and Void Pulse impact visuals. Host-local
+        // delivery filtering only — applyDelta runs unconditionally below (:74)
+        // and already handles it (apply-delta.ts:247-249), so mirror state is
+        // unchanged; this only decides whether it reaches React/DungeonScreen.
+        delta.type === 'projectile:hit' ||
         delta.type === 'run:failed' ||
         delta.type === 'level:complete' ||
         delta.type === 'run:complete' ||

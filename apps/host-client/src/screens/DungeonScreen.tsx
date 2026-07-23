@@ -30,6 +30,16 @@ import {
   MAX_FACTION_ACCENTS_PER_CAST,
   SOUL_MEND_BEAM_INTERVAL_MS,
   type SpiritcallerCastPlan,
+  planSouldrinkerCast,
+  spawnSouldrinkerVfx,
+  planBloodSpikeImpact,
+  planBloodSpikeSplash,
+  planVoidPulseImpact,
+  planDamageBuffOnset,
+  planHpLossCue,
+  planHpGainCue,
+  classifyHpChanges,
+  DARK_PACT_COST_CUE_WINDOW_MS,
 } from '../vfx';
 
 interface DungeonScreenProps {
@@ -132,6 +142,11 @@ interface VfxContext {
   soulMend: Map<string, SoulMendVisual>;    // casterId -> channel visual state
   soulMendTerminal: Map<string, 'completed' | 'cancelled'>; // casterId -> observed terminal delta
   shieldPulseAt: Map<string, number>;       // entityId -> next allowed shield pulse time
+  // Story 7.4: projectileId -> its owning class/ability/owner, cached at
+  // create-on-first-seen. applyDelta removes the projectile from GameState on
+  // projectile:hit, so this cache is the only thing that survives to identify a
+  // Souldrinker Blood Spike / Void Pulse impact in the delta effect.
+  projectileMeta: Map<string, { class: PlayerClass; abilityIndex: number; ownerId: string }>;
 }
 
 function renderFrame(
@@ -529,6 +544,7 @@ function renderFrame(
       app.stage.removeChild(g);
       g.destroy();
       projectileGraphics.delete(id);
+      vfxRefs.projectileMeta.delete(id); // Story 7.4: drop the meta cache alongside the Graphics
     }
   }
   for (const projectile of state.projectiles) {
@@ -537,6 +553,13 @@ function renderFrame(
       g = new Graphics();
       app.stage.addChild(g);
       projectileGraphics.set(projectile.id, g);
+      // Story 7.4: cache class/ability/owner while the projectile is still in
+      // state — projectile:hit removes it before the delta effect can read it.
+      vfxRefs.projectileMeta.set(projectile.id, {
+        class: projectile.class,
+        abilityIndex: projectile.abilityIndex,
+        ownerId: projectile.ownerId,
+      });
     }
     g.position.set(projectile.x, projectile.y);
     g.clear();
@@ -619,6 +642,12 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
   const soulMendRef = useRef<Map<string, SoulMendVisual>>(new Map());
   const soulMendTerminalRef = useRef<Map<string, 'completed' | 'cancelled'>>(new Map());
   const shieldPulseAtRef = useRef<Map<string, number>>(new Map());
+  // Story 7.4 Souldrinker correlation state (runtime, not Graphics).
+  const projectileMetaRef = useRef<Map<string, { class: PlayerClass; abilityIndex: number; ownerId: string }>>(new Map());
+  const lifestealEffectIdRef = useRef<Map<string, number>>(new Map()); // ownerId -> live lifesteal implode id (one per player)
+  const buffedPlayersRef = useRef<Set<string>>(new Set());             // playerIds currently carrying damageBuff (onset diff)
+  const prevPlayerHpRef = useRef<Map<string, number>>(new Map());      // playerId -> last observed hp (Dark Pact cost/gain classifier)
+  const lastDarkPactCastAtRef = useRef(0);                             // Date.now() of the last Souldrinker Dark Pact ability:fired
   const damageNumberIdCounterRef = useRef(0);
   const latestGameStateRef = useRef<GameState | null>(null);
   latestGameStateRef.current = gameState;
@@ -682,6 +711,7 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
             soulMend: soulMendRef.current,
             soulMendTerminal: soulMendTerminalRef.current,
             shieldPulseAt: shieldPulseAtRef.current,
+            projectileMeta: projectileMetaRef.current,
           },
         );
 
@@ -795,6 +825,11 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
       soulMendRef.current.clear();
       soulMendTerminalRef.current.clear();
       shieldPulseAtRef.current.clear();
+      projectileMetaRef.current.clear();
+      lifestealEffectIdRef.current.clear();
+      buffedPlayersRef.current.clear();
+      prevPlayerHpRef.current.clear();
+      lastDarkPactCastAtRef.current = 0;
     };
   }, []);
 
@@ -841,6 +876,26 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
           activeCastsRef.current.set(caster.id, { ...plan, startedAt: triggeredAt, accentsSpawned: 0 });
         }
         // plan === null → zero-aim Ancestor's Voice: SILENT (no effect, no flash).
+      } else if (caster && engine && caster.class === PlayerClass.SOULDRINKER) {
+        // Story 7.4: Souldrinker owned cast → suppress-and-replace (AC1, user
+        // decision 2026-07-23). Never set entry.flashUntil for any of the four
+        // abilities. planSouldrinkerCast returns [] for a zero-aim cast (the sim
+        // skips it — GameRoom.ts:2073-2074, 2203), so rendering [] draws nothing:
+        // no VFX and no flash (SILENT rule, matching 7.2's Avalanche / 7.5).
+        const triggeredAt = Date.now();
+        const hpFraction = caster.maxHp > 0 ? Math.max(0, Math.min(1, caster.hp / caster.maxHp)) : 1;
+        const souldrinkerSpecs = planSouldrinkerCast({
+          abilityIndex: d.abilityIndex,
+          casterX: caster.x, casterY: caster.y,
+          dirX: d.directionX, dirY: d.directionY,
+          hpFraction,
+        });
+        spawnSouldrinkerVfx(engine, souldrinkerSpecs, triggeredAt);
+        // Dark Pact (idx 2): open the cost/gain-cue correlation window (Task 6.3),
+        // but only when the cast actually resolved. A zero-aim Dark Pact returns []
+        // (the sim skips it), so arming the window then would mislabel any coincident
+        // HP change as Dark Pact's drain (code review 2026-07-24).
+        if (d.abilityIndex === 2 && souldrinkerSpecs.length > 0) lastDarkPactCastAtRef.current = triggeredAt;
       } else {
       const cfg = caster ? getAbilityVfxConfig(caster.class, d.abilityIndex) : null;
       if (!cfg || !caster || !engine) {
@@ -919,6 +974,39 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
         }
       }
       }
+    } else if (latestTransientDelta.type === 'projectile:hit') {
+      // Story 7.4: Souldrinker projectile impacts. projectileMetaRef is the only
+      // surviving identity — applyDelta already removed the projectile from
+      // gameState (apply-delta.ts:247-249) by the time this effect runs.
+      const meta = projectileMetaRef.current.get(latestTransientDelta.projectileId);
+      const engine = vfxEngineRef.current;
+      if (meta && engine && meta.class === PlayerClass.SOULDRINKER) {
+        const triggeredAt = Date.now();
+        const { x: hitX, y: hitY } = latestTransientDelta;
+        if (meta.abilityIndex === 0) {
+          // Blood Spike lifesteal return. The heal lands only when the caster is
+          // present, alive and not a spirit (GameRoom.ts:1774); otherwise show
+          // just the impact splash so the visual never promises a heal that the
+          // sim skipped.
+          const owner = gameState?.players.find(p => p.id === meta.ownerId);
+          if (owner && !owner.isDown && !owner.isSpirit) {
+            const prevId = lifestealEffectIdRef.current.get(meta.ownerId);
+            if (prevId !== undefined) engine.remove(prevId); // one live implode per player (Task 4.6 / D-7.1-D)
+            const ids = spawnSouldrinkerVfx(
+              engine,
+              planBloodSpikeImpact({ hitX, hitY, casterX: owner.x, casterY: owner.y }),
+              triggeredAt,
+            );
+            lifestealEffectIdRef.current.set(meta.ownerId, ids[ids.length - 1]!); // implode ring is last by contract
+          } else {
+            spawnSouldrinkerVfx(engine, planBloodSpikeSplash({ hitX, hitY }), triggeredAt);
+          }
+        } else if (meta.abilityIndex === 3) {
+          // Void Pulse impact — implodes from the chained pull-zone's radius,
+          // announcing the pull field about to appear.
+          spawnSouldrinkerVfx(engine, planVoidPulseImpact({ hitX, hitY }), triggeredAt);
+        }
+      }
     } else if (latestTransientDelta.type === 'cast:cancelled') {
       // Story 7.3: record the terminal so renderFrame picks the fizzle effect.
       // Often collapsed by batching — renderFrame's isDown inference is the backstop.
@@ -995,6 +1083,64 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
       };
     }
   }, [latestTransientDelta]);
+
+  // Story 7.4 Task 6.2: Dark Pact buff-gained cue — snapshot-driven onset pulse.
+  // Uses player.statusEffects (in every snapshot, reconciled across reconnects)
+  // rather than status:applied (not whitelisted). damageBuff is applied by exactly
+  // one ability in the shipped game — Dark Pact (balance.ts:216-219) — so no class
+  // gate is needed. Story 7.6 owns the *persistent* per-status aura; 7.4 owns only
+  // this one-shot onset, so the two do not double-draw.
+  useEffect(() => {
+    const engine = vfxEngineRef.current;
+    if (!gameState || !engine) return;
+    const now = Date.now();
+    const current = new Set<string>();
+    for (const player of gameState.players) {
+      if (!player.statusEffects.some(e => e.type === 'damageBuff')) continue;
+      current.add(player.id);
+      if (!buffedPlayersRef.current.has(player.id)) {
+        spawnSouldrinkerVfx(engine, planDamageBuffOnset({ x: player.x, y: player.y }), now);
+      }
+    }
+    // Overwrite (drops expired ids) so a second Dark Pact re-triggers the onset.
+    buffedPlayersRef.current = current;
+  }, [gameState]);
+
+  // Story 7.4 Task 6.3: Dark Pact cost/gain cue — classifier-driven, windowed.
+  // The drained ally's HP drop is the one change no delta identifies (AC3), so it
+  // is resolved from the pure classifier + a short window after a Souldrinker Dark
+  // Pact ability:fired. Scope guard: the loss cue only inside the window; the gain
+  // cue additionally only for Souldrinkers (Spiritcaller heal visuals are 7.3's).
+  // Every other HP change — enemy melee, bond drain, Blood Spike's own self-cost
+  // (Task 4.2) and lifesteal (Task 4.5) — is deliberately left untouched.
+  useEffect(() => {
+    if (!gameState) return;
+    const engine = vfxEngineRef.current;
+    const now = Date.now();
+    const withinWindow = now - lastDarkPactCastAtRef.current <= DARK_PACT_COST_CUE_WINDOW_MS;
+    if (engine && withinWindow) {
+      for (const change of classifyHpChanges(prevPlayerHpRef.current, gameState.players)) {
+        const player = gameState.players.find(p => p.id === change.playerId);
+        if (!player) continue;
+        if (change.direction === 'loss') {
+          // Loss cue = the drained ally only. Skip Souldrinkers so the caster's own
+          // Blood Spike self-cost (already shown by Task 4.2) does not double-draw a
+          // spurious loss cue inside the window (code review 2026-07-24). Pairs with
+          // the gain cue below: loss = non-Souldrinker allies, gain = Souldrinkers.
+          if (player.class !== PlayerClass.SOULDRINKER) {
+            spawnSouldrinkerVfx(engine, planHpLossCue({ x: player.x, y: player.y }), now);
+          }
+        } else if (player.class === PlayerClass.SOULDRINKER) {
+          spawnSouldrinkerVfx(engine, planHpGainCue({ x: player.x, y: player.y }), now);
+        }
+      }
+    }
+    // Refresh the HP baseline every pass (even outside the window) so the next
+    // comparison is against the latest snapshot, not a stale one.
+    const next = new Map<string, number>();
+    for (const player of gameState.players) next.set(player.id, player.hp);
+    prevPlayerHpRef.current = next;
+  }, [gameState]);
 
   // Track revive deadlines from downed/revived/spirit deltas
   useEffect(() => {
