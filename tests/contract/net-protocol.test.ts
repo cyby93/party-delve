@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { serialize, deserialize, applyDelta, EventNames } from 'net-protocol';
-import type { SnapshotMsg, DeltaEventMsg, InputEventMsg, PlayerPoiEnteredDelta, PlayerPoiExitedDelta, AbilityFiredDelta, EnemyDamagedDelta, PlayerDownedDelta, BondNotificationMsg, ContinueMsg, BossDamagedDelta, BossPhaseChangedDelta, BossDefeatedDelta, RunVictoryMsg, StatusAppliedDelta, StatusExpiredDelta, ProjectileHitDelta, ProjectileExpiredDelta, ZoneTickDelta, ZoneExpiredDelta, ZoneStrikeDelta } from 'net-protocol';
+import type { SnapshotMsg, DeltaEventMsg, InputEventMsg, PlayerPoiEnteredDelta, PlayerPoiExitedDelta, AbilityFiredDelta, EnemyDamagedDelta, PlayerDownedDelta, BondNotificationMsg, ContinueMsg, BossDamagedDelta, BossPhaseChangedDelta, BossDefeatedDelta, RunVictoryMsg, StatusAppliedDelta, StatusExpiredDelta, ProjectileMovedDelta, ProjectileHitDelta, ProjectileExpiredDelta, ZoneTickDelta, ZoneExpiredDelta, ZoneStrikeDelta } from 'net-protocol';
 import type { GameState, PlayerState, RunReward, ProjectileState, ZoneState } from 'shared-types';
 import { PlayerClass, SessionColor, EnemyType, DifficultyTier, EnemyFSMState, BondType, BossPhase, GrasslandAchievement } from 'shared-types';
 
@@ -901,6 +901,11 @@ describe('net-protocol contract tests', () => {
       };
     }
 
+    it('ProjectileMovedDelta survives serialize → deserialize (Story 7.10)', () => {
+      const delta: ProjectileMovedDelta = { type: 'projectile:moved', projectileId: 'proj-1', x: 120, y: 130 };
+      expect(deserialize<DeltaEventMsg>(serialize(delta))).toEqual(delta);
+    });
+
     it('ProjectileHitDelta survives serialize → deserialize', () => {
       const delta: ProjectileHitDelta = { type: 'projectile:hit', projectileId: 'proj-1', x: 120, y: 130 };
       expect(deserialize<DeltaEventMsg>(serialize(delta))).toEqual(delta);
@@ -919,6 +924,25 @@ describe('net-protocol contract tests', () => {
     it('ZoneExpiredDelta survives serialize → deserialize', () => {
       const delta: ZoneExpiredDelta = { type: 'zone:expired', zoneId: 'zone-1' };
       expect(deserialize<DeltaEventMsg>(serialize(delta))).toEqual(delta);
+    });
+
+    it('applyDelta projectile:moved updates x/y of the matching projectile only (Story 7.10)', () => {
+      const state: GameState = {
+        ...mockGameState(),
+        projectiles: [mockProjectile(), mockProjectile({ id: 'proj-2', x: 300, y: 300 })],
+      };
+      const delta: DeltaEventMsg = { type: 'projectile:moved', projectileId: 'proj-1', x: 120, y: 130 };
+      const next = applyDelta(state, delta);
+      expect(next.projectiles.find(p => p.id === 'proj-1')).toMatchObject({ x: 120, y: 130 });
+      expect(next.projectiles.find(p => p.id === 'proj-2')).toMatchObject({ x: 300, y: 300 });
+      expect(state.projectiles.find(p => p.id === 'proj-1')).toMatchObject({ x: 100, y: 100 }); // original not mutated
+    });
+
+    it('applyDelta projectile:moved returns same state reference for unknown projectileId (Story 7.10)', () => {
+      const state: GameState = { ...mockGameState(), projectiles: [mockProjectile()] };
+      const delta: DeltaEventMsg = { type: 'projectile:moved', projectileId: 'ghost', x: 120, y: 130 };
+      const next = applyDelta(state, delta);
+      expect(next).toBe(state);
     });
 
     it('applyDelta projectile:hit removes the projectile from state', () => {

@@ -4,7 +4,7 @@ baseline_commit: e007dfbb16bc806a1d84071171d69431fbab5d29
 
 # Story 7.10: Projectile Position Streaming (`projectile:moved` delta)
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -135,47 +135,58 @@ drives player circles without a whitelist entry.
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Protocol: define and export `ProjectileMovedDelta` (AC: 1). [Protocol Architect]**
-  - [ ] 1.1: In `packages/net-protocol/src/messages/server-to-host.ts`, add
+- [x] **Task 1 — Protocol: define and export `ProjectileMovedDelta` (AC: 1). [Protocol Architect]**
+  - [x] 1.1: In `packages/net-protocol/src/messages/server-to-host.ts`, add
     `export type ProjectileMovedDelta = { type: 'projectile:moved'; projectileId: string; x: number; y: number };`
     directly beside `ProjectileHitDelta` (`:236`), and add `| ProjectileMovedDelta` to the
     `DeltaEventMsg` union (`:287-325`), next to `ProjectileHitDelta`/`ProjectileExpiredDelta`.
-  - [ ] 1.2: Re-export `ProjectileMovedDelta` from `packages/net-protocol/src/index.ts:5`,
+  - [x] 1.2: Re-export `ProjectileMovedDelta` from `packages/net-protocol/src/index.ts:5`,
     alongside the already-re-exported `ProjectileHitDelta`/`ProjectileExpiredDelta`.
 
-- [ ] **Task 2 — Protocol: `applyDelta` case (AC: 2). [Protocol Architect]**
-  - [ ] 2.1: In `packages/net-protocol/src/apply-delta.ts`, add
+- [x] **Task 2 — Protocol: `applyDelta` case (AC: 2). [Protocol Architect]**
+  - [x] 2.1: In `packages/net-protocol/src/apply-delta.ts`, add
     `case 'projectile:moved'` mirroring `case 'player:moved'` (`:6-12`): presence-guard with
     `state.projectiles.some(p => p.id === evt.projectileId)` → return `state` unchanged if absent;
     else `const projectiles = state.projectiles.map(p => p.id === evt.projectileId ? { ...p, x: evt.x, y: evt.y } : p); return { ...state, projectiles };`.
     The exhaustive-`never` guard will fail to compile until this case exists — that is the check.
 
-- [ ] **Task 3 — Simulation: broadcast from phase 3b (AC: 3, 4). [Simulation Engineer]**
-  - [ ] 3.1: In `apps/simulation-server/src/rooms/GameRoom.ts` "Planck phase 3b"
+- [x] **Task 3 — Simulation: broadcast from phase 3b (AC: 3, 4). [Simulation Engineer]**
+  - [x] 3.1: In `apps/simulation-server/src/rooms/GameRoom.ts` "Planck phase 3b"
     (`:1412-1420`), replace the unconditional read-back with the `player:moved` pattern from
     `:1399-1411`: compute `newX/newY`, and inside a `> 0.5 px` move-gate both assign
     `projectile.x/y` and `this.broadcast(EventNames.DELTA, { type: 'projectile:moved', projectileId: projectile.id, x: projectile.x, y: projectile.y } satisfies DeltaEventMsg);`.
-  - [ ] 3.2: Confirm (and note in the Dev Agent Record) that **nothing else changes**: spawn
+  - [x] 3.2: Confirm (and note in the Dev Agent Record) that **nothing else changes**: spawn
     snapshot (`:2094`), hit/expired removal (`:1698-1706`), the periodic snapshot (`:2904`), and
     the physics step are untouched.
 
-- [ ] **Task 4 — Contract test (AC: 7). [QA + Telemetry / Protocol Architect]**
-  - [ ] 4.1: In `tests/contract/net-protocol.test.ts`, add a `ProjectileMovedDelta` round-trip
+- [x] **Task 4 — Contract test (AC: 7). [QA + Telemetry / Protocol Architect]**
+  - [x] 4.1: In `tests/contract/net-protocol.test.ts`, add a `ProjectileMovedDelta` round-trip
     (encode→decode preserves `type/projectileId/x/y`) and two `applyDelta` assertions: (a) a
     projectile present in `state.projectiles` gets its `x/y` updated (others untouched); (b) a
     `projectile:moved` for an absent id returns the **same `state` reference**.
 
-- [ ] **Task 5 — Validation & hooks (AC: 5, 6, 8). [all]**
-  - [ ] 5.1: `npm run typecheck` at repo root (the exhaustive-`never` guard is the compile-time
+- [x] **Task 5 — Validation & hooks (AC: 5, 6, 8). [all]**
+  - [x] 5.1: `npm run typecheck` at repo root (the exhaustive-`never` guard is the compile-time
     proof AC2 is complete).
-  - [ ] 5.2: `npm test` at repo root (contract + unit + sim); note the known-flaky WSL2 e2e
+  - [x] 5.2: `npm test` at repo root (contract + unit + sim); note the known-flaky WSL2 e2e
     behaviour if it appears (pre-existing — this story touches no e2e path).
-  - [ ] 5.3: Simulation-safety: deterministic-tick sanity (the broadcast is a pure side effect;
+  - [x] 5.3: Simulation-safety: deterministic-tick sanity (the broadcast is a pure side effect;
     projectile `x/y` was already written each tick — confirm no state-shape or ordering change),
     replay test (run if one exists, else record "none exists"), and a one-line per-tick perf note
     (≤ ~40 small `projectile:moved` broadcasts over a projectile's ≤ `800/600 ≈ 1.3 s` life;
     payload ~4 fields; one object literal per tick, matching `player:moved`).
-  - [ ] 5.4: Confirm AC6 by inspection — **no `apps/host-client/**` file touched** — and record it.
+  - [x] 5.4: Confirm AC6 by inspection — **no `apps/host-client/**` file touched** — and record it.
+
+### Review Findings
+
+_Code review 2026-07-24 (Blind Hunter + Edge Case Hunter + Acceptance Auditor). Acceptance Auditor: all 8 ACs SATISFIED. 0 decision-needed, 0 patch, 4 deferred, 5 dismissed as noise. No High confirmed; the two Medium findings were dismissed (B1: 0.5px gate is the mandated sibling pattern and moot at 20px/tick) or downgraded/deferred (B2: fan-out is the shipped delta model)._
+
+- [x] [Review][Defer] Per-projectile per-tick broadcast fan-out — no coalescing [apps/simulation-server/src/rooms/GameRoom.ts:1413] — deferred, architectural: matches the shipped `player:moved`/`enemy:moved`/`boss:moved` delta model; codebase-wide delta batching is out of this story's scope. Perf note in AC8 already accounts for it.
+- [x] [Review][Defer] No non-finite (NaN/Infinity) guard on physics read-back [apps/simulation-server/src/rooms/GameRoom.ts:1417] — deferred, pattern-wide: the sibling `:moved` loops share the identical gap; a NaN position would fail the `>0.5` gate, freeze the host dot and leak the body via `isProjectileExpired`. Speculative for these kinematic projectiles; fixing only here would break the "mirror exactly" mandate.
+- [x] [Review][Defer] Phase-3b move-gate/broadcast has no direct sim unit test [apps/simulation-server/src/rooms/GameRoom.ts:1419] — deferred, low-value: the gate is a byte-for-byte mirror of the e2e-exercised `player:moved` gate; AC7 scoped coverage to the contract test (which is green).
+- [x] [Review][Defer] Contract-change hook's Protocol Architect review is self-attested [_bmad-output/implementation-artifacts/7-10-projectile-position-streaming.md] — deferred, merge-gate: AC8 only requires the review be *recorded* (it is); an independent human Protocol Architect sign-off is still owed before merge per CLAUDE.md.
+
+_Dismissed (noise/false-positive/by-design): B1 gate-staleness (mandated sibling pattern, moot at 20px/tick); B5 missing `DeltaEventMsg` import (false positive — typecheck clean, same file's `player:moved` broadcast already imports it); B6 two-pass `some`+`map` in applyDelta (by-design — preserves the referential-equality short-circuit the test asserts, mirrors the whole reducer); E3 same-tick move+expiry one-frame flicker (cosmetic, harmless, entity-agnostic); A1 `sprint-status.yaml` in Blocked paths (workflow-mandated status bookkeeping, not a code-scope violation)._
 
 ## Dev Notes
 
@@ -324,14 +335,63 @@ deltas forwarded to React; `player:moved`/`enemy:moved` are correctly absent fro
 
 ### Agent Model Used
 
+claude-opus-4-8 (gds-dev-story workflow)
+
 ### Debug Log References
+
+- `npm run typecheck` — clean across all 10 tsconfigs (the exhaustive-`never` guard in `apply-delta.ts` compiled, proving AC2's `case 'projectile:moved'` exists).
+- `npx vitest run tests/contract/net-protocol.test.ts` — PASS (98), including the three new Story 7.10 assertions.
+- `npm test` (full suite) — 525 passed, 3 skipped, 3 failed. All 3 failures verified **pre-existing / known-flaky**, none touch this story's paths:
+  - `apps/host-client/src/vfx/ability-vfx.test.ts` "centres Stone Wall… on the caster (AC2)" — reproduced **identically with this story's changes `git stash`ed** (baseline `e007dfb` state), so it is a pre-existing epic-7 host-VFX failure, not a 7.10 regression. Story 7.10 modifies no `apps/host-client/**` file.
+  - `tests/e2e/ability-dispatch.test.ts` × 2 (Ancestor's Voice heal assertion; Storm Eye zone-tick timeout, preceded by a "simulation-server did not start within 60s" boot timeout) — the documented WSL2 e2e flake (boot timeout + heal assertion) called out in Dev Notes → Testing Standards. This story touches no e2e path.
 
 ### Completion Notes List
 
+- **AC1 — done.** `ProjectileMovedDelta = { type: 'projectile:moved'; projectileId: string; x: number; y: number }` added to `server-to-host.ts` beside `ProjectileHitDelta`, appended to the `DeltaEventMsg` union, and re-exported from the `index.ts:5` barrel alongside `ProjectileHitDelta`/`ProjectileExpiredDelta`. Field set mirrors `ProjectileHitDelta` minus removal semantics and matches the `player:moved`/`enemy:moved`/`boss:moved` movement shape — no new fields.
+- **AC2 — done.** `case 'projectile:moved'` in `apply-delta.ts` structurally mirrors `case 'player:moved'`: `some(...)` presence guard returns `state` unchanged when the projectile is absent (safe no-op when a move races ahead of the spawn snapshot), else a `map` replacing `x`/`y` on the matched projectile only. It is the sole `applyDelta` writer of projectile position (a real writer, not a 7.7a-style no-op).
+- **AC3 — done.** GameRoom phase 3b now mirrors the phase-3 `player:moved` read-back exactly: compute `newX/newY` from `toPixels(body.getPosition())`, and only when `Math.abs(newX - projectile.x) > 0.5 || Math.abs(newY - projectile.y) > 0.5` both write `projectile.x/y` and `this.broadcast(EventNames.DELTA, { type: 'projectile:moved', … } satisfies DeltaEventMsg)`.
+- **AC4 — done (Task 3.2 confirmation).** Nothing else changed. The spawn path + force-snapshot (`:2094`), the hit/expired removal paths, the periodic 5 s snapshot, physics stepping, and cooldowns are all untouched — the edit is confined to the phase-3b loop body. No `projectile:spawned` delta introduced. The spawn snapshot still seeds the projectile into every mirror, so the first `projectile:moved` always lands on an existing projectile (and if not, AC2's presence guard makes it a no-op).
+- **AC5 — verified (compatibility checklist below).** Purely additive movement delta; backward-compatible by construction.
+- **AC6 — done (Task 5.4).** No `apps/host-client/**` file modified — confirmed by the File List and by the `git stash` reproduction of the unrelated host VFX failure. The host mirror is delta-driven (`host-session.ts:74` calls `applyDelta` unconditionally) and `renderFrame` reads `state.projectiles` every frame, so the dot follows the new deltas for free. `projectile:moved` is mirror state, **not** a transient visual, so it was deliberately **not** added to the `host-session.ts` transient-delta whitelist (correct — `player:moved`/`enemy:moved` are absent from it too).
+- **AC7 — done.** `tests/contract/net-protocol.test.ts` gains: (a) `ProjectileMovedDelta` serialize→deserialize round-trip; (b) `applyDelta` updates `x/y` of the matched projectile only (sibling `proj-2` untouched, original state not mutated); (c) `applyDelta` returns the **same `state` reference** for an absent projectile id (`toBe(state)`).
+
+#### AC8 — Hook discharge
+
+**Contract-change hook (TRIGGERED — new `DeltaEventMsg` member in `packages/net-protocol`):**
+- Protocol Architect review — **required** (flagged below; cross-boundary story, mirrors Story 7.7a precedent).
+- Compatibility checklist (AC5):
+  - Additive-only: one new union member, no existing member altered. ✅
+  - Older client receiving `projectile:moved`: `applyDelta` `default:` returns `state` unchanged, no throw (`apply-delta.ts` exhaustive guard). ✅
+  - Host transient whitelist is a positive OR-chain (`host-session.ts:46-71`) — an unrecognised/movement delta is simply not forwarded to `onTransientDelta`; correct, since `projectile:moved` is mirror state, not a transient visual. ✅
+  - Decode path wrapped in `try { … } catch {}`. ✅
+  - Only compile-time consumers that could break are exhaustive switches — verified to be exactly one (`apply-delta.ts`), fixed by AC2; every `satisfies DeltaEventMsg` site widens with the new member and cannot break. ✅
+  - Typecheck clean across all 10 tsconfigs. ✅
+- Spec note: additive movement delta mirroring `player:moved`/`enemy:moved`/`boss:moved`; no session-lifecycle / reconnect / room-state / join-flow / prediction surface touched.
+- ≥1 contract test: AC7 (round-trip + two `applyDelta` assertions). ✅
+
+**Simulation-safety hook (TRIGGERED — `apps/simulation-server/**` change):**
+- Typecheck — clean. ✅
+- Unit tests — full suite run; contract suite green (98). ✅
+- Deterministic-tick sanity: the change adds a `broadcast` side effect only; `projectile.x/y` was already written every tick, so no new `GameState` field, no read/write ordering change, no new allocation in the hot path beyond the same per-move object literal `player:moved` already emits. Determinism of the sim state is unaffected (broadcast does not feed back into state). ✅
+- Replay test: **none exists** in the repo for this path (no projectile replay harness) — recorded as "none exists" per Task 5.3.
+- Per-tick perf note: a projectile lives ≤ `800/600 ≈ 1.3 s` (≈ ≤40 ticks) and moves `PROJECTILE_SPEED_PX_S / TICK_RATE_HZ = 600/30 = 20 px` per tick — always over the `0.5 px` gate, so it broadcasts once per tick until hit/expired. One 4-field object literal + one `broadcast` per in-flight projectile per tick, identical in cost to the existing `player:moved` path. Negligible against the 33 ms budget for the handful of concurrent projectiles a party produces. ✅
+
+**Client-UX hook — NOT triggered** (no host/mobile UI file changed; AC6). **Telemetry hook — N/A** (no new user flow). **Ownership hook — cross-boundary, deliberate**, per the Story 7.7a precedent (see Dev Notes → Ownership check): net-protocol + simulation-server + tests bundled because a new wire delta is inherently a Protocol+Simulation collaboration that is not sensibly splittable.
+
+**Confidence: 96%** — mechanical mirror of a proven, well-covered pattern (`player:moved`); typecheck + contract tests green; the only test failures are reproduced pre-existing/known-flaky and outside this story's paths. The −4% is the one thing tests cannot prove headlessly: the end-to-end visual (a smoothly flying dot) still wants a one-time eyeball during Story 7.4's outstanding manual pass.
+
 ### File List
+
+- `packages/net-protocol/src/messages/server-to-host.ts` (modified — `ProjectileMovedDelta` type + union member)
+- `packages/net-protocol/src/index.ts` (modified — barrel re-export)
+- `packages/net-protocol/src/apply-delta.ts` (modified — `case 'projectile:moved'`)
+- `apps/simulation-server/src/rooms/GameRoom.ts` (modified — phase-3b broadcast + write-gate)
+- `tests/contract/net-protocol.test.ts` (modified — round-trip + 2 `applyDelta` assertions)
+- `_bmad-output/implementation-artifacts/7-10-projectile-position-streaming.md` (this file — Dev Agent Record)
 
 ## Change Log
 
 | Date | Change |
 |---|---|
+| 2026-07-24 | Story 7.10 implemented — added `ProjectileMovedDelta` to net-protocol (type + `DeltaEventMsg` union + barrel re-export), the `applyDelta` `case 'projectile:moved'` writer, the per-tick `>0.5 px`-gated broadcast in GameRoom phase 3b, and contract tests (round-trip + present/absent `applyDelta` assertions). Typecheck clean; contract suite green; 3 remaining full-suite failures verified pre-existing/known-flaky and outside this story's paths (host VFX test reproduced with changes stashed; WSL2 e2e flake). Contract-change + Simulation-safety hooks discharged; Protocol Architect review flagged. No host-client change (AC6). Confidence 96%. |
 | 2026-07-23 | Story 7.10 created — stream in-flight projectile positions via a new `projectile:moved` delta (contract + `applyDelta` writer + per-tick sim broadcast), fixing the frozen/teleporting projectile dot found in the Story 7.4 playtest. Mirrors the `player:moved` machinery and the Story 7.7a protocol+sim new-delta precedent; no host-client change. Contract-change + Simulation-safety hooks triggered. |

@@ -244,6 +244,13 @@ export function applyDelta(state: GameState, evt: DeltaEventMsg): GameState {
       }
       return state;
     }
+    case 'projectile:moved': {
+      if (!state.projectiles.some(p => p.id === evt.projectileId)) return state;
+      const projectiles = state.projectiles.map(p =>
+        p.id === evt.projectileId ? { ...p, x: evt.x, y: evt.y } : p
+      );
+      return { ...state, projectiles };
+    }
     case 'projectile:hit': {
       return { ...state, projectiles: state.projectiles.filter(p => p.id !== evt.projectileId) };
     }

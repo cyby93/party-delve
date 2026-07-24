@@ -1409,13 +1409,26 @@ export class GameRoom extends Room {
       }
     }
 
-    // ── Planck phase 3b: read back projectile positions ──────────────────────────
+    // ── Planck phase 3b: read back projectile positions, broadcast projectile:moved ─
     for (const projectile of this.gameState.projectiles) {
       const body = this.projectileBodies.get(projectile.id);
       if (!body) continue;
+
       const pos = body.getPosition();
-      projectile.x = toPixels(pos.x);
-      projectile.y = toPixels(pos.y);
+      const newX = toPixels(pos.x);
+      const newY = toPixels(pos.y);
+
+      if (Math.abs(newX - projectile.x) > 0.5 || Math.abs(newY - projectile.y) > 0.5) {
+        projectile.x = newX;
+        projectile.y = newY;
+        const delta = {
+          type: 'projectile:moved' as const,
+          projectileId: projectile.id,
+          x: projectile.x,
+          y: projectile.y,
+        } satisfies DeltaEventMsg;
+        this.broadcast(EventNames.DELTA, delta);
+      }
     }
 
     // ── Planck phase 4: process POI contact events from this tick's world.step() ─

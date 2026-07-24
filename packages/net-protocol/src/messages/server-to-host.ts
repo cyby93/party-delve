@@ -233,6 +233,13 @@ export type BossDefeatedDelta = {
   reward: RunReward;
 };
 
+export type ProjectileMovedDelta = {
+  type: 'projectile:moved';
+  projectileId: string;
+  x: number;
+  y: number;
+};
+
 export type ProjectileHitDelta = {
   type: 'projectile:hit';
   projectileId: string;
@@ -321,6 +328,7 @@ export type DeltaEventMsg =
   | BossAddSpawnedDelta
   | StatusAppliedDelta
   | StatusExpiredDelta
+  | ProjectileMovedDelta
   | ProjectileHitDelta
   | ProjectileExpiredDelta
   | ZoneTickDelta

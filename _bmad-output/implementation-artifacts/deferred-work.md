@@ -4,6 +4,22 @@ Items surfaced during reviews that are real findings but pre-exist the triggerin
 
 ---
 
+## Deferred from: code review of 7-10-projectile-position-streaming (2026-07-24)
+
+**D-7.10-A — Per-projectile per-tick `projectile:moved` broadcast fan-out (no coalescing)** [`apps/simulation-server/src/rooms/GameRoom.ts:1413`]
+Phase 3b emits one `broadcast(DELTA, projectile:moved)` per moving projectile per tick. This matches the shipped `player:moved`/`enemy:moved`/`boss:moved` delta model exactly — the codebase has no delta batching/coalescing anywhere — so it is the established architecture, not a regression introduced here. Deferred as an architecture-wide concern; revisit only if a bullet-heavy scenario shows a measured per-tick network/CPU problem (the AC8 perf note estimates a handful of concurrent projectiles at ~4 fields each).
+
+**D-7.10-B — No non-finite (NaN/Infinity) guard on the physics read-back** [`apps/simulation-server/src/rooms/GameRoom.ts:1417`]
+If `body.getPosition()` ever returned NaN/Infinity, `Math.abs(newX - projectile.x) > 0.5` is `false`, so the coord is never refreshed and never broadcast — the host dot freezes and, because `isProjectileExpired` reads the frozen finite coord, the entry+body can leak for the run. The sibling `:moved` loops (player/enemy/boss) share the identical missing guard, and these projectiles are simple kinematic bodies unlikely to produce non-finite positions. Deferred pattern-wide: a fix belongs at all four `:moved` sites together, not only here (the story mandated mirroring `player:moved` exactly).
+
+**D-7.10-C — Phase-3b move-gate/broadcast has no direct sim unit test** [`apps/simulation-server/src/rooms/GameRoom.ts:1419`]
+The new contract tests cover `applyDelta` + round-trip (AC7), but the sim-side `>0.5px` gate and conditional write are not directly unit-tested. The gate is a byte-for-byte mirror of the `player:moved` gate already exercised by e2e, and AC7 deliberately scoped coverage to the contract suite. Deferred as a low-value coverage addition.
+
+**D-7.10-D — Contract-change hook's Protocol Architect review is self-attested** [`_bmad-output/implementation-artifacts/7-10-projectile-position-streaming.md`]
+AC8 requires the Protocol Architect review be *recorded* (it is, in the Dev Agent Record), but the same agent authored and reviewed the change. An independent human Protocol Architect sign-off on the new `DeltaEventMsg` member is still owed before merge per the CLAUDE.md Contract-change hook / Merge Gate. Deferred to the human merge step.
+
+---
+
 ## Deferred from: code review of 6-10-epic-6-post-69-deferred-hardening (2026-07-21)
 
 **D-6.10-A — `selectBondPair` assumes unique `PlayerState.id` values across the roster** [`packages/game-rules/src/systems/bonds.ts:43-62`]
