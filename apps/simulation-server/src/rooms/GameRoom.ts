@@ -518,11 +518,14 @@ export class GameRoom extends Room {
         for (let i = 0; i < playerCooldownsOnReconnect.length; i++) {
           const expiresAt = playerCooldownsOnReconnect[i];
           if (expiresAt !== undefined && expiresAt > nowReconnect) {
-            reconnectedClient.send(EventNames.COOLDOWN_UPDATE, {
-              type: 'cooldown:update',
-              abilityIndex: i,
-              remainingMs: expiresAt - nowReconnect,
-            } satisfies CooldownUpdateMsg);
+            // Reconstruct the original start epoch from the full cooldown so the
+            // client's arc sweep is correct on reconnect (the old code sent only
+            // the *remaining* time, which made the arc animate as if the whole
+            // cooldown were that short — the RELEASE "overlay reset" symptom).
+            const fullCooldownMs = player.class !== null
+              ? ABILITY_COOLDOWNS_MS[player.class][i as 0 | 1 | 2 | 3]
+              : expiresAt - nowReconnect;
+            this.sendCooldownUpdate(reconnectedClient, i, expiresAt - fullCooldownMs, expiresAt);
           }
         }
       }
@@ -2043,11 +2046,9 @@ export class GameRoom extends Room {
 
       const targetClient = this.clients.find(c => c.sessionId === clientId);
       if (targetClient) {
-        targetClient.send(EventNames.COOLDOWN_UPDATE, {
-          type: 'cooldown:update',
-          abilityIndex,
-          remainingMs: cooldownMs,
-        } satisfies CooldownUpdateMsg);
+        // expiresAt === nowAbility + cooldownMs (dispatchAbility), so nowAbility is
+        // the true cooldown start — send both epochs, not a duration.
+        this.sendCooldownUpdate(targetClient, abilityIndex, nowAbility, expiresAt);
       }
 
       // Self-cost (Blood Spike, Story 3.19): generic for any ability with a nonzero
@@ -2501,11 +2502,8 @@ export class GameRoom extends Room {
 
         const targetClient = this.clients.find(c => c.sessionId === clientId);
         if (targetClient) {
-          targetClient.send(EventNames.COOLDOWN_UPDATE, {
-            type: 'cooldown:update',
-            abilityIndex: 3,
-            remainingMs: SPIRIT_ABILITY_COOLDOWN_MS,
-          } satisfies CooldownUpdateMsg);
+          // spiritCooldownMap was just set to nowSpirit + SPIRIT_ABILITY_COOLDOWN_MS.
+          this.sendCooldownUpdate(targetClient, 3, nowSpirit, nowSpirit + SPIRIT_ABILITY_COOLDOWN_MS);
         }
 
         logger.debug({ roomId: this.roomId, clientId, class: player.class }, 'spirit ability fired');
@@ -2855,11 +2853,7 @@ export class GameRoom extends Room {
           if (player?.isSpirit && i < 3) continue;
           const targetClient = this.clients.find(c => c.sessionId === clientId);
           if (targetClient) {
-            targetClient.send(EventNames.COOLDOWN_UPDATE, {
-              type: 'cooldown:update',
-              abilityIndex: i,
-              remainingMs: 0,
-            } satisfies CooldownUpdateMsg);
+            this.sendCooldownUpdate(targetClient, i, 0, 0); // cleared
           }
         }
       }
@@ -2872,11 +2866,7 @@ export class GameRoom extends Room {
         this.spiritCooldownMap.set(clientId, 0);
         const targetClient = this.clients.find(c => c.sessionId === clientId);
         if (targetClient) {
-          targetClient.send(EventNames.COOLDOWN_UPDATE, {
-            type: 'cooldown:update',
-            abilityIndex: 3,
-            remainingMs: 0,
-          } satisfies CooldownUpdateMsg);
+          this.sendCooldownUpdate(targetClient, 3, 0, 0); // cleared
         }
       }
     }
@@ -2920,7 +2910,26 @@ export class GameRoom extends Room {
     }
   }
 
-  // Send COOLDOWN_UPDATE(remainingMs=0) for class slots 0-2 that expired while the player
+  // Emit a cooldown:update carrying server epochs (cooldown-sync fix 2026-07-25,
+  // ADR-0004) rather than a duration. The client corrects for host↔phone wall-clock
+  // skew via serverNowMs. Pass startedAtMs===expiresAtMs (e.g. both 0) to signal
+  // "cleared / ready now" — the client then clears the slot.
+  private sendCooldownUpdate(
+    target: { send(type: string, message: CooldownUpdateMsg): void },
+    abilityIndex: number,
+    startedAtMs: number,
+    expiresAtMs: number,
+  ): void {
+    target.send(EventNames.COOLDOWN_UPDATE, {
+      type: 'cooldown:update',
+      abilityIndex,
+      startedAtMs,
+      expiresAtMs,
+      serverNowMs: Date.now(),
+    } satisfies CooldownUpdateMsg);
+  }
+
+  // Send a "cleared" cooldown:update for class slots 0-2 that expired while the player
   // was in spirit form (server cleared cooldowns[i] to 0 but skipped the message per AC7).
   private flushExpiredClassCooldowns(playerId: string): void {
     const cooldowns = this.cooldownMap.get(playerId);
@@ -2929,11 +2938,7 @@ export class GameRoom extends Room {
     if (!targetClient) return;
     for (let i = 0; i < 3; i++) {
       if (cooldowns[i] === 0) {
-        targetClient.send(EventNames.COOLDOWN_UPDATE, {
-          type: 'cooldown:update',
-          abilityIndex: i,
-          remainingMs: 0,
-        } satisfies CooldownUpdateMsg);
+        this.sendCooldownUpdate(targetClient, i, 0, 0); // cleared
       }
     }
   }
@@ -3030,14 +3035,11 @@ export class GameRoom extends Room {
       const cooldowns = this.cooldownMap.get(casterId);
       if (cooldowns) {
         const cooldownMs = ABILITY_COOLDOWNS_MS[caster.class][abilityIndex as 0 | 1 | 2 | 3];
-        cooldowns[abilityIndex] = Date.now() + cooldownMs;
+        const nowCd = Date.now();
+        cooldowns[abilityIndex] = nowCd + cooldownMs;
         const casterClient = this.clients.find(c => c.sessionId === casterId);
         if (casterClient) {
-          casterClient.send(EventNames.COOLDOWN_UPDATE, {
-            type: 'cooldown:update',
-            abilityIndex,
-            remainingMs: cooldownMs,
-          } satisfies CooldownUpdateMsg);
+          this.sendCooldownUpdate(casterClient, abilityIndex, nowCd, nowCd + cooldownMs);
         }
       }
     }
