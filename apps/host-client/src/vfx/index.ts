@@ -70,8 +70,26 @@ export {
   SOULDRINKER_PALETTE,
   PROJECTILE_APPEARANCE,
   ZONE_APPEARANCE,
+  STORMCALLER_PALETTE,
+  STORM_EYE_ZONE_VISUAL,
+  isStormEyeZone,
+  resolveZoneVisual,
 } from './ability-vfx-config';
-export type { ProjectileAppearance, ZoneAppearance } from './ability-vfx-config';
+export type { ProjectileAppearance, ZoneAppearance, ZoneVisual } from './ability-vfx-config';
+export {
+  STORM_CORE,
+  STORM_BOLT,
+  STORM_CHARGE,
+  STORM_SLATE,
+  TEMPEST_HURL_FLIGHT_MS,
+  resolveStormcallerCast,
+  stormEyeTickCadence,
+  spawnStormcallerCast,
+  advanceHurlFlights,
+  spawnStormEyePulse,
+  spawnStormEyeStrike,
+} from './stormcaller-vfx';
+export type { StormcallerCastPlan, StormcallerVfxSpec, StormcallerFlightPlan, HurlFlight } from './stormcaller-vfx';
 export type {
   ParticleBurstParams,
   TrailParams,

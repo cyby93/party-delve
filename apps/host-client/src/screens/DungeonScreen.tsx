@@ -40,6 +40,15 @@ import {
   planHpGainCue,
   classifyHpChanges,
   DARK_PACT_COST_CUE_WINDOW_MS,
+  resolveStormcallerCast,
+  spawnStormcallerCast,
+  advanceHurlFlights,
+  spawnStormEyePulse,
+  spawnStormEyeStrike,
+  resolveZoneVisual,
+  isStormEyeZone,
+  stormEyeTickCadence,
+  type HurlFlight,
 } from '../vfx';
 
 interface DungeonScreenProps {
@@ -147,6 +156,12 @@ interface VfxContext {
   // projectile:hit, so this cache is the only thing that survives to identify a
   // Souldrinker Blood Spike / Void Pulse impact in the delta effect.
   projectileMeta: Map<string, { class: PlayerClass; abilityIndex: number; ownerId: string }>;
+  // Story 7.5: zoneId -> its last observed ticksRemaining + live pulse handle.
+  // effectId -1 = "seen but not yet pulsed" (first sighting). The remove-before-add
+  // on each tick boundary is AC4's one-live-pulse-per-zone invariant.
+  stormEyePulse: Map<string, { ticksRemaining: number; effectId: number }>;
+  // Story 7.5: in-flight Tempest Hurl records, advanced per ticker frame.
+  hurlFlights: HurlFlight[];
 }
 
 function renderFrame(
@@ -535,6 +550,49 @@ function renderFrame(
     for (const id of [...vfxRefs.hpMemory.keys()]) {
       if (!liveEntityIds.has(id)) vfxRefs.hpMemory.delete(id);
     }
+
+    // ── Stormcaller: Storm Eye zone tick pulse (Story 7.5, AC3/AC4) ──────────────
+    // Snapshot-derived (from ZoneState.expiresAtMs + tickIntervalMs), not delta-
+    // driven, so it is correct after reconnect/late-join and immune to the single-
+    // value latestTransientDelta batching. Each decrement of the backwards-counted
+    // ticksRemaining is a real tick boundary; on each, remove-before-add keeps at
+    // most one live pulse per zone id (the concrete D-7.1-D answer for this story).
+    const liveStormEyeIds = new Set<string>();
+    for (const zone of state.zones) {
+      if (!isStormEyeZone(zone, state.players)) continue;
+      const cadence = stormEyeTickCadence(now, zone.expiresAtMs, zone.tickIntervalMs);
+      if (!cadence) continue;
+      liveStormEyeIds.add(zone.id);
+      const prev = vfxRefs.stormEyePulse.get(zone.id);
+      if (!prev) {
+        // First sighting: record without pulsing (a zone seen mid-life on reconnect
+        // must not fire a spurious pulse the instant it appears).
+        vfxRefs.stormEyePulse.set(zone.id, { ticksRemaining: cadence.ticksRemaining, effectId: -1 });
+        continue;
+      }
+      if (cadence.ticksRemaining < prev.ticksRemaining) {
+        if (prev.effectId >= 0) vfxEngine.remove(prev.effectId);
+        prev.effectId = spawnStormEyePulse(vfxEngine, zone, now);
+      }
+      // Re-baseline every frame (not only on a decrease): a backward Date.now()
+      // step (host clock / NTP correction — Date.now() is not monotonic) can push
+      // the observed ticksRemaining *up*; if the baseline only tracked decreases it
+      // would latch stale-high and suppress pulses for several ticks. The pulse
+      // still fires only on a genuine decrease above; the baseline just always
+      // follows the latest observation (code review 2026-07-24).
+      prev.ticksRemaining = cadence.ticksRemaining;
+    }
+    for (const [id, entry] of vfxRefs.stormEyePulse) {
+      if (!liveStormEyeIds.has(id)) {
+        if (entry.effectId >= 0) vfxEngine.remove(entry.effectId);
+        vfxRefs.stormEyePulse.delete(id);
+      }
+    }
+
+    // ── Stormcaller: Tempest Hurl thrown-flight flourish (Story 7.5) ─────────────
+    // Ticker-driven, so it uses the ticker's own `now` (the trail's moveTo clock
+    // must match VfxEngine.update's). Registered from the ability:fired handler.
+    advanceHurlFlights(vfxEngine, vfxRefs.hurlFlights, now);
   }
 
   // ── Projectiles ───────────────────────────────────────────────────────────────
@@ -584,7 +642,14 @@ function renderFrame(
     }
     g.position.set(zone.x, zone.y);
     g.clear();
-    g.circle(0, 0, zone.radius).fill({ color: 0x9b59b6, alpha: 0.25 });
+    // Story 7.5 → 7.8 seam: per-ability zone body via resolveZoneVisual. The
+    // default branch reproduces today's exact 0x9b59b6 @ 0.25 for every non-Storm-
+    // Eye zone; the pulse (above) is a separate VfxEngine effect layered on top.
+    const zoneVisual = resolveZoneVisual(zone, state.players);
+    g.circle(0, 0, zone.radius).fill({ color: zoneVisual.fillColor, alpha: zoneVisual.fillAlpha });
+    if (zoneVisual.rimColor !== undefined) {
+      g.circle(0, 0, zone.radius).stroke({ color: zoneVisual.rimColor, width: zoneVisual.rimWidth ?? 2, alpha: zoneVisual.rimAlpha ?? 0.5 });
+    }
   }
 
   // ── Essence flashes ───────────────────────────────────────────────────────────
@@ -648,6 +713,9 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
   const buffedPlayersRef = useRef<Set<string>>(new Set());             // playerIds currently carrying damageBuff (onset diff)
   const prevPlayerHpRef = useRef<Map<string, number>>(new Map());      // playerId -> last observed hp (Dark Pact cost/gain classifier)
   const lastDarkPactCastAtRef = useRef(0);                             // Date.now() of the last Souldrinker Dark Pact ability:fired
+  // Story 7.5 Stormcaller runtime state (not Graphics).
+  const stormEyePulseRef = useRef<Map<string, { ticksRemaining: number; effectId: number }>>(new Map());
+  const hurlFlightsRef = useRef<HurlFlight[]>([]);
   const damageNumberIdCounterRef = useRef(0);
   const latestGameStateRef = useRef<GameState | null>(null);
   latestGameStateRef.current = gameState;
@@ -712,6 +780,8 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
             soulMendTerminal: soulMendTerminalRef.current,
             shieldPulseAt: shieldPulseAtRef.current,
             projectileMeta: projectileMetaRef.current,
+            stormEyePulse: stormEyePulseRef.current,
+            hurlFlights: hurlFlightsRef.current,
           },
         );
 
@@ -830,6 +900,8 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
       buffedPlayersRef.current.clear();
       prevPlayerHpRef.current.clear();
       lastDarkPactCastAtRef.current = 0;
+      stormEyePulseRef.current.clear();
+      hurlFlightsRef.current = [];
     };
   }, []);
 
@@ -896,6 +968,20 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
         // (the sim skips it), so arming the window then would mislabel any coincident
         // HP change as Dark Pact's drain (code review 2026-07-24).
         if (d.abilityIndex === 2 && souldrinkerSpecs.length > 0) lastDarkPactCastAtRef.current = triggeredAt;
+      } else if (caster && engine && caster.class === PlayerClass.STORMCALLER) {
+        // Story 7.5: Stormcaller owned cast → suppress-and-replace (AC1). Never set
+        // entry.flashUntil for any of the four abilities. resolveStormcallerCast
+        // returns null for a zero-aim directional cast (Lightning Arc / Tempest Hurl
+        // / Storm Eye) — the sim skipped that hit (GameRoom.ts:2203), so rendering
+        // nothing (no VFX, no flash) is the honest result (SILENT rule, matching
+        // 7.2's Avalanche / 7.4). Thunder Clap (idx 2, self-centred) always plans.
+        const triggeredAt = Date.now();
+        const plan = resolveStormcallerCast(d.abilityIndex, caster.x, caster.y, d.directionX, d.directionY);
+        if (plan) {
+          // Delta-triggered → stamp startedAt at trigger (BACKGROUNDED-TICKER rule).
+          const flight = spawnStormcallerCast(engine, plan, triggeredAt);
+          if (flight) hurlFlightsRef.current.push(flight);
+        }
       } else {
       const cfg = caster ? getAbilityVfxConfig(caster.class, d.abilityIndex) : null;
       if (!cfg || !caster || !engine) {
@@ -1007,6 +1093,21 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
           spawnSouldrinkerVfx(engine, planVoidPulseImpact({ hitX, hitY }), triggeredAt);
         }
       }
+    } else if (latestTransientDelta.type === 'zone:strike') {
+      // Story 7.5 Task 6: Storm Eye's bonus-strike accent (decorative, NOT the AC3
+      // tick path — that is the snapshot pulse in renderFrame). The delta carries no
+      // x/y, so resolve the target from the snapshot: an enemy first, then the boss
+      // (the sim can strike the boss, GameRoom.ts:1631-1641). Target-not-found →
+      // silently skip. Delta-triggered → stamp Date.now() at trigger (clock contract).
+      const engine = vfxEngineRef.current;
+      const { targetId } = latestTransientDelta;
+      const enemy = gameState?.enemies.find(e => e.id === targetId);
+      const target = enemy
+        ? { x: enemy.x, y: enemy.y }
+        : gameState?.boss?.id === targetId
+          ? { x: gameState.boss.position.x, y: gameState.boss.position.y }
+          : null;
+      if (engine && target) spawnStormEyeStrike(engine, target.x, target.y, Date.now());
     } else if (latestTransientDelta.type === 'cast:cancelled') {
       // Story 7.3: record the terminal so renderFrame picks the fizzle effect.
       // Often collapsed by batching — renderFrame's isDown inference is the backstop.

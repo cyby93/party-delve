@@ -1333,3 +1333,8 @@ The projectile identity cache (`projectileMetaRef`) is populated only in `render
 
 **D-7.4-C — Buffed-player reconnect re-triggers the Dark Pact buff-onset pulse** [`apps/host-client/src/screens/DungeonScreen.tsx:1082`]
 `buffedPlayersRef` is rebuilt from currently-present players each snapshot, so a player who disconnects while carrying `damageBuff` drops from the set; on reconnect (statusEffects reconciled per snapshot) they read as newly-buffed and re-emit one `planDamageBuffOnset` pulse. Found by the Edge Case Hunter. Harmless single cosmetic double-pulse on an already-rare reconnect-mid-buff window; deferred rather than adding roster-diff pruning disproportionate to the effect. Revisit only if the manual pass flags it.
+
+## Deferred from: code review of 7-5-stormcaller-ability-vfx (2026-07-24)
+
+**D-7.5-A — `isStormEyeZone` matches any Stormcaller `'damage'` zone, not specifically Storm Eye** [`apps/host-client/src/vfx/ability-vfx-config.ts`]
+Zone identity is derived from `effectType === 'damage'` AND owner class `STORMCALLER`, with no per-ability/zone-source discriminator. If a future Stormcaller mechanic ever emits a second concurrent `'damage'` zone, it too would get the Storm Eye slate body, rim and 2/s pulse. Found by the Blind Hunter. Not actionable now: full disambiguation requires a `ZoneState` schema field, which is a blocked path (`packages/shared-types/**`, Protocol Architect) and forbidden by Epic 7's non-goals (no protocol/schema changes). Today `'damage'` is only ever Storm Eye and `'pull'` only Void Pulse, so the guard is correct for the shipped game; the code comment is the disambiguator of record. Revisit if/when a class gains a second damage-zone ability.

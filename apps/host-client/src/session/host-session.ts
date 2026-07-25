@@ -73,7 +73,14 @@ export async function createHostSession(
         delta.type === 'boss:phaseChanged' ||
         delta.type === 'boss:damaged' ||
         delta.type === 'boss:stomped' ||
-        delta.type === 'boss:defeated'
+        delta.type === 'boss:defeated' ||
+        // Story 7.5: forward zone:strike so the host can draw Storm Eye's bonus-
+        // strike accent. Host-local delivery filtering only — applyDelta runs
+        // unconditionally below and already handles it (apply-delta.ts:258), so
+        // mirror state is unchanged; this only decides whether it reaches
+        // React/DungeonScreen. zone:tick is deliberately NOT forwarded (2/s per
+        // zone would displace other deltas in the single-value latestTransientDelta).
+        delta.type === 'zone:strike'
       )) {
         onTransientDelta(delta);
       }
