@@ -693,7 +693,20 @@ function SkillCell({ index, ability, cooldownState: cd, isInteractive, canHoldTh
       if (ability.inputType === 'AUTO' || ability.inputType === 'AIM_CAST') {
         autoIntervalRef.current = setInterval(() => {
           const t = activeTouchRef.current;
-          if (t) onAbilityFire(index, t.lastDirX, t.lastDirY, true);
+          if (!t) return;
+          // Cooldown-sync fix (2026-07-25): only emit when the server would actually
+          // accept the cast. Previously this fired ~30/s unconditionally while held —
+          // the server rejected all but one per cooldown, flooding the socket (the
+          // "fires 3-4× then stalls" symptom). Now:
+          //  1. Skip while on cooldown — resumes the instant the (server-accurate,
+          //     ADR-0004) cooldown clears.
+          //  2. Skip zero-aim directional AUTO casts. The sim now rejects these
+          //     without setting a cooldown, so sending them would re-flood (never
+          //     on cooldown → never gated). AIM_CAST keeps firing (it channels and
+          //     carries no cooldown while held).
+          if (isOnCooldownRef.current) return;
+          if (ability.inputType === 'AUTO' && t.lastDirX === 0 && t.lastDirY === 0) return;
+          onAbilityFire(index, t.lastDirX, t.lastDirY, true);
         }, 33);
       }
     };
