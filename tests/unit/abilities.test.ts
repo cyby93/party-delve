@@ -99,6 +99,26 @@ describe('dispatchAbility', () => {
     }
   });
 
+  it('rejects a zero-aim directional cast before setting a cooldown (cooldown-sync fix)', () => {
+    // Stonehide slot 0 (RELEASE) and slot 3 (AUTO) are directional — a (0,0) aim is
+    // skipped downstream, so it must not consume a cooldown or emit an ability event.
+    for (const abilityIndex of [0, 3]) {
+      const result = dispatchAbility({
+        ...baseCtx, playerClass: PlayerClass.STONEHIDE, abilityIndex, directionX: 0, directionY: 0,
+      });
+      expect(result.ok, `slot ${abilityIndex}`).toBe(false);
+      if (!result.ok) expect(result.error.code).toBe('ZERO_AIM');
+    }
+  });
+
+  it('still fires a zero-aim TAP cast (self-centred, direction ignored)', () => {
+    // Stonehide slot 1 = Tremor Stomp (TAP): the deadzone/zero-aim gate must not apply.
+    const result = dispatchAbility({
+      ...baseCtx, playerClass: PlayerClass.STONEHIDE, abilityIndex: 1, directionX: 0, directionY: 0,
+    });
+    expect(result.ok).toBe(true);
+  });
+
   it('all 16 abilities have the corrected inputType', () => {
     for (const cls of Object.values(PlayerClass)) {
       CLASS_DEFINITIONS[cls].abilities.forEach((ability, i) => {
