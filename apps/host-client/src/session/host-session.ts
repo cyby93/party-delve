@@ -73,6 +73,7 @@ export async function createHostSession(
         delta.type === 'boss:phaseChanged' ||
         delta.type === 'boss:damaged' ||
         delta.type === 'boss:stomped' ||
+        delta.type === 'boss:charged' ||
         delta.type === 'boss:defeated' ||
         // Story 7.5: forward zone:strike so the host can draw Storm Eye's bonus-
         // strike accent. Host-local delivery filtering only — applyDelta runs

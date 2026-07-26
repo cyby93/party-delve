@@ -4,7 +4,7 @@ baseline_commit: 884dacbd8b7793465697ca9163ee299bfc02dce8
 
 # Story 7.7b: Grassland Boss Attack VFX & Charge Visual
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -49,14 +49,14 @@ Making the event reach the host therefore spans Protocol Architect + Simulation 
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1: Verify 7.7a's status and pick the branch** (AC: 1)
-  - [ ] 1.1: `git grep -n "boss:charged" packages/net-protocol/src apps/simulation-server/src` from the repo root.
-  - [ ] 1.2: If `BossChargedDelta` **exists** in `packages/net-protocol/src/messages/server-to-host.ts` **and** `GameRoom.ts`'s `case 'boss:charged'` broadcasts it → 7.7a has shipped. Do every task below.
-  - [ ] 1.3: If it does **not** exist → 7.7a has not shipped. Do Tasks 2, 4, 5, 6, 7, 8 in full; **skip Tasks 3.2 and 3.3** (the whitelist entry and the `DungeonScreen` charge branch); still do Task 3.1 (the pure charge planner, which has no net-protocol dependency and is unit-tested standalone). Record in Completion Notes that AC1's wiring is blocked on 7.7a and mark AC1 partial. **Do not** add a `(delta.type as string) === 'boss:charged'` cast or any other typecheck escape hatch to force it in.
+- [x] **Task 1: Verify 7.7a's status and pick the branch** (AC: 1)
+  - [x] 1.1: `git grep -n "boss:charged" packages/net-protocol/src apps/simulation-server/src` from the repo root.
+  - [x] 1.2: If `BossChargedDelta` **exists** in `packages/net-protocol/src/messages/server-to-host.ts` **and** `GameRoom.ts`'s `case 'boss:charged'` broadcasts it → 7.7a has shipped. Do every task below.
+  - [N/A] 1.3: 7.7a **has** shipped (confirmed via 1.1/1.2) — the not-shipped branch does not apply. Every task below was done in full.
 
-- [ ] **Task 2: Create the pure boss-VFX planner** (AC: 1, 2, 3, 4, 6, 7)
-  - [ ] 2.1: New file `apps/host-client/src/vfx/boss-vfx.ts`. It imports **only** `BossPhase` from `shared-types`. **It must not import `pixi.js`, `net-protocol`, or `packages/game-rules`.**
-  - [ ] 2.2: Define its own **structural** input type so the module compiles whether or not 7.7a has landed:
+- [x] **Task 2: Create the pure boss-VFX planner** (AC: 1, 2, 3, 4, 6, 7)
+  - [x] 2.1: New file `apps/host-client/src/vfx/boss-vfx.ts`. It imports **only** `BossPhase` from `shared-types`. **It must not import `pixi.js`, `net-protocol`, or `packages/game-rules`.**
+  - [x] 2.2: Define its own **structural** input type so the module compiles whether or not 7.7a has landed:
         ```ts
         export type BossVfxInput =
           | { type: 'boss:charged';      x: number; y: number }
@@ -65,52 +65,64 @@ Making the event reach the host therefore spans Protocol Architect + Simulation 
           | { type: 'boss:damaged' };
         export interface BossVfxContext { bossX: number; bossY: number; prevX: number; prevY: number }
         ```
-  - [ ] 2.3: Define the PixiJS-free descriptor union (`ring` / `beam` / `burst` / `tint`) exactly as specified in Dev Notes → "Descriptor union".
-  - [ ] 2.4: Export `planBossVfx(input: BossVfxInput, ctx: BossVfxContext): VfxDescriptor[]`, implementing the per-reaction visual spec table verbatim.
-  - [ ] 2.5: Put every tunable value in a named exported constant at the top of this file (see "Constants" in Dev Notes). No inline magic numbers in the planner body.
-  - [ ] 2.6: Export `BOSS_DAMAGE_VFX_MIN_INTERVAL_MS` for the call-site throttle.
-  - [ ] 2.7: Export from `apps/host-client/src/vfx/index.ts` (`planBossVfx`, the descriptor types, the constants).
+  - [x] 2.3: Define the PixiJS-free descriptor union (`ring` / `beam` / `burst` / `tint`) exactly as specified in Dev Notes → "Descriptor union".
+  - [x] 2.4: Export `planBossVfx(input: BossVfxInput, ctx: BossVfxContext): VfxDescriptor[]`, implementing the per-reaction visual spec table verbatim.
+  - [x] 2.5: Put every tunable value in a named exported constant at the top of this file (see "Constants" in Dev Notes). No inline magic numbers in the planner body.
+  - [x] 2.6: Export `BOSS_DAMAGE_VFX_MIN_INTERVAL_MS` for the call-site throttle.
+  - [x] 2.7: Export from `apps/host-client/src/vfx/index.ts` (`planBossVfx`, the descriptor types, the constants).
 
-- [ ] **Task 3: Charge visual — whitelist + wiring** (AC: 1)
-  - [ ] 3.1: Implement the `'boss:charged'` case in `planBossVfx` (degenerate-displacement fallback included — see spec table).
-  - [ ] 3.2: *(7.7a only)* Add `delta.type === 'boss:charged' ||` to the OR-chain in `apps/host-client/src/session/host-session.ts`, immediately after the `boss:stomped` line (currently `:62`). Do not reorder or remove any existing entry.
-  - [ ] 3.3: *(7.7a only)* Add the `else if (latestTransientDelta.type === 'boss:charged' && app)` branch to `DungeonScreen.tsx`'s transient-delta effect, placed after the `boss:stomped` branch and before `boss:defeated`.
+- [x] **Task 3: Charge visual — whitelist + wiring** (AC: 1)
+  - [x] 3.1: Implement the `'boss:charged'` case in `planBossVfx` (degenerate-displacement fallback included — see spec table).
+  - [x] 3.2: *(7.7a only)* Add `delta.type === 'boss:charged' ||` to the OR-chain in `apps/host-client/src/session/host-session.ts`, immediately after the `boss:stomped` line. Did not reorder or remove any existing entry.
+  - [x] 3.3: *(7.7a only)* Added the `else if (latestTransientDelta.type === 'boss:charged')` branch to `DungeonScreen.tsx`'s transient-delta effect, placed after the `boss:stomped` branch and before `boss:defeated`. (The `&& app` guard on `boss:stomped` was dropped along with the raw-Graphics code it guarded — the `engine` null-check now serves the same purpose; `boss:charged` follows the same pattern and never needed `app` at all.)
 
-- [ ] **Task 4: One-time `VfxEngine` wiring in `DungeonScreen.tsx` — guarded "if not already present"** (AC: 1, 2, 3, 4)
-  - [ ] 4.1: **First check whether one of Stories 7.2–7.8 already did this.** If `vfxEngineRef` already exists in the file, reuse it and skip 4.2–4.5 entirely — do not create a second engine.
-  - [ ] 4.2: `import { VfxEngine, createBeam, createParticleBurst, createRingShockwave, createTintPulse, planBossVfx } from '../vfx';`
-  - [ ] 4.3: `const vfxEngineRef = useRef<VfxEngine | null>(null);` alongside the other refs (near `:383-392`).
-  - [ ] 4.4: Construct inside `initPixi` after `app.init()` and after the `cancelled` guard (`:412-417`), before `app.ticker.add`: `vfxEngineRef.current = new VfxEngine(app.stage);`
-  - [ ] 4.5: `vfxEngineRef.current?.update(Date.now());` as the **last statement inside the existing `app.ticker.add` callback** (after the reward-particle loop, `:498`). **`Date.now()`, not `performance.now()`** — see CLOCK CONTRACT in Dev Notes.
-  - [ ] 4.6: In the unmount cleanup (`:502-525`), add `vfxEngineRef.current?.clear(); vfxEngineRef.current = null;` **before** the `app.destroy(true, { children: true })` call at `:507` — destroying the app first leaves the engine holding handles whose views are already dead.
+- [x] **Task 4: One-time `VfxEngine` wiring in `DungeonScreen.tsx` — guarded "if not already present"** (AC: 1, 2, 3, 4)
+  - [x] 4.1: Confirmed `vfxEngineRef` already exists (added by an earlier 7.x story) — reused it, skipped 4.2–4.5 entirely, no second engine created.
+  - [ ] 4.2: N/A — 4.1 guard taken.
+  - [ ] 4.3: N/A — 4.1 guard taken.
+  - [ ] 4.4: N/A — 4.1 guard taken.
+  - [ ] 4.5: N/A — 4.1 guard taken (existing `vfxEngineRef.current?.update(Date.now())` call already present and already using the correct clock).
+  - [x] 4.6: Existing unmount cleanup already called `vfxEngineRef.current?.clear(); vfxEngineRef.current = null;` before `app.destroy(...)` — reused as-is; additionally added `bossTintEffectIdRef.current = null;` immediately before it (Task 6.3).
 
-- [ ] **Task 5: Reskin `boss:stomped`** (AC: 2, 5)
-  - [ ] 5.1: Delete the raw `new Graphics()` ring, the `app.stage.addChild(ring)`, and the `setTimeout(…, 66)` at `DungeonScreen.tsx:593-601`.
-  - [ ] 5.2: Replace with `planBossVfx({ type:'boss:stomped', x, y, radius: latestTransientDelta.radius }, ctx)` → `applyBossVfxPlan(...)`. `radius` **must** come from the delta.
+- [x] **Task 5: Reskin `boss:stomped`** (AC: 2, 5)
+  - [x] 5.1: Deleted the raw `new Graphics()` ring, the `app.stage.addChild(ring)`, and the `setTimeout(…, 66)`.
+  - [x] 5.2: Replaced with `planBossVfx({ type:'boss:stomped', x, y, radius: latestTransientDelta.radius }, ctx)` → `applyBossVfxPlan(...)`. `radius` comes from the delta.
 
-- [ ] **Task 6: Reskin `boss:phaseChanged` and `boss:damaged`** (AC: 3, 4, 5)
-  - [ ] 6.1: `boss:phaseChanged` — keep `bossPhaseRef.current = latestTransientDelta.newPhase;` as the first statement, then plan+apply.
-  - [ ] 6.2: Store the returned tint-effect id in `bossTintEffectIdRef = useRef<number | null>(null)`.
-  - [ ] 6.3: Cancel that tint effect (`vfxEngineRef.current?.remove(id)`, then null the ref) in **both** places the boss `Graphics` can be destroyed under it: the `else if (bossGraphicsRef.current)` branch of the ticker (`:456-460`) and the unmount cleanup (`:510-513`). See "Pitfall: tint-pulse on a destroyed target" in Dev Notes.
-  - [ ] 6.4: `boss:damaged` — keep `lastBossHpRef` update, `setBossDamageFlash`, and the 800 ms `setTimeout` exactly as they are; add the impact burst *after* them.
-  - [ ] 6.5: Add the throttle: `const bossDamageVfxAtRef = useRef(0);` — skip the burst when `Date.now() - bossDamageVfxAtRef.current < BOSS_DAMAGE_VFX_MIN_INTERVAL_MS`, otherwise set the ref and emit. This is the D-7.1-D response for the one unbounded trigger in this story.
+- [x] **Task 6: Reskin `boss:phaseChanged` and `boss:damaged`** (AC: 3, 4, 5)
+  - [x] 6.1: `boss:phaseChanged` — kept `bossPhaseRef.current = latestTransientDelta.newPhase;` as the first statement, then plan+apply.
+  - [x] 6.2: Stored the returned tint-effect id in `bossTintEffectIdRef = useRef<number | null>(null)`.
+  - [x] 6.3: Cancel that tint effect (`vfxEngineRef.current?.remove(id)`, then null the ref) in **both** places the boss `Graphics` can be destroyed under it: the `else if (bossGraphicsRef.current)` branch of the ticker and the unmount cleanup.
+  - [x] 6.4: `boss:damaged` — kept `lastBossHpRef` update, `setBossDamageFlash`, and the 800 ms `setTimeout` exactly as they were; added the impact burst *after* them.
+  - [x] 6.5: Added the throttle: `const bossDamageVfxAtRef = useRef(0);` — skips the burst when `Date.now() - bossDamageVfxAtRef.current < BOSS_DAMAGE_VFX_MIN_INTERVAL_MS`, otherwise sets the ref and emits.
 
-- [ ] **Task 7: `applyBossVfxPlan` bridge** (AC: 1, 2, 3, 4)
-  - [ ] 7.1: A module-level helper in `DungeonScreen.tsx` (it needs the pixi factories and the borrowed boss `Graphics`, so it does **not** belong in the pure module):
-        `function applyBossVfxPlan(engine: VfxEngine, plan: VfxDescriptor[], bossTarget: Graphics | null): number | null` — switches on `kind`, calls the matching 7.1 factory, `engine.add(...)`s each, and returns the effect id of the `tint` descriptor if one was created (else `null`).
-  - [ ] 7.2: A `tint` descriptor with `bossTarget === null` is silently skipped (boss already despawned/defeated) — no throw.
-  - [ ] 7.3: No `new Graphics()` anywhere in the new code. If a shape the five primitives can't express seems necessary, stop and flag it rather than inlining a one-off (7.1 AC3).
+- [x] **Task 7: `applyBossVfxPlan` bridge** (AC: 1, 2, 3, 4)
+  - [x] 7.1: Module-level helper in `DungeonScreen.tsx` (beside `VfxContext`/`renderFrame`): `function applyBossVfxPlan(engine: VfxEngine, plan: VfxDescriptor[], bossTarget: Graphics | null): number | null` — switches on `kind`, calls the matching 7.1 factory, `engine.add(...)`s each, returns the `tint` descriptor's effect id (else `null`). Also stamps `Date.now()` as every primitive's `startedAt` (BACKGROUNDED-TICKER rule established in the 7.2 review — not spelled out in this story's task text but required by existing project convention since the call sites are `useEffect`-driven, not ticker-driven; see Debug Log).
+  - [x] 7.2: A `tint` descriptor with `bossTarget === null` is silently skipped (boss already despawned/defeated) — no throw.
+  - [x] 7.3: No `new Graphics()` anywhere in the new code.
 
-- [ ] **Task 8: Self-check** (AC: 6, 7)
-  - [ ] 8.1: New test file `apps/host-client/src/vfx/boss-vfx.test.ts`, run with `npx vitest run src/vfx/boss-vfx.test.ts` from `apps/host-client`. Pure module, no canvas needed.
-  - [ ] 8.2: Assertions (one runnable check for the load-bearing logic — not a suite per function):
+- [x] **Task 8: Self-check** (AC: 6, 7)
+  - [x] 8.1: New test file `apps/host-client/src/vfx/boss-vfx.test.ts`, run with `npx vitest run src/vfx/boss-vfx.test.ts` from `apps/host-client`. Pure module, no canvas needed. 5/5 pass.
+  - [x] 8.2: Assertions (one runnable check for the load-bearing logic — not a suite per function):
         - **Charge direction & fixed streak:** with `ctx.prevX/prevY` 11.7 px behind `input.x/y`, the emitted `beam` descriptor ends exactly at `(input.x, input.y)`, its start→end length equals `BOSS_CHARGE_STREAK_PX` (±0.001), and its unit direction matches the prev→new displacement.
         - **Degenerate displacement:** `prev === (x, y)` emits **no** `beam`, still emits the `burst`, and every numeric field in every descriptor is finite (no `NaN`).
         - **Stomp radius comes from the delta:** `radius: 199` → `ring.maxRadius === 199` (proves it isn't hardcoded to 280).
         - **Phase color:** `Phase3` → `0xff2222`; `Phase2` → `0x7d2dff`.
         - **Reserved token:** across every input case, no descriptor's `color` equals `0x90d8f0`.
-  - [ ] 8.3: `npm run typecheck` at the repo root (covers all 10 tsconfigs) — must be exit 0.
-  - [ ] 8.4: Manual Client-UX pass per the checklist in Dev Notes. **The charge visual can only be observed on Normal or Hard difficulty in Phase 2+** — see "Charge is rarer than you think".
+  - [x] 8.3: `npm run typecheck` at the repo root (covers all 10 tsconfigs) — exit 0.
+  - [x] 8.4: Manual Client-UX pass — user (Cyby) confirmed live on 2026-07-26 and gave explicit sign-off to close the story. Matches the 7.6 precedent (user performing/confirming the pass themselves rather than in-sandbox).
+
+### Review Findings
+
+Code review run 2026-07-26 (Blind Hunter, Edge Case Hunter, Acceptance Auditor — all three layers self-run against the diff, `review_mode: full`). 10 raw findings triaged: 0 decision_needed, 4 patch, 2 defer, 4 dismissed.
+
+- [x] [Review][Patch] Boss VFX planner functions don't validate delta-sourced numeric inputs are finite [`apps/host-client/src/vfx/boss-vfx.ts:95` (`planBossCharged`), `:126` (`planBossStomped`)] — unlike sibling planners (e.g. `planSouldrinkerCast` in `souldrinker-vfx.ts`) that explicitly guard with `Number.isFinite()` on every spatial input, these two trust `x`/`y`/`radius` from the delta unconditionally. A NaN/Infinity value would flow straight into PixiJS geometry, undetected by this module's own "no NaN" self-check (which only exercises valid finite inputs). Found by Blind Hunter + Edge Case Hunter (both independently).
+- [x] [Review][Patch] File List omits the `sprint-status.yaml` edit [`_bmad-output/implementation-artifacts/7-7b-grassland-boss-attack-vfx-and-charge-visual.md` File List section] — the diff modifies `_bmad-output/implementation-artifacts/sprint-status.yaml` (status flip + changelog entry) but the File List only names the 5 `apps/host-client` files. Story 7.6 set the documentation precedent for this exact situation ("not owned by this story per its own Blocked paths, but is the sprint-workflow's own bookkeeping step, matching every prior story's pattern") — this story's File List should carry the same annotation. Found by Acceptance Auditor (which also flagged this against the story's stale `_bmad-output/planning-artifacts/sprint-status.yaml` Blocked-paths text — that path doesn't exist in this repo; the real file is sprint-workflow bookkeeping, not a scope violation, so only the missing documentation is actionable).
+- [x] [Review][Patch] Self-check's "no NaN anywhere" sweep skips array-valued burst colors [`apps/host-client/src/vfx/boss-vfx.test.ts:422-426`] — the sweep filters on `typeof v === 'number'`, which silently skips `burst.color` (a `readonly number[]`). A NaN smuggled into a color array would pass undetected. Found by Blind Hunter + Edge Case Hunter (both independently).
+- [x] [Review][Patch] `bossDamageVfxAtRef` not reset in the unmount cleanup [`apps/host-client/src/screens/DungeonScreen.tsx`, unmount cleanup] — every other similarly-scoped throttle/timestamp ref in that cleanup block is explicitly reset (e.g. `lastDarkPactCastAtRef.current = 0;`); this story added `bossDamageVfxAtRef` but didn't add it to the reset list, an inconsistency with the file's own established pattern. Found by Edge Case Hunter.
+- [x] [Review][Defer] `applyBossVfxPlan`'s `tintId` return only tracks the last `tint` descriptor in a plan [`apps/host-client/src/screens/DungeonScreen.tsx`, `applyBossVfxPlan`, case `'tint'`] — deferred, pre-existing structural limitation, not reachable today (only `boss:phaseChanged` ever emits exactly one tint per plan). A future plan emitting two tints would silently orphan the first. Fixing it requires a signature change (`number | null` → an array) affecting every call site's single-id ref pattern — out of proportion to a currently-unreachable case. Found by Blind Hunter + Edge Case Hunter.
+- [x] [Review][Defer] Zero automated coverage of `applyBossVfxPlan` and the four `DungeonScreen.tsx` boss wiring branches [`apps/host-client/src/screens/DungeonScreen.tsx`] — deferred, matches this project's established testing convention ("one runnable check for load-bearing logic, not a suite per function" — this story's own Testing Standards section explicitly assigns rendering verification to the manual Client-UX pass). That manual pass (Task 8.4) was not performed this session — no display available in this sandbox, consistent with prior-story precedent (7.5, 7.6, 3.23, dev-3) — already disclosed in this story's Completion Notes and reflected in its `review` (not `done`) status. Found by Blind Hunter.
+
+**Dismissed as noise (4):** dropped `&& app` guard on `boss:stomped` relies on an implicit invariant that is sound by construction and matches the story's own Dev Notes wiring sample verbatim (Blind Hunter); the "verbatim constants" claim isn't mechanically asserted by a test but was independently re-verified correct by the Acceptance Auditor reading the actual files, consistent with this project's "one runnable check" testing convention (Blind Hunter); a tint-pulse-on-already-destroyed-target race is not reachable — `bossTarget` is a synchronous parameter snapshot, not a live ref re-read mid-loop, and nothing in this codebase's single-threaded call chain can destroy it between iterations (Edge Case Hunter); `boss:phaseChanged`'s visual silently drops if `vfxEngineRef.current` is null when the delta arrives, but this matches every other transient-delta branch's established pattern in this file and the race window is effectively zero given a boss must already exist and be mid-fight for a phase transition to fire (Edge Case Hunter).
 
 ## Dev Notes
 
@@ -504,14 +516,43 @@ Verify each after the change:
 
 ### Agent Model Used
 
+Claude Sonnet 5 (claude-sonnet-5)
+
 ### Debug Log References
+
+- `git grep -n "boss:charged" packages/net-protocol/src apps/simulation-server/src` confirmed 7.7a **has** shipped at this baseline: `BossChargedDelta = { type; bossId; x; y }` exists at `packages/net-protocol/src/messages/server-to-host.ts:201-206`, `apply-delta.ts:187-193` has the documented no-op case, and `GameRoom.ts:1942-1949` broadcasts it. Took the "do every task in full" branch (Task 1.2), not the degraded path.
+- `vfxEngineRef` already existed in `DungeonScreen.tsx` (added by an earlier 7.x story), including the engine construction inside `initPixi`, the `vfxEngineRef.current?.update(Date.now())` ticker call, and the `clear()`/`null` unmount cleanup before `app.destroy(...)`. Per Task 4.1's guard, reused it verbatim and did not touch Task 4.2–4.5 — only added the tint-cancellation lines the story's Task 6.3 required at the two existing destruction sites. Note the existing `update(Date.now())` call is positioned *before* the boss-sprite/reward-particle block in the ticker (not after, as the story's original Task 4.5 line-number references assumed) — a deliberate placement from the 7.2 review (comment in place explaining why) that predates this story; not something this story's scope allowed changing.
+- Deviation from Task 7.1's literal signature: `applyBossVfxPlan(engine, plan, bossTarget)` internally captures `const startedAt = Date.now()` and threads it into every `create*` factory call. The story's Task 7.1 text and code sample never mention `startedAt`, but every other Epic 7 planner→apply bridge in this codebase (`spawnSouldrinkerVfx`, `triggerSpiritcallerCast`, `spawnStormcallerCast`) does this per the "BACKGROUNDED-TICKER rule" documented in their own file headers (Story 7.2 review finding — 2026-07-2x, predates this story). The four boss branches this story wires all trigger from the same non-RAF-gated transient-delta `useEffect` as those callers, so the same bug (effect added with no explicit start piling up un-started behind a paused/backgrounded ticker) applies identically. Followed established codebase convention over the story's literal (and, on this one point, incomplete) spec text — the signature itself (`(engine, plan, bossTarget): number | null`) is unchanged.
+- `npx vitest run` (full apps/host-client suite): 83 pass, 1 pre-existing failure (`ability-vfx.test.ts` Stone Wall/Iron Skin centering, `resolveAbilityVfxPlacement`) — confirmed via `git stash` against this story's baseline commit that the failure predates this story and is unrelated to any file this story touches.
+- `npx eslint` on all 5 touched/created files: 0 new issues. `DungeonScreen.tsx` carries 19 pre-existing `no-undef`/`no-unused-vars` findings (confirmed 20 at baseline via `git stash` — this story's edits net *removed* one, from deleting the raw stomp `setTimeout`); none are in code this story added.
+- `npm run typecheck` (all 10 tsconfigs): exit 0.
+- Manual Client-UX pass (Task 8.4) **not performed** — no display available in this sandbox. Same precedent as Stories 7.5, 7.6, 3.23, and dev-3.
 
 ### Completion Notes List
 
+- Implemented all 8 tasks in full (7.7a had shipped at this baseline, confirmed by Task 1.1's git grep — see Debug Log). AC1's charge visual is fully wired, not partial.
+- New pure module `apps/host-client/src/vfx/boss-vfx.ts`: `planBossVfx` maps all four boss reactions (`boss:charged`, `boss:stomped`, `boss:phaseChanged`, `boss:damaged`) to the PixiJS-free `VfxDescriptor` union per the story's visual spec table, verbatim on every numeric parameter. Imports only `BossPhase` from `shared-types`; no `pixi.js`/`net-protocol`/`game-rules` imports. 5 tests in `boss-vfx.test.ts` cover: charge beam geometry (endpoint, fixed `BOSS_CHARGE_STREAK_PX` length, unit direction), the degenerate-displacement no-beam/no-NaN case, stomp ring radius sourced from the delta (not hardcoded), phase-color mapping, and the reserved `accent-purify` token never appearing in any boss-attack descriptor (AC6).
+- `DungeonScreen.tsx`: added the module-level `applyBossVfxPlan` bridge (beside `VfxContext`/`renderFrame`); reskinned `boss:stomped` (raw `Graphics`/`setTimeout` → `createRingShockwave` + `createParticleBurst`, `radius` read from the delta, 420/500ms vs. the old 66ms); gave `boss:phaseChanged` its first-ever on-screen effect (implode ring + tint pulse, phase-color-coded) while leaving `bossPhaseRef.current = newPhase` as the unchanged first statement; added a throttled impact burst to `boss:damaged` after its existing HUD bookkeeping, untouched; added the new `boss:charged` branch (post-hoc dash streak + impact burst, direction-only per the AC1 honesty clause). Added the D-7.1-C tint-cancellation mitigation (`bossTintEffectIdRef`) at both places the boss `Graphics` is externally destroyed.
+- `host-session.ts`: one-line whitelist addition (`boss:charged`) in the existing OR-chain position, no reordering.
+- Zero changes to any file under `apps/simulation-server/**`, `packages/game-rules/**`, `packages/net-protocol/**`, or `packages/shared-types/**` — Contract-change and Simulation-safety hooks correctly not triggered, matching the story's hook verdict table.
+- AC5 regression check (boss FSM/phase/HP-bar/purification/reward-reveal untouched): verified by reading the surrounding code before and after each edit — none of those blocks were touched, only the three transient-delta reaction bodies and the two destruction sites for the tint cancellation.
+- AC6 (reserved `accent-purify` token) and AC7 (pure, PixiJS-free, exported, single-test-file planner) are both directly asserted by the self-check test file, not just claimed.
+- **Confidence: 85%** — every automated gate (typecheck, full suite, lint, the story's own 5 self-check assertions) is green and the implementation follows the story's per-reaction visual spec table verbatim on every numeric parameter. The 15% is entirely the untested visual/UX dimension: (1) Task 8.4's manual Client-UX pass was not performed (no display in this sandbox — matches established project precedent, not a shortcut specific to this session), so the couch-readability, charge-direction-legibility, and reconnect/defeat-interaction checks in the story's manual checklist are unverified; (2) the `startedAt`/BACKGROUNDED-TICKER fix (see Debug Log) is a deliberate deviation from the story's literal Task 7.1 code sample, justified by matching an established codebase-wide convention, but it was not spelled out in the story text and is worth a reviewer's explicit sign-off.
+
 ### File List
+
+- `apps/host-client/src/vfx/boss-vfx.ts` (NEW)
+- `apps/host-client/src/vfx/boss-vfx.test.ts` (NEW)
+- `apps/host-client/src/vfx/index.ts` (MODIFY — barrel export)
+- `apps/host-client/src/screens/DungeonScreen.tsx` (MODIFY)
+- `apps/host-client/src/session/host-session.ts` (MODIFY — one whitelist entry)
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` (MODIFY — status ready-for-dev → review, changelog entry; not owned by this story per its own Blocked paths, but is the sprint-workflow's own bookkeeping step, matching every prior story's pattern, e.g. 7.6)
 
 ## Change Log
 
 | Date | Change |
 |---|---|
 | 2026-07-22 | Story created. Split out of Epic 7 Story 7.7 (`epics.md:2024-2041`) after verifying `boss:charged` has no `DeltaEventMsg` member and is swallowed by `GameRoom.ts:1925-1927`; protocol + simulation half became Story 7.7a. AC1 reframed from "charge telegraph" to post-hoc dash visual per the user's 2026-07-22 decision (no simulation windup). |
+| 2026-07-26 | Implemented (review). 7.7a had shipped at this baseline, so all 8 tasks done in full — AC1's charge visual is fully wired, not partial. New `boss-vfx.ts` pure planner (5 tests) drives all four boss reactions from the 7.1 primitive library via a new `applyBossVfxPlan` bridge in `DungeonScreen.tsx`, replacing the raw 66ms `boss:stomped` ring, giving `boss:phaseChanged` its first on-screen effect, adding a throttled `boss:damaged` impact burst, and wiring the new `boss:charged` post-hoc dash visual end-to-end (planner + host-session.ts whitelist + DungeonScreen branch). Typecheck clean (10/10 tsconfigs), full suite 83 passed / 1 pre-existing failure (confirmed via git stash against baseline, unrelated to this story). Status set to review, not done: Task 8.4's Client-UX manual pass (live host, couch-distance legibility, charge-visibility on Normal/Hard Phase 2+) was not performed — no display in this sandbox, matching this project's established precedent (7.5, 7.6, 3.23, dev-3) — needs a human pass before the story can be closed. |
+| 2026-07-26 | Code review (self-run: Blind Hunter + Edge Case Hunter + Acceptance Auditor, `review_mode: full`). 10 raw findings → 4 patch (all applied), 2 defer (logged to `deferred-work.md` as `D-7.7b-A`/`D-7.7b-B`), 4 dismissed as noise. Patches: added `Number.isFinite` guards to `planBossCharged`/`planBossStomped` (`boss-vfx.ts`); added the missing `_bmad-output/implementation-artifacts/sprint-status.yaml` entry to the File List (7.6 precedent); widened the self-check's NaN sweep to cover array-valued burst colors; added `bossDamageVfxAtRef.current = 0;` to the unmount cleanup, matching sibling refs. Re-ran typecheck (exit 0) and the full suite (83 pass / same 1 pre-existing unrelated failure) after patching — clean. Status remains `review`, not `done`: Task 8.4's manual Client-UX pass is still outstanding (see D-7.7b-B). |
+| 2026-07-26 | User (Cyby) confirmed Task 8.4's manual Client-UX pass live and gave explicit sign-off to close the story. Status → `done`. |

@@ -113,3 +113,24 @@ export {
   slowOrbitPoint,
 } from './status-aura';
 export type { StatusAuraSpec, StatusAuraKind, StatusAuraHandle, StatusAuraEntry } from './status-aura';
+export {
+  BOSS_RADIUS_PX,
+  BOSS_PHASE2_GLOW_RADIUS_PX,
+  BOSS_CHARGE_STREAK_PX,
+  BOSS_CHARGE_MIN_DISPLACEMENT_PX,
+  BOSS_CHARGE_BEAM_MS,
+  BOSS_CHARGE_BURST_MS,
+  BOSS_STOMP_RING_MS,
+  BOSS_STOMP_BURST_MS,
+  BOSS_PHASE_IMPLODE_START_PX,
+  BOSS_PHASE_IMPLODE_MS,
+  BOSS_PHASE_TINT_MS,
+  BOSS_DAMAGE_BURST_MS,
+  BOSS_DAMAGE_VFX_MIN_INTERVAL_MS,
+  VFX_CORRUPTION,
+  VFX_BLOOD,
+  VFX_WARM,
+  VFX_PHASE3,
+  planBossVfx,
+} from './boss-vfx';
+export type { BossVfxInput, BossVfxContext, VfxDescriptor } from './boss-vfx';

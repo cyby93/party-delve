@@ -42,7 +42,35 @@
 # Phase2 legacy stories (old Phase-based keys) are tracked below under PHASE 2 STORIES.
 
 generated: 2026-06-22
-last_updated: 2026-07-26 (7-6-status-effect-vfx → done: live Client-UX pass, 1 tuning fix)
+last_updated: 2026-07-26 (7-7b-grassland-boss-attack-vfx-and-charge-visual → done)
+# 2026-07-26: 7-7b-grassland-boss-attack-vfx-and-charge-visual → done. User (Cyby)
+# confirmed Task 8.4's manual Client-UX pass live and gave explicit sign-off to close.
+# 2026-07-26: code review of 7-7b-grassland-boss-attack-vfx-and-charge-visual (was left at
+# review, not done, pending the above) — self-run Blind Hunter + Edge Case Hunter + Acceptance Auditor,
+# review_mode: full. 10 raw findings → 4 patch (all applied: Number.isFinite guards on
+# planBossCharged/planBossStomped, File List fix, NaN-sweep test widened to array colors,
+# bossDamageVfxAtRef reset added to unmount cleanup), 2 defer (D-7.7b-A/B in
+# deferred-work.md), 4 dismissed as noise after verification. Typecheck + full suite
+# re-confirmed clean after patching. Status intentionally stays review: Task 8.4's manual
+# Client-UX pass is still outstanding (no display in this sandbox), matching this
+# project's established precedent (7.5, 7.6, 3.23, dev-3).
+# 2026-07-26: implemented 7-7b-grassland-boss-attack-vfx-and-charge-visual (review) —
+# 7.7a had shipped at this baseline (BossChargedDelta exists, GameRoom.ts broadcasts it),
+# so all 8 tasks done in full, not the degraded path. New boss-vfx.ts pure planner (5
+# tests) drives all four boss reactions (charged/stomped/phaseChanged/damaged) from the
+# 7.1 primitive library via a new applyBossVfxPlan bridge in DungeonScreen.tsx: replaced
+# the raw 66ms boss:stomped Graphics ring, gave boss:phaseChanged its first-ever on-screen
+# effect, added a throttled boss:damaged impact burst, wired the new boss:charged post-hoc
+# dash visual end-to-end (planner + host-session.ts whitelist + DungeonScreen branch).
+# One deliberate deviation from the story's literal Task 7.1 code sample: applyBossVfxPlan
+# threads Date.now() as startedAt into every primitive (BACKGROUNDED-TICKER rule, matching
+# spawnSouldrinkerVfx/triggerSpiritcallerCast) since these branches trigger from a
+# non-RAF-gated useEffect — the story text didn't call this out but established codebase
+# convention did. Typecheck clean (10/10 tsconfigs), full suite 83 passed / 1 pre-existing
+# failure (ability-vfx.test.ts Stone Wall centering, confirmed via git stash against
+# baseline, unrelated). Status set to review, not done: Task 8.4's Client-UX manual pass
+# was not performed — no display in this sandbox, matching established precedent (7.5,
+# 7.6, 3.23, dev-3) — needs a human pass before the story can be closed.
 # 2026-07-26: 7-6-status-effect-vfx → done. User ran the live Client-UX pass (Task
 # 7.1/7.2) themselves: all four effect shapes/colors confirmed correct. One real
 # finding — Warding Cry's shield aura was visible but not visibly pulsing — root-
@@ -662,7 +690,7 @@ development_status:
   # 7.7b stays host-only. 7.7b depends on 7.7a for its charge AC only; its three boss
   # reskin ACs are independent and ship regardless.
   7-7a-boss-charged-delta-contract-and-broadcast: done
-  7-7b-grassland-boss-attack-vfx-and-charge-visual: ready-for-dev
+  7-7b-grassland-boss-attack-vfx-and-charge-visual: done
   7-8-environmental-and-bond-vfx-polish: ready-for-dev
   # 7.9 (2026-07-23, user "Option B" decision): move ability spatial geometry from
   # game-rules/balance.ts into shared-types so the VFX tracks balance dynamically instead

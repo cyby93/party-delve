@@ -9,6 +9,10 @@ import {
   createRingShockwave,
   createBeam,
   createParticleBurst,
+  createTintPulse,
+  planBossVfx,
+  BOSS_DAMAGE_VFX_MIN_INTERVAL_MS,
+  type VfxDescriptor,
   progress,
   getAbilityVfxConfig,
   resolveAbilityVfxPlacement,
@@ -161,6 +165,55 @@ interface VfxContext {
   stormEyePulse: Map<string, { ticksRemaining: number; effectId: number }>;
   // Story 7.5: in-flight Tempest Hurl records, advanced per ticker frame.
   hurlFlights: HurlFlight[];
+}
+
+/**
+ * Translate a `planBossVfx` plan into live effects on `engine`. Lives here
+ * (not in vfx/boss-vfx.ts) because it needs both the pixi factories and the
+ * borrowed boss `Graphics` (Story 7.7b Task 7). Stamps `Date.now()` as every
+ * primitive's `startedAt` (BACKGROUNDED-TICKER rule, Story 7.2 review — matches
+ * `spawnSouldrinkerVfx`/`triggerSpiritcallerCast`): this is called from the
+ * transient-delta `useEffect`, not from inside the RAF-gated ticker, so an
+ * effect added with no explicit start would sit un-started while a hidden
+ * tab's ticker is stopped and all fire at once on resume.
+ *
+ * Returns the effect id of the `tint` descriptor if one was created, else
+ * `null`, so the caller can track and later cancel it (D-7.1-C).
+ */
+function applyBossVfxPlan(engine: VfxEngine, plan: VfxDescriptor[], bossTarget: Graphics | null): number | null {
+  const startedAt = Date.now();
+  let tintId: number | null = null;
+  for (const d of plan) {
+    switch (d.kind) {
+      case 'ring':
+        engine.add(createRingShockwave({
+          x: d.x, y: d.y, color: d.color, startRadius: d.startRadius, maxRadius: d.maxRadius,
+          lineWidth: d.lineWidth, durationMs: d.durationMs, alpha: d.alpha, startedAt,
+        }));
+        break;
+      case 'beam':
+        engine.add(createBeam({
+          x: d.x, y: d.y, toX: d.toX, toY: d.toY, color: d.color,
+          width: d.width, durationMs: d.durationMs, alpha: d.alpha, startedAt,
+        }));
+        break;
+      case 'burst':
+        engine.add(createParticleBurst({
+          x: d.x, y: d.y, color: d.color, count: d.count, speed: d.speed, spread: d.spread,
+          particleRadius: d.particleRadius, durationMs: d.durationMs, alpha: d.alpha, startedAt,
+        }));
+        break;
+      case 'tint':
+        // Boss already despawned/defeated — skip silently, never throw (7.1 AC3).
+        if (bossTarget === null) break;
+        tintId = engine.add(createTintPulse({
+          target: bossTarget, color: d.color, durationMs: d.durationMs,
+          minAlpha: d.minAlpha, maxAlpha: d.maxAlpha, startedAt,
+        }));
+        break;
+    }
+  }
+  return tintId;
 }
 
 function renderFrame(
@@ -721,6 +774,8 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
   const purificationPulseRef = useRef<PurificationPulse | null>(null);
   const rewardRevealActiveRef = useRef(false);
   const bossLastPositionRef = useRef({ x: 960, y: 540 });
+  const bossTintEffectIdRef = useRef<number | null>(null);
+  const bossDamageVfxAtRef = useRef(0);
   const essenceDisplayRef = useRef<number | null>(null);
   const purificationParticlesRef = useRef<PurificationParticle[]>([]);
   const [, setTimerTick] = useState(0);
@@ -809,6 +864,13 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
             g.circle(0, 0, 12).fill({ color: 0xff2222 });
           }
         } else if (bossGraphicsRef.current) {
+          // Cancel any live phase-tint pulse before the target it animates is
+          // destroyed (D-7.1-C: neither the engine nor the primitive detects an
+          // externally destroyed target — Story 7.7b Dev Notes).
+          if (bossTintEffectIdRef.current !== null) {
+            vfxEngineRef.current?.remove(bossTintEffectIdRef.current);
+            bossTintEffectIdRef.current = null;
+          }
           app.stage.removeChild(bossGraphicsRef.current);
           bossGraphicsRef.current.destroy();
           bossGraphicsRef.current = null;
@@ -859,6 +921,8 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
       const app = pixiAppRef.current;
       if (app) {
         // Before app.destroy: clear() calls stage.removeChild on a live stage.
+        bossTintEffectIdRef.current = null;
+        bossDamageVfxAtRef.current = 0;
         vfxEngineRef.current?.clear();
         vfxEngineRef.current = null;
         app.canvas.remove();
@@ -1135,22 +1199,44 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
       app.stage.addChild(g);
       essenceFlashesRef.current.set(drop.id, { g, deadline: Date.now() + ESSENCE_FLASH_MS });
     } else if (latestTransientDelta.type === 'boss:phaseChanged') {
-      bossPhaseRef.current = latestTransientDelta.newPhase;
+      bossPhaseRef.current = latestTransientDelta.newPhase;         // UNCHANGED — drives the glow ring + eye
+      const engine = vfxEngineRef.current;
+      if (engine) {
+        const pos = bossLastPositionRef.current;
+        const plan = planBossVfx(
+          { type: 'boss:phaseChanged', newPhase: latestTransientDelta.newPhase },
+          { bossX: pos.x, bossY: pos.y, prevX: pos.x, prevY: pos.y },
+        );
+        if (bossTintEffectIdRef.current !== null) engine.remove(bossTintEffectIdRef.current);
+        bossTintEffectIdRef.current = applyBossVfxPlan(engine, plan, bossGraphicsRef.current);
+      }
     } else if (latestTransientDelta.type === 'boss:damaged') {
       const prevHp = lastBossHpRef.current;
       const damage = prevHp != null ? Math.max(0, prevHp - latestTransientDelta.newHp) : 0;
       lastBossHpRef.current = latestTransientDelta.newHp;
       setBossDamageFlash({ amount: damage, until: Date.now() + 800 });
       setTimeout(() => setBossDamageFlash(null), 800);
-    } else if (latestTransientDelta.type === 'boss:stomped' && app) {
-      const ring = new Graphics();
-      ring.circle(0, 0, latestTransientDelta.radius).stroke({ color: 0xff4444, width: 3, alpha: 0.7 });
-      ring.position.set(latestTransientDelta.x, latestTransientDelta.y);
-      app.stage.addChild(ring);
-      setTimeout(() => {
-        app.stage.removeChild(ring);
-        ring.destroy();
-      }, 66);
+
+      const engine = vfxEngineRef.current;
+      const nowMs = Date.now();
+      if (engine && nowMs - bossDamageVfxAtRef.current >= BOSS_DAMAGE_VFX_MIN_INTERVAL_MS) {
+        bossDamageVfxAtRef.current = nowMs;
+        const pos = bossLastPositionRef.current;
+        applyBossVfxPlan(engine, planBossVfx({ type: 'boss:damaged' }, { bossX: pos.x, bossY: pos.y, prevX: pos.x, prevY: pos.y }), bossGraphicsRef.current);
+      }
+    } else if (latestTransientDelta.type === 'boss:stomped') {
+      const engine = vfxEngineRef.current;
+      if (engine) {
+        const { x, y, radius } = latestTransientDelta;
+        applyBossVfxPlan(engine, planBossVfx({ type: 'boss:stomped', x, y, radius }, { bossX: x, bossY: y, prevX: x, prevY: y }), bossGraphicsRef.current);
+      }
+    } else if (latestTransientDelta.type === 'boss:charged') {
+      const engine = vfxEngineRef.current;
+      if (engine) {
+        const prev = bossLastPositionRef.current;
+        const { x, y } = latestTransientDelta;
+        applyBossVfxPlan(engine, planBossVfx({ type: 'boss:charged', x, y }, { bossX: x, bossY: y, prevX: prev.x, prevY: prev.y }), bossGraphicsRef.current);
+      }
     } else if (latestTransientDelta.type === 'boss:defeated' && app) {
       bossDefeatedRef.current = true;
       isPurifiedRef.current = true;
