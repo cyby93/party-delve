@@ -1940,7 +1940,12 @@ export class GameRoom extends Room {
               break;
 
             case 'boss:charged':
-              // ponytail: charge is a movement event handled by tickBoss — no client delta needed
+              // Story 7.7a: post-hoc charge notification for host VFX. tickBoss has already
+              // applied the movement to this.gameState.boss.position (same object reference),
+              // so this broadcast is purely additive — no state write here.
+              this.broadcast(EventNames.DELTA, {
+                type: 'boss:charged', bossId: evt.bossId, x: evt.x, y: evt.y,
+              } satisfies DeltaEventMsg);
               break;
 
             case 'add:spawned': {

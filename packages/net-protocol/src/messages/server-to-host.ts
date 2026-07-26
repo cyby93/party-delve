@@ -194,6 +194,17 @@ export type BossStompedDelta = {
   radius: number;
 };
 
+// The Grassland boss's charge lunge (Story 7.7a). Post-hoc: tryCharge moves the boss
+// and fires this in the same tick — there is no windup/telegraph state on the sim side.
+// x/y are the boss's POST-charge position. No radius (unlike boss:stomped) — the sim
+// event carries none; charge damage is resolved by contact, not an AoE radius.
+export type BossChargedDelta = {
+  type: 'boss:charged';
+  bossId: string;
+  x: number;
+  y: number;
+};
+
 export type BossAddSpawnedDelta = {
   type: 'add:spawned';
   enemyId: string;
@@ -325,6 +336,7 @@ export type DeltaEventMsg =
   | BossDefeatedDelta
   | BossMovedDelta
   | BossStompedDelta
+  | BossChargedDelta
   | BossAddSpawnedDelta
   | StatusAppliedDelta
   | StatusExpiredDelta

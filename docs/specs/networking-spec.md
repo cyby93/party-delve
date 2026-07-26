@@ -55,6 +55,9 @@ Define the networking model, event contract direction, tick model, reconnect exp
 - `loot-dropped`
 - `cooldown-started`
 - `cooldown-ended`
+- `boss:charged` — post-hoc notification that the Grassland boss's charge lunge
+  resolved; visual-only, carries the boss's post-charge `(x, y)`; no state mutation on
+  the client (Story 7.7a)
 
 ### UI Events
 - `menu-opened`

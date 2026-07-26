@@ -184,6 +184,13 @@ export function applyDelta(state: GameState, evt: DeltaEventMsg): GameState {
     }
     case 'boss:stomped':
       return state;  // ponytail: visual only; DungeonScreen reads raw delta
+    case 'boss:charged':
+      return state;  // ponytail: visual only; DungeonScreen reads raw delta. Deliberately does NOT
+                     // write boss.position — case 'boss:moved' above is the single writer. tryCharge
+                     // returns early so no boss:moved fires on the charge tick, leaving the mirror
+                     // ≤11.7px stale (350px/s ÷ 30hz, vs a 48px boss) for ≤1 tick before the next
+                     // boss:moved or the periodic snapshot corrects it. Not a bug — do not "fix"
+                     // this into a second position writer.
     case 'add:spawned':
       return state;  // ponytail: GrasslandAdds arrive via snapshot broadcast
     case 'status:applied': {

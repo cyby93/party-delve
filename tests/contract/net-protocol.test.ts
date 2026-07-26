@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { serialize, deserialize, applyDelta, EventNames } from 'net-protocol';
-import type { SnapshotMsg, DeltaEventMsg, InputEventMsg, PlayerPoiEnteredDelta, PlayerPoiExitedDelta, AbilityFiredDelta, EnemyDamagedDelta, PlayerDownedDelta, BondNotificationMsg, ContinueMsg, BossDamagedDelta, BossPhaseChangedDelta, BossDefeatedDelta, RunVictoryMsg, StatusAppliedDelta, StatusExpiredDelta, ProjectileMovedDelta, ProjectileHitDelta, ProjectileExpiredDelta, ZoneTickDelta, ZoneExpiredDelta, ZoneStrikeDelta } from 'net-protocol';
-import type { GameState, PlayerState, RunReward, ProjectileState, ZoneState } from 'shared-types';
-import { PlayerClass, SessionColor, EnemyType, DifficultyTier, EnemyFSMState, BondType, BossPhase, GrasslandAchievement } from 'shared-types';
+import type { SnapshotMsg, DeltaEventMsg, InputEventMsg, PlayerPoiEnteredDelta, PlayerPoiExitedDelta, AbilityFiredDelta, EnemyDamagedDelta, PlayerDownedDelta, BondNotificationMsg, ContinueMsg, BossDamagedDelta, BossPhaseChangedDelta, BossDefeatedDelta, BossChargedDelta, RunVictoryMsg, StatusAppliedDelta, StatusExpiredDelta, ProjectileMovedDelta, ProjectileHitDelta, ProjectileExpiredDelta, ZoneTickDelta, ZoneExpiredDelta, ZoneStrikeDelta } from 'net-protocol';
+import type { GameState, PlayerState, RunReward, ProjectileState, ZoneState, BossState } from 'shared-types';
+import { PlayerClass, SessionColor, EnemyType, DifficultyTier, EnemyFSMState, BondType, BossPhase, BossFSMState, GrasslandAchievement } from 'shared-types';
 
 function mockGameState(): GameState {
   return {
@@ -767,6 +767,38 @@ describe('net-protocol contract tests', () => {
       const encoded = serialize(msg);
       const decoded = deserialize(encoded) as RunVictoryMsg;
       expect(decoded).toEqual(msg);
+    });
+
+    it('BossChargedDelta round-trip (Story 7.7a)', () => {
+      const delta: BossChargedDelta = { type: 'boss:charged', bossId: 'boss-1', x: 512.5, y: 384.25 };
+      const encoded = serialize(delta);
+      const decoded = deserialize(encoded) as BossChargedDelta;
+      expect(decoded).toEqual(delta);
+    });
+
+    it('boss:charged survives serialize → deserialize as a DeltaEventMsg (Story 7.7a)', () => {
+      const delta = { type: 'boss:charged' as const, bossId: 'boss-1', x: 512.5, y: 384.25 } satisfies DeltaEventMsg;
+      expect(deserialize<DeltaEventMsg>(serialize(delta))).toEqual(delta);
+    });
+
+    it('applyDelta boss:charged is a no-op and does not move the mirrored boss (Story 7.7a)', () => {
+      const boss: BossState = {
+        id: 'boss-1',
+        entityType: 'grassland-boss',
+        hp: 500,
+        maxHp: 1000,
+        phase: BossPhase.Phase2,
+        position: { x: 100, y: 100 },
+        isDefeated: false,
+        fsmState: BossFSMState.CHASE,
+        attackCooldownTicks: 0,
+        stompCooldownTicks: 0,
+        chargeCooldownTicks: 0,
+      };
+      const state: GameState = { ...mockGameState(), boss };
+      const next = applyDelta(state, { type: 'boss:charged', bossId: 'boss-1', x: 999, y: 999 });
+      expect(next).toBe(state);
+      expect(next.boss?.position).toEqual({ x: 100, y: 100 });
     });
   });
 

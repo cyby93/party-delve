@@ -1,6 +1,5 @@
 # generated: 2026-06-22
-# last_updated: 2026-07-25 (7-6-status-effect-vfx → review: implementation complete,
-# Client-UX manual pass still needed, no display in this sandbox)
+# last_updated: 2026-07-26 (7-7a-boss-charged-delta-contract-and-broadcast → done)
 # project: party-delve
 # project_key: NOKEY
 # tracking_system: file-system
@@ -662,7 +661,7 @@ development_status:
   # protocol+sim work (Contract-change + Simulation-safety hooks) to one small story and
   # 7.7b stays host-only. 7.7b depends on 7.7a for its charge AC only; its three boss
   # reskin ACs are independent and ship regardless.
-  7-7a-boss-charged-delta-contract-and-broadcast: ready-for-dev
+  7-7a-boss-charged-delta-contract-and-broadcast: done
   7-7b-grassland-boss-attack-vfx-and-charge-visual: ready-for-dev
   7-8-environmental-and-bond-vfx-polish: ready-for-dev
   # 7.9 (2026-07-23, user "Option B" decision): move ability spatial geometry from
