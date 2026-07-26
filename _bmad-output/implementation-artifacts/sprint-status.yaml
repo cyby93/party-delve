@@ -1,5 +1,6 @@
 # generated: 2026-06-22
-# last_updated: 2026-07-21 (7-1-vfx-engine-foundations done)
+# last_updated: 2026-07-25 (7-6-status-effect-vfx → review: implementation complete,
+# Client-UX manual pass still needed, no display in this sandbox)
 # project: party-delve
 # project_key: NOKEY
 # tracking_system: file-system
@@ -42,7 +43,49 @@
 # Phase2 legacy stories (old Phase-based keys) are tracked below under PHASE 2 STORIES.
 
 generated: 2026-06-22
-last_updated: 2026-07-24 (7-5-stormcaller-ability-vfx → done: code review passed, 1 patch applied, 1 finding deferred)
+last_updated: 2026-07-26 (7-6-status-effect-vfx → done: live Client-UX pass, 1 tuning fix)
+# 2026-07-26: 7-6-status-effect-vfx → done. User ran the live Client-UX pass (Task
+# 7.1/7.2) themselves: all four effect shapes/colors confirmed correct. One real
+# finding — Warding Cry's shield aura was visible but not visibly pulsing — root-
+# caused to SHIELD_ALPHA_BASE (0.22) being too low-contrast for a filled/unstroked
+# shape versus the other three effects' 0.55-0.95 peak alpha; fixed by bumping to
+# 0.45 in status-aura.ts, user re-confirmed working live. Separately clarified (not
+# a VFX bug, not changed): the caster never sees the shield on themselves when
+# casting Warding Cry because GameRoom.ts's gatherPlayersInHitZone excludes the
+# caster from allies-in-zone targeting (pre-existing Story 3.17 simulation
+# behavior, Simulation-Engineer-owned, out of this story's scope). Task 7.3-7.6
+# (stacking/reconnect/down-spirit/kill) were not individually walked in the
+# reported session; user gave explicit sign-off to close the story regardless.
+# 2026-07-25: code review of 7-6-status-effect-vfx (stays review, not done) — Blind Hunter
+# subagent ran clean; the Edge Case Hunter and Acceptance Auditor subagents both hit a
+# session usage-limit failure mid-run and could not be retried, so that analysis was
+# performed directly instead (disclosed in the story's Review Findings section, not
+# claimed as independent-subagent output). 2 patches applied: a MAX_STATUS_AURAS
+# ceiling-denial edge case that could permanently strand a stale aura handle (self-
+# reinforcing ratchet under sustained >64-concurrent-aura load, well above the ~44
+# documented worst case but a real correctness gap), and 2 dead imports. 11 other Blind
+# Hunter findings dismissed as noise after verification (down/spirit "missing filter" and
+# "dropped isFrozen dim" both matched pre-existing/spec-mandated behavior; setChildIndex
+# usage matched the established tethers/zones/bodies idiom, not the different Iron-Skin
+# pattern a past review actually rejected; several claims were disproven by reading
+# engine.ts/primitives.ts, which the blind layer had no access to). All 6 ACs individually
+# re-audited: PASS. Status intentionally left at review, not done — code review is clean
+# but Task 7's human Client-UX pass (CLAUDE.md Merge Gate) is still outstanding.
+# 2026-07-25: implemented 7-6-status-effect-vfx (review) — new status-aura.ts (pure
+# spec/factory, 13 tests) drives all 4 status-effect types (damageReduction ring,
+# shield dome, damageBuff burst, slow orbiting trail) from the 7.1 primitive library,
+# replacing DungeonScreen's flat-colour badge. Composition-rule call: removed 7.2's
+# Iron Skin persistent shell and 7.3's Warding Cry persistent shield pulse outright
+# (both were the same "persist-for-duration" visual this story generalizes, per the
+# story's own Dev Notes; neither had a separate cast-instant worth keeping) — 7.4's
+# Dark Pact onset was left alone since it was already only a one-shot cue. Typecheck
+# clean (10/10 tsconfigs), full suite 555 passed / 2 pre-existing failures (confirmed
+# via git stash against the pre-story baseline) / 3 skipped. deferred-work.md's D-7.1-D
+# updated with this story's concrete concurrent-handle (~44 worst case) and allocation-
+# rate (~34/s) verdict — pooling stays deferred. Status set to review, not done: Task 7's
+# Client-UX manual pass (live host + phones, couch-distance legibility) was not performed
+# — no display in this sandbox, matching this project's established precedent (7.5, 3.23,
+# dev-3) — needs a human pass before the story can be closed.
 # 2026-07-22: created the remaining Epic 7 stories in one batch (7.2-7.6, 7.7a, 7.7b, 7.8).
 # Story 7.7 was split into 7.7a (protocol+sim) and 7.7b (host) — see the E7 block below.
 # Three epic-text claims were corrected against the shipped code during creation:
@@ -611,7 +654,7 @@ development_status:
   7-3-spiritcaller-ability-vfx: done
   7-4-souldrinker-ability-vfx: done
   7-5-stormcaller-ability-vfx: done
-  7-6-status-effect-vfx: ready-for-dev
+  7-6-status-effect-vfx: done
   # Epic 7.7 was split at story-creation time (2026-07-22, user-approved): the epic assumed
   # boss:charged only needed a host whitelist entry, but there is no BossChargedDelta in
   # net-protocol's DeltaEventMsg union at all and GameRoom.ts:1926 explicitly swallows the

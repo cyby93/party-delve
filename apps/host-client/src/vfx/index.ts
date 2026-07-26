@@ -99,3 +99,17 @@ export type {
   TintPulseParams,
   TintTarget,
 } from './primitives';
+export {
+  AURA_COLORS,
+  AURA_SLOT_INDEX,
+  AURA_BASE_GAP,
+  AURA_SLOT_STEP,
+  AURA_EXPIRY_FADE_MS,
+  SHIELD_REFERENCE_HP,
+  SLOW_ORBIT_PERIOD_MS,
+  MAX_STATUS_AURAS,
+  statusAuraSpec,
+  createStatusAura,
+  slowOrbitPoint,
+} from './status-aura';
+export type { StatusAuraSpec, StatusAuraKind, StatusAuraHandle, StatusAuraEntry } from './status-aura';

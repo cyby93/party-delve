@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Application, Graphics, Assets, Text, TextStyle } from 'pixi.js';
-import type { GameState, PlayerState, StatusEffectType } from 'shared-types';
+import type { GameState, PlayerState } from 'shared-types';
 import { SessionColor, CLASS_DEFINITIONS, PlayerClass, BossPhase, PURIFICATION_PULSE_DURATION_MS, REWARD_REVEAL_DURATION_MS } from 'shared-types';
 import type { HostSession } from '../session/host-session';
 import type { DeltaEventMsg } from 'net-protocol';
@@ -12,11 +12,6 @@ import {
   progress,
   getAbilityVfxConfig,
   resolveAbilityVfxPlacement,
-  ownsIronSkinShell,
-  STONEHIDE_SLATE,
-  IRON_SKIN_SHELL_RADIUS,
-  IRON_SKIN_FADE_MS,
-  IRON_SKIN_BREATHE_MS,
   planSpiritcallerCast,
   factionAccentFor,
   triggerSpiritcallerCast,
@@ -24,7 +19,6 @@ import {
   triggerSoulMendStart,
   triggerSoulMendLink,
   triggerSoulMendTerminal,
-  renderShieldAura,
   SPIRIT_NOVA_MAX_RADIUS_VFX_PX,
   SPIRIT_NOVA_DURATION_VFX_MS,
   MAX_FACTION_ACCENTS_PER_CAST,
@@ -49,6 +43,13 @@ import {
   isStormEyeZone,
   stormEyeTickCadence,
   type HurlFlight,
+  statusAuraSpec,
+  createStatusAura,
+  slowOrbitPoint,
+  MAX_STATUS_AURAS,
+  type StatusAuraEntry,
+  type TrailHandle,
+  type EffectHandle,
 } from '../vfx';
 
 interface DungeonScreenProps {
@@ -76,18 +77,18 @@ const ABILITY_FLASH_MS = 300;
 const SPIRIT_ABILITY_FLASH_MS = 200;
 const KILL_FADE_MS = 300;
 const ESSENCE_FLASH_MS = 400;
-const STATUS_BADGE_RADIUS = 6;
 const DAMAGE_NUMBER_DURATION_MS = 700;
 const DAMAGE_NUMBER_RISE_PX = 30;
 const DAMAGE_NUMBER_Y_OFFSET = ENEMY_RADIUS + 24; // clears the health bar at -32
 
-// One generic badge shape for all status effects — differentiated by color only.
-const STATUS_EFFECT_COLORS: Record<StatusEffectType, number> = {
-  damageReduction: 0x3498db,
-  slow: 0x9b59b6,
-  damageBuff: 0xe67e22,
-  shield: 0xf1c40f,
-};
+// Story 7.6: warn at most once (never per-frame at 60fps) when MAX_STATUS_AURAS
+// load-sheds a new status aura.
+let auraCeilingWarned = false;
+function warnAuraCeiling(): void {
+  if (auraCeilingWarned) return;
+  auraCeilingWarned = true;
+  console.warn(`[vfx] MAX_STATUS_AURAS (${MAX_STATUS_AURAS}) reached — shedding new status aura creation`);
+}
 
 interface PlayerEntry {
   circle: Graphics;
@@ -141,16 +142,14 @@ interface SoulMendVisual {
   lastTargetY: number;
   progressRingId: number; // cancel the imploding progress ring on early termination
 }
-/** The Epic 7 engine + correlation state threaded into renderFrame. Extends 7.2's
- *  `{ ironSkinGraphics }` object rather than adding a second positional param. */
+/** The Epic 7 engine + correlation state threaded into renderFrame, extending
+ *  the object rather than adding another positional param. */
 interface VfxContext {
-  ironSkinGraphics: Map<string, Graphics>;
   engine: VfxEngine | null;
   hpMemory: Map<string, number>;            // entityId -> last observed hp
   activeCasts: Map<string, ActiveCast>;     // casterId -> cast inside its accent window
   soulMend: Map<string, SoulMendVisual>;    // casterId -> channel visual state
   soulMendTerminal: Map<string, 'completed' | 'cancelled'>; // casterId -> observed terminal delta
-  shieldPulseAt: Map<string, number>;       // entityId -> next allowed shield pulse time
   // Story 7.4: projectileId -> its owning class/ability/owner, cached at
   // create-on-first-seen. applyDelta removes the projectile from GameState on
   // projectile:hit, so this cache is the only thing that survives to identify a
@@ -172,7 +171,7 @@ function renderFrame(
   essenceFlashes: Map<string, EssenceFlash>,
   tetherGraphics: Map<string, Graphics>,
   isPurified: boolean,
-  statusBadgeGraphics: Map<string, Graphics>,
+  statusAuras: Map<string, StatusAuraEntry>,
   projectileGraphics: Map<string, Graphics>,
   zoneGraphics: Map<string, Graphics>,
   damageNumberGraphics: Map<string, DamageNumberEntry>,
@@ -339,98 +338,109 @@ function renderFrame(
     }
   }
 
-  // ── Status effect badges ─────────────────────────────────────────────────────
-  // Reuses the create-on-first-seen / cleanup-on-missing pattern from playerGraphics/
-  // enemyGraphics above — one generic badge per entity, differentiated by color only.
+  // ── Status effect auras (Story 7.6) ──────────────────────────────────────────
+  // Four shape-distinct, per-entity, persistent auras built entirely from the
+  // Story 7.1 primitive library, replacing the old one-generic-badge-per-effect
+  // block. Snapshot-driven only (AC4) — survives reconnect, late join, batched-
+  // delta loss. Supersedes 7.2's Iron Skin shell and 7.3's Warding Cry shield
+  // pulse: both were the same "persist-for-the-duration" visual this story
+  // generalizes, so per the Story 7.6 composition rule they are removed here
+  // rather than double-rendered alongside the generic aura.
   const badgeTargets = [
     ...state.players.map(p => ({ id: p.id, x: p.x, y: p.y, radius: PLAYER_RADIUS, effects: p.statusEffects })),
     ...state.enemies.filter(e => e.isAlive).map(e => ({ id: e.id, x: e.x, y: e.y, radius: ENEMY_RADIUS, effects: e.statusEffects })),
   ];
-  const activeBadgeIds = new Set(badgeTargets.filter(t => t.effects.length > 0).map(t => t.id));
-  for (const [id, g] of statusBadgeGraphics) {
-    if (!activeBadgeIds.has(id)) {
-      app.stage.removeChild(g);
-      g.destroy();
-      statusBadgeGraphics.delete(id);
+  const vfxEngine = vfxRefs.engine;
+  if (vfxEngine) {
+    const activeAuraIds = new Set(badgeTargets.filter(t => t.effects.length > 0).map(t => t.id));
+    for (const [id, entry] of statusAuras) {
+      if (!activeAuraIds.has(id)) {
+        for (const handle of entry.auras.values()) vfxEngine.remove(handle.effectId);
+        statusAuras.delete(id);
+      }
     }
-  }
-  for (const target of badgeTargets) {
-    if (target.effects.length === 0) continue;
-    let g = statusBadgeGraphics.get(target.id);
-    if (!g) {
-      g = new Graphics();
-      app.stage.addChild(g);
-      statusBadgeGraphics.set(target.id, g);
-    }
-    g.position.set(target.x, target.y);
-    g.clear();
-    const badgeY = -(target.radius + 14);
-    target.effects.forEach((effect, i) => {
-      const offsetX = (i - (target.effects.length - 1) / 2) * 14;
-      g!.circle(offsetX, badgeY, STATUS_BADGE_RADIUS).fill({ color: STATUS_EFFECT_COLORS[effect.type] ?? 0xffffff });
-    });
-  }
 
-  // ── Iron Skin shell (Story 7.2) ──────────────────────────────────────────────
-  // COMPOSITION CONTRACT: 7.2 owns Stonehide's Iron Skin cast-and-persist visual;
-  // 7.6 owns the generic four-type status treatment. If 7.6 ships second, its
-  // damageReduction aura must exclude players for which ownsIronSkinShell() is
-  // true, or replace this shell outright and delete this block — never render both.
-  //
-  // Deliberately a state-driven Graphics rather than a VFX primitive: the
-  // primitives are fixed-duration one-shots, and the shell must come from the
-  // snapshot (AC4) so it survives reconnect, late join and batched-delta loss.
-  // The badge pattern above is copied verbatim: create-on-first-seen /
-  // cleanup-on-missing, mutate in place, never allocate per frame.
-  const ironSkinPlayers = state.players.filter(
-    p => ownsIronSkinShell(p) && !p.isDown && !(p.isSpirit && !isPurified),
-  );
-  const ironSkinIds = new Set(ironSkinPlayers.map(p => p.id));
-  for (const [id, g] of vfxRefs.ironSkinGraphics) {
-    if (!ironSkinIds.has(id)) {
-      app.stage.removeChild(g);
-      g.destroy();
-      vfxRefs.ironSkinGraphics.delete(id);
+    const liveAuraCount = (): number => {
+      let n = 0;
+      for (const entry of statusAuras.values()) n += entry.auras.size;
+      return n;
+    };
+
+    for (const target of badgeTargets) {
+      if (target.effects.length === 0) continue;
+      let entry = statusAuras.get(target.id);
+      if (!entry) {
+        // Math.random() is permitted here — cosmetic host-side effect only.
+        entry = { phase: Math.random() * Math.PI * 2, auras: new Map() };
+        statusAuras.set(target.id, entry);
+      }
+
+      const liveTypes = new Set(target.effects.map(e => e.type));
+      for (const [type, handle] of entry.auras) {
+        if (!liveTypes.has(type)) {
+          vfxEngine.remove(handle.effectId);
+          entry.auras.delete(type);
+        }
+      }
+
+      for (const effect of target.effects) {
+        const spec = statusAuraSpec(effect.type, target.radius, effect.magnitude, effect.expiresAtMs - now);
+        let handle = entry.auras.get(effect.type);
+
+        if (spec.kind === 'trail') {
+          // Persistent handle: fed every frame, never re-created except when
+          // the engine has reaped a stalled trail (disposed).
+          if (!handle || handle.trail!.disposed) {
+            if (liveAuraCount() >= MAX_STATUS_AURAS) {
+              warnAuraCeiling();
+              // Drop the stale bookkeeping entry rather than leaving a disposed
+              // trail parked in the map: it would otherwise count against
+              // liveAuraCount() forever (never re-checked once its type stays
+              // active) while rendering nothing, ratcheting the shed ceiling
+              // tighter every time it's hit instead of shedding only this frame.
+              if (handle) entry.auras.delete(effect.type);
+              continue;
+            }
+            const raw = createStatusAura(spec, target.x, target.y, entry.phase) as TrailHandle;
+            const effectId = vfxEngine.add(raw);
+            if (raw.view) app.stage.setChildIndex(raw.view, 0);
+            handle = { effectId, view: raw.view, trail: raw, nextRetriggerAt: 0 };
+            entry.auras.set(effect.type, handle);
+          }
+          const point = slowOrbitPoint(target.x, target.y, spec.radius, entry.phase, now);
+          handle.trail!.moveTo(point.x, point.y, now);
+          // createTrail.update never assigns view.alpha itself (primitives.ts),
+          // so this composes cleanly on top of its per-segment fade.
+          if (handle.view) handle.view.alpha = spec.alpha;
+          continue;
+        }
+
+        // Cadence kinds (damageReduction/shield/damageBuff): re-trigger a fresh
+        // handle on `spec.cadenceMs`; the outgoing pulse expires on its own
+        // (cadenceMs === durationMs), so it is never explicitly removed — at
+        // most one handoff frame of overlap. Reposition every frame in between.
+        if (!handle || now >= handle.nextRetriggerAt) {
+          if (liveAuraCount() >= MAX_STATUS_AURAS) {
+            warnAuraCeiling();
+            // Same rationale as the trail branch above: an expired-but-uncreated
+            // handle must not linger in the map counting against the ceiling.
+            if (handle) entry.auras.delete(effect.type);
+            continue;
+          }
+          const raw = createStatusAura(spec, target.x, target.y, entry.phase) as EffectHandle;
+          const effectId = vfxEngine.add(raw);
+          if (raw.view) app.stage.setChildIndex(raw.view, 0);
+          handle = { effectId, view: raw.view, trail: null, nextRetriggerAt: now + spec.cadenceMs };
+          entry.auras.set(effect.type, handle);
+        }
+        handle.view?.position.set(target.x, target.y);
+      }
     }
-  }
-  for (const player of ironSkinPlayers) {
-    const effect = player.statusEffects.find(e => e.type === 'damageReduction');
-    if (!effect) continue;
-    let g = vfxRefs.ironSkinGraphics.get(player.id);
-    if (!g) {
-      g = new Graphics();
-      // Plain addChild, per Task 4.4. addChildAt(g, 0) was tried and reverted
-      // (code review 2026-07-22): index 0 is the absolute bottom, so bodies,
-      // tethers and zones — which also insert at 0 — would land above the shell
-      // whenever they are created later in the effect's 3 s life. The shell's
-      // strokes span r 28-35, entirely outside the opaque r24 player fill, so
-      // sitting above the sprites occludes nothing.
-      app.stage.addChild(g);
-      vfxRefs.ironSkinGraphics.set(player.id, g);
-    }
-    // expiresAtMs is stamped by the server clock, so clamp: host/server skew may
-    // mis-time the fade but must never yield a negative alpha. Removal is the
-    // sim's job — the effect leaves statusEffects and the prune above runs.
-    // Math.max/min pass NaN through, so a non-finite expiry is caught explicitly
-    // and shown at full strength rather than painting alpha: NaN (code review
-    // 2026-07-22). Not reachable today — applyStatusEffect rejects a non-finite
-    // expiry — but the clamp is what the comment promises, so it must be true.
-    const remaining = effect.expiresAtMs - now;
-    const fade = Number.isFinite(remaining)
-      ? Math.max(0, Math.min(1, remaining / IRON_SKIN_FADE_MS))
-      : 1;
-    const breathe = 0.55 + 0.25 * Math.abs(Math.cos(now / IRON_SKIN_BREATHE_MS));
-    const dim = player.isFrozen ? 0.3 : 1; // preserve the disconnect cue
-    g.position.set(player.x, player.y);
-    g.clear();
-    g.circle(0, 0, IRON_SKIN_SHELL_RADIUS).stroke({ color: STONEHIDE_SLATE, width: 4, alpha: breathe * fade * dim });
-    g.circle(0, 0, IRON_SKIN_SHELL_RADIUS + 5).stroke({ color: STONEHIDE_SLATE, width: 1, alpha: 0.25 * fade * dim });
   }
 
   // ── Spiritcaller: Soul Mend channel indicator (Story 7.3, Task 6) ─────────────
   // State-driven (from player.channelingAbility), not delta-driven, so it is
   // correct after reconnect/late-join and immune to latestTransientDelta batching.
-  const vfxEngine = vfxRefs.engine;
   if (vfxEngine) {
     const channelingIds = new Set(
       state.players.filter(p => p.channelingAbility !== null).map(p => p.id),
@@ -493,21 +503,6 @@ function renderFrame(
     // for a still-live visual is kept (consumed by the termination loop above).
     for (const id of [...vfxRefs.soulMendTerminal.keys()]) {
       if (!vfxRefs.soulMend.has(id)) vfxRefs.soulMendTerminal.delete(id);
-    }
-
-    // ── Spiritcaller: Warding Cry persistent shield aura (Task 7) ───────────────
-    // Additive to the generic status badge (7.6 owns replacing that). At most one
-    // live pulse per entity — the concrete D-7.1-D answer for this story.
-    const shieldedIds = new Set<string>();
-    for (const player of state.players) {
-      if (!player.statusEffects.some(e => e.type === 'shield')) continue;
-      if (player.isDown || (player.isSpirit && !isPurified)) continue;
-      shieldedIds.add(player.id);
-      // Single named function so Story 7.6 adopts it verbatim (Task 7.2 / §7).
-      renderShieldAura(vfxEngine, vfxRefs.shieldPulseAt, player.id, player.x, player.y, now);
-    }
-    for (const id of [...vfxRefs.shieldPulseAt.keys()]) {
-      if (!shieldedIds.has(id)) vfxRefs.shieldPulseAt.delete(id);
     }
 
     // ── Spiritcaller: best-effort mixed-faction accents (Task 5) ────────────────
@@ -695,18 +690,16 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
   const enemyGraphicsRef = useRef<Map<string, EnemyEntry>>(new Map());
   const essenceFlashesRef = useRef<Map<string, EssenceFlash>>(new Map());
   const tetherGraphicsRef = useRef<Map<string, Graphics>>(new Map());
-  const statusBadgeGraphicsRef = useRef<Map<string, Graphics>>(new Map());
+  const statusAurasRef = useRef<Map<string, StatusAuraEntry>>(new Map());
   const projectileGraphicsRef = useRef<Map<string, Graphics>>(new Map());
   const zoneGraphicsRef = useRef<Map<string, Graphics>>(new Map());
   const damageNumberGraphicsRef = useRef<Map<string, DamageNumberEntry>>(new Map());
-  const ironSkinGraphicsRef = useRef<Map<string, Graphics>>(new Map());
   const vfxEngineRef = useRef<VfxEngine | null>(null);
   // Story 7.3 Spiritcaller correlation/channel state (runtime, not Graphics).
   const hpMemoryRef = useRef<Map<string, number>>(new Map());
   const activeCastsRef = useRef<Map<string, ActiveCast>>(new Map());
   const soulMendRef = useRef<Map<string, SoulMendVisual>>(new Map());
   const soulMendTerminalRef = useRef<Map<string, 'completed' | 'cancelled'>>(new Map());
-  const shieldPulseAtRef = useRef<Map<string, number>>(new Map());
   // Story 7.4 Souldrinker correlation state (runtime, not Graphics).
   const projectileMetaRef = useRef<Map<string, { class: PlayerClass; abilityIndex: number; ownerId: string }>>(new Map());
   const lifestealEffectIdRef = useRef<Map<string, number>>(new Map()); // ownerId -> live lifesteal implode id (one per player)
@@ -767,18 +760,16 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
           essenceFlashesRef.current,
           tetherGraphicsRef.current,
           isPurifiedRef.current,
-          statusBadgeGraphicsRef.current,
+          statusAurasRef.current,
           projectileGraphicsRef.current,
           zoneGraphicsRef.current,
           damageNumberGraphicsRef.current,
           {
-            ironSkinGraphics: ironSkinGraphicsRef.current,
             engine: vfxEngineRef.current,
             hpMemory: hpMemoryRef.current,
             activeCasts: activeCastsRef.current,
             soulMend: soulMendRef.current,
             soulMendTerminal: soulMendTerminalRef.current,
-            shieldPulseAt: shieldPulseAtRef.current,
             projectileMeta: projectileMetaRef.current,
             stormEyePulse: stormEyePulseRef.current,
             hurlFlights: hurlFlightsRef.current,
@@ -887,14 +878,12 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
       enemyGraphicsRef.current.clear();
       essenceFlashesRef.current.clear();
       tetherGraphicsRef.current.clear();
-      statusBadgeGraphicsRef.current.clear();
+      statusAurasRef.current.clear();
       damageNumberGraphicsRef.current.clear();
-      ironSkinGraphicsRef.current.clear();
       hpMemoryRef.current.clear();
       activeCastsRef.current.clear();
       soulMendRef.current.clear();
       soulMendTerminalRef.current.clear();
-      shieldPulseAtRef.current.clear();
       projectileMetaRef.current.clear();
       lifestealEffectIdRef.current.clear();
       buffedPlayersRef.current.clear();
