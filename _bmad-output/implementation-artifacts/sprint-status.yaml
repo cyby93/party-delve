@@ -42,7 +42,34 @@
 # Phase2 legacy stories (old Phase-based keys) are tracked below under PHASE 2 STORIES.
 
 generated: 2026-06-22
-last_updated: 2026-07-27 (7-11 epic-7 post-7.10 deferred-hardening host → done)
+last_updated: 2026-07-27 (7-12 epic-7 post-7.10 deferred-hardening simulation → done)
+# 2026-07-27: code review of 7-12-epic-7-post-710-deferred-hardening-simulation (done) —
+# 3 parallel layers (Blind Hunter, Edge Case Hunter, Acceptance Auditor), full spec mode.
+# Acceptance Auditor independently re-ran typecheck + the new test file, confirmed no AC
+# violation. 0 decision_needed, 2 patch (both applied: added 4 control-flow tests —
+# processEnemyEvents/processBossEvents mirror functions confirming the enemy-loop continue
+# and boss-switch break each scope to only their own event, 10/10 tests passing — and fixed
+# a self-contradictory perf-note wording), 2 defer, 12 dismissed. Deferred D-7.12-A
+# (boss:charged broadcasts an unguarded position, unlike its now-guarded boss:moved sibling
+# — tryCharge shares tickBossChase's exact dx/dy/len arithmetic) and D-7.12-B (enemy:stomped
+# bypasses the finite guard entirely — the check is nested inside the enemy:moved branch
+# only) to deferred-work.md; both real but outside this story's literal AC2 scope
+# (enemy:moved/boss:moved only), consistent with CLAUDE.md's no-silent-scope-expansion rule.
+# Typecheck clean (10/10 tsconfigs). Status set to done — no Client-UX manual-pass gate
+# applies (simulation-only story, no host/mobile file touched).
+# 2026-07-27: implemented 7-12-epic-7-post-710-deferred-hardening-simulation (review) —
+# added Number.isFinite guards at all four :moved broadcast sites in GameRoom.ts
+# (player/projectile physics read-back, enemy AI, boss-event switch's boss:moved case)
+# per D-7.10-B, plus a default exhaustiveness arm on the boss-event switch mirroring
+# apply-delta.ts's established _exhaustive: never pattern per D-7.7a-B. New
+# game-room-post-710-deferred-hardening.test.ts (6 tests) mirrors the finite-gate logic
+# as a standalone function per the established GameRoom-isn't-instantiable test pattern.
+# Typecheck clean (10/10 tsconfigs). Full suite run twice (TWO-STRIKE QA): 579/583
+# passing on run 2; all remaining failures (ability-dispatch.test.ts flaky heal timing,
+# full-run.test.ts/hub-ability-use.test.ts WSL2 port-binding timeout, ability-vfx.test.ts
+# Stone Wall centering) match this story's own pre-documented known-issue list verbatim
+# and touch no file this story changed. Sibling to 7-11 (host-only half of the same
+# deferred-item sweep, already done).
 # 2026-07-27: code review of 7-8-environmental-and-bond-vfx-polish (stays review, not
 # done) — 3 parallel layers (Blind Hunter, Edge Case Hunter, Acceptance Auditor), full
 # spec mode. Two of the three layers' first runs were lost to a subagent-session API
@@ -776,7 +803,7 @@ development_status:
   # (both long-lived VFX consumers named as revisit triggers — 7.6 status auras, 7.8 trails —
   # already prune/fade correctly by design).
   7-11-epic-7-post-710-deferred-hardening-host: done
-  7-12-epic-7-post-710-deferred-hardening-simulation: ready-for-dev
+  7-12-epic-7-post-710-deferred-hardening-simulation: done
   epic-7-retrospective: optional
 
   # ─── E8: Progression & Persistent Meta ──────────────────────────────────────

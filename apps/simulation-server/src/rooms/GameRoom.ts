@@ -1399,6 +1399,11 @@ export class GameRoom extends Room {
       const newX = toPixels(pos.x);
       const newY = toPixels(pos.y);
 
+      if (!Number.isFinite(newX) || !Number.isFinite(newY)) {
+        logger.debug({ roomId: this.roomId, playerId: player.id, newX, newY }, 'skipped non-finite player position read-back');
+        continue;
+      }
+
       if (Math.abs(newX - player.x) > 0.5 || Math.abs(newY - player.y) > 0.5) {
         player.x = newX;
         player.y = newY;
@@ -1420,6 +1425,11 @@ export class GameRoom extends Room {
       const pos = body.getPosition();
       const newX = toPixels(pos.x);
       const newY = toPixels(pos.y);
+
+      if (!Number.isFinite(newX) || !Number.isFinite(newY)) {
+        logger.debug({ roomId: this.roomId, projectileId: projectile.id, newX, newY }, 'skipped non-finite projectile position read-back');
+        continue;
+      }
 
       if (Math.abs(newX - projectile.x) > 0.5 || Math.abs(newY - projectile.y) > 0.5) {
         projectile.x = newX;
@@ -1891,6 +1901,10 @@ export class GameRoom extends Room {
         const delta: DeltaEventMsg = aiEvt;
 
         if (aiEvt.type === 'enemy:moved') {
+          if (!Number.isFinite(enemy.x) || !Number.isFinite(enemy.y)) {
+            logger.debug({ roomId: this.roomId, enemyId: enemy.id }, 'skipped non-finite enemy position broadcast');
+            continue;
+          }
           const body = this.enemyBodies.get(enemy.id);
           if (body) {
             body.setPosition(Vec2(toMeters(enemy.x), toMeters(enemy.y)));
@@ -1918,6 +1932,10 @@ export class GameRoom extends Room {
         for (const evt of bossResult.value) {
           switch (evt.type) {
             case 'boss:moved':
+              if (!Number.isFinite(evt.x) || !Number.isFinite(evt.y)) {
+                logger.debug({ roomId: this.roomId, bossId: evt.bossId }, 'skipped non-finite boss position broadcast');
+                break;
+              }
               this.gameState.boss.position.x = evt.x;
               this.gameState.boss.position.y = evt.y;
               if (this.bossBody) this.bossBody.setPosition(Vec2(toMeters(evt.x), toMeters(evt.y)));
@@ -1994,6 +2012,13 @@ export class GameRoom extends Room {
                 if (this.gameState.session.phase !== 'post-run') return;
                 this.broadcast(EventNames.DELTA, { type: 'run:complete', totalEssence } satisfies DeltaEventMsg);
               }, PURIFICATION_PULSE_DURATION_MS + REWARD_REVEAL_DURATION_MS);
+              break;
+            }
+
+            default: {
+              // Exhaustiveness guard: adding a new BossEvent variant without a case here causes a TS error.
+              const _exhaustive: never = evt;
+              void _exhaustive;
               break;
             }
           }

@@ -1,6 +1,10 @@
+---
+baseline_commit: 72837e19ff60a7f039a9c3a30e52a0b3784ae33c
+---
+
 # Story 7.12: Epic 7 Post-7.10 Deferred Hardening (Simulation)
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -49,16 +53,16 @@ Both fixes are confined to `apps/simulation-server/src/rooms/GameRoom.ts` — si
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Finite guards on the two physics-read-back `:moved` sites (AC: 1).**
-  - [ ] 1.1: Phase 3 (`GameRoom.ts:1393-1413`, player): change the gate from `if (Math.abs(newX - player.x) > 0.5 || Math.abs(newY - player.y) > 0.5) {` to additionally require `Number.isFinite(newX) && Number.isFinite(newY)`. On the non-finite branch, `logger.debug({ roomId: this.roomId, playerId: player.id, newX, newY }, 'skipped non-finite player position read-back');` and do not write/broadcast.
-  - [ ] 1.2: Phase 3b (`:1415-1435`, projectile): identical transformation, `logger.debug({ roomId: this.roomId, projectileId: projectile.id, newX, newY }, 'skipped non-finite projectile position read-back');`.
+- [x] **Task 1 — Finite guards on the two physics-read-back `:moved` sites (AC: 1).**
+  - [x] 1.1: Phase 3 (`GameRoom.ts:1393-1413`, player): change the gate from `if (Math.abs(newX - player.x) > 0.5 || Math.abs(newY - player.y) > 0.5) {` to additionally require `Number.isFinite(newX) && Number.isFinite(newY)`. On the non-finite branch, `logger.debug({ roomId: this.roomId, playerId: player.id, newX, newY }, 'skipped non-finite player position read-back');` and do not write/broadcast.
+  - [x] 1.2: Phase 3b (`:1415-1435`, projectile): identical transformation, `logger.debug({ roomId: this.roomId, projectileId: projectile.id, newX, newY }, 'skipped non-finite projectile position read-back');`.
 
-- [ ] **Task 2 — Finite guards on `enemy:moved` and `boss:moved` (AC: 2).**
-  - [ ] 2.1: Enemy AI phase (`:1890-1901`): before `this.broadcast(EventNames.DELTA, delta);` for an `aiEvt.type === 'enemy:moved'` event, check `Number.isFinite(enemy.x) && Number.isFinite(enemy.y)`; if non-finite, `logger.debug({ roomId: this.roomId, enemyId: enemy.id }, 'skipped non-finite enemy position broadcast');`, skip both the `body.setPosition(...)` call (`:1896`) and the broadcast for that event only (other event types from the same `result.value` array still process normally).
-  - [ ] 2.2: Boss `case 'boss:moved'` (`:1920-1927`): before writing `this.gameState.boss.position.x/y` and calling `this.bossBody?.setPosition(...)` and broadcasting, check `Number.isFinite(evt.x) && Number.isFinite(evt.y)`; if non-finite, `logger.debug({ roomId: this.roomId, bossId: evt.bossId }, 'skipped non-finite boss position broadcast');` and `break;` without writing state, moving the body, or broadcasting.
+- [x] **Task 2 — Finite guards on `enemy:moved` and `boss:moved` (AC: 2).**
+  - [x] 2.1: Enemy AI phase (`:1890-1901`): before `this.broadcast(EventNames.DELTA, delta);` for an `aiEvt.type === 'enemy:moved'` event, check `Number.isFinite(enemy.x) && Number.isFinite(enemy.y)`; if non-finite, `logger.debug({ roomId: this.roomId, enemyId: enemy.id }, 'skipped non-finite enemy position broadcast');`, skip both the `body.setPosition(...)` call (`:1896`) and the broadcast for that event only (other event types from the same `result.value` array still process normally).
+  - [x] 2.2: Boss `case 'boss:moved'` (`:1920-1927`): before writing `this.gameState.boss.position.x/y` and calling `this.bossBody?.setPosition(...)` and broadcasting, check `Number.isFinite(evt.x) && Number.isFinite(evt.y)`; if non-finite, `logger.debug({ roomId: this.roomId, bossId: evt.bossId }, 'skipped non-finite boss position broadcast');` and `break;` without writing state, moving the body, or broadcasting.
 
-- [ ] **Task 3 — Boss-event switch exhaustiveness guard (AC: 3).**
-  - [ ] 3.1: In `GameRoom.ts`, after the existing `case 'boss:defeated': { ... break; }` block (ending `:1998`) and before the switch's closing `}` (`:1999`), add:
+- [x] **Task 3 — Boss-event switch exhaustiveness guard (AC: 3).**
+  - [x] 3.1: In `GameRoom.ts`, after the existing `case 'boss:defeated': { ... break; }` block (ending `:1998`) and before the switch's closing `}` (`:1999`), add:
     ```ts
     default: {
       // Exhaustiveness guard: adding a new BossEvent variant without a case here causes a TS error.
@@ -68,14 +72,23 @@ Both fixes are confined to `apps/simulation-server/src/rooms/GameRoom.ts` — si
     }
     ```
     mirroring `packages/net-protocol/src/apply-delta.ts:303-308` exactly (same comment wording, same `void` pattern).
-  - [ ] 3.2: Confirm via `npm run typecheck` that this compiles cleanly with no `case` additions needed — all six current `BossEvent` variants already have explicit handlers.
+  - [x] 3.2: Confirm via `npm run typecheck` that this compiles cleanly with no `case` additions needed — all six current `BossEvent` variants already have explicit handlers.
 
-- [ ] **Task 4 — Test coverage (AC: 4) + validation (AC: 5).**
-  - [ ] 4.1: In `apps/simulation-server/tests/`, add `game-room-post-710-deferred-hardening.test.ts` following the established pattern for GameRoom logic that can't be unit-tested via a live room (see `game-room-post-410-deferred-hardening.test.ts`, `game-room-post-413-deferred-hardening.test.ts`): mirror the phase-3/3b finite-gate logic as a small standalone function (`newX`/`newY`/prior `x`/`y` in, `{ shouldWrite: boolean }` out) and assert it returns `false` for `NaN`/`Infinity` inputs and `true` (matching today's existing `> 0.5` behavior) for finite inputs that cross the threshold.
-  - [ ] 4.2: The switch-exhaustiveness guard (Task 3) is a compile-time check, not a runtime behavior — do not write a redundant unit test for it; `npm run typecheck` passing **is** the proof, per the same approach Story 7.10's AC2 used for `apply-delta.ts`'s identical pattern.
-  - [ ] 4.3: `npm run typecheck` at repo root.
-  - [ ] 4.4: `npm test` at repo root; record pass/fail counts and confirm any failures match the documented pre-existing/known-flaky set.
-  - [ ] 4.5: Simulation-safety hook: deterministic-tick sanity note (the guards are pure additive `if` checks around existing writes/broadcasts — no new `GameState` field, no reordering of existing phases, so determinism is unaffected on the finite-input path, which is 100% of currently-known inputs) and a one-line perf note (`Number.isFinite` is a single comparison per site per tick — negligible against the 33 ms budget).
+- [x] **Task 4 — Test coverage (AC: 4) + validation (AC: 5).**
+  - [x] 4.1: In `apps/simulation-server/tests/`, add `game-room-post-710-deferred-hardening.test.ts` following the established pattern for GameRoom logic that can't be unit-tested via a live room (see `game-room-post-410-deferred-hardening.test.ts`, `game-room-post-413-deferred-hardening.test.ts`): mirror the phase-3/3b finite-gate logic as a small standalone function (`newX`/`newY`/prior `x`/`y` in, `{ shouldWrite: boolean }` out) and assert it returns `false` for `NaN`/`Infinity` inputs and `true` (matching today's existing `> 0.5` behavior) for finite inputs that cross the threshold.
+  - [x] 4.2: The switch-exhaustiveness guard (Task 3) is a compile-time check, not a runtime behavior — do not write a redundant unit test for it; `npm run typecheck` passing **is** the proof, per the same approach Story 7.10's AC2 used for `apply-delta.ts`'s identical pattern.
+  - [x] 4.3: `npm run typecheck` at repo root.
+  - [x] 4.4: `npm test` at repo root; record pass/fail counts and confirm any failures match the documented pre-existing/known-flaky set.
+  - [x] 4.5: Simulation-safety hook: deterministic-tick sanity note (the guards are pure additive `if` checks around existing writes/broadcasts — no new `GameState` field, no reordering of existing phases, so determinism is unaffected on the finite-input path, which is 100% of currently-known inputs) and a one-line perf note (`Number.isFinite` is a single comparison per site per tick — negligible against the 33 ms budget).
+
+### Review Findings
+
+_3 parallel layers (Blind Hunter, Edge Case Hunter, Acceptance Auditor), full spec mode. Acceptance Auditor independently re-ran `tsc --noEmit` and the new test file — confirmed no AC violation. 21 raised, 14 dismissed (noise/false-positive/matches-spec-literally/matches-established-precedent), 2 patch, 2 defer, 0 decision_needed._
+
+- [x] [Review][Patch] New test file doesn't verify the two control-flow properties this diff actually introduces (only the `shouldWritePosition` finite+threshold predicate is tested) [`apps/simulation-server/tests/game-room-post-710-deferred-hardening.test.ts`] — no test confirms (a) the enemy-AI loop's `continue` (`GameRoom.ts:1906`) skips only the current `aiEvt` when `result.value` holds multiple events for one enemy, or (b) the boss switch's `break` (`GameRoom.ts:1937`) only exits the `'boss:moved'` case when `bossResult.value` holds multiple events in the same tick (a real pattern per `grassland-boss.ts:169-194`'s `[...phaseEvents, ...chargeEvents, ...]` return shape). Both are correct by inspection but unverified by test. **Fixed:** added `processEnemyEvents`/`processBossEvents` mirror-function tests (4 new tests, 10/10 total passing) confirming both scoping properties.
+- [x] [Review][Patch] Perf sanity note self-contradicts in Dev Agent Record → Completion Notes [`7-12-epic-7-post-710-deferred-hardening-simulation.md` Completion Notes] — "≤4 extra scalar comparisons per tick across all four sites" immediately followed by "scaled by live entity count"; these can't both be true. Actual cost is O(players + projectiles + enemies + 1) per tick, not a flat ≤4. **Fixed:** reworded to state the O(entity count) scaling directly, dropping the contradictory flat "≤4" claim.
+- [x] [Review][Defer] `boss:charged` broadcasts an unguarded position, unlike its now-guarded `boss:moved` sibling [`apps/simulation-server/src/rooms/GameRoom.ts:1960-1967`] — deferred, out of this story's literal AC2 scope (`enemy:moved`/`boss:moved` only) but relevant to the story's own stated intent. `tryCharge` (`packages/game-rules/src/entities/grassland-boss.ts:78-91`) mutates `boss.position` via the identical `dx/dy/len`-division arithmetic as `tickBossChase` (which produces the now-guarded `boss:moved`, `grassland-boss.ts:109-128`). If that arithmetic ever produced non-finite output, `boss:moved` would be suppressed but `boss:charged` would broadcast it unguarded in the same tick.
+- [x] [Review][Defer] `enemy:stomped` events bypass the finite guard entirely [`apps/simulation-server/src/rooms/GameRoom.ts:1900-1914`] — deferred, same "outside literal AC2 scope, relevant to stated intent" note as above. The `Number.isFinite` check is nested inside `if (aiEvt.type === 'enemy:moved')` (`:1903`), so a `StompLayer.execute()` result (`packages/game-rules/src/systems/ai/layers/stomp.ts:14-21`, carrying `x: enemy.x, y: enemy.y`) skips the check and broadcasts unconditionally at `:1914`, regardless of whether `enemy.x`/`enemy.y` are finite.
 
 ## Dev Notes
 
@@ -128,14 +141,37 @@ Both fixes are confined to `apps/simulation-server/src/rooms/GameRoom.ts` — si
 
 ### Agent Model Used
 
+Claude Sonnet 5 (claude-sonnet-5)
+
 ### Debug Log References
+
+- `npm run typecheck` — clean, all 10 tsconfigs, no errors (run once after Task 3, no fix cycle needed).
+- `npm test` (full suite, run 1): 4 files failed / 48 passed (52 files); 2 tests failed / 578 passed / 3 skipped (583 tests). Failures: `ability-dispatch.test.ts` "Ancestor's Voice..." (flaky heal-timing assertion), `full-run.test.ts` + `hub-ability-use.test.ts` (simulation-server did not start within 60s — WSL2 e2e port-binding timeout), `ability-vfx.test.ts` "centres Stone Wall..." (host-client, unrelated).
+- `npm test` (full suite, run 2, per TWO-STRIKE QA): 3 files failed / 49 passed; 1 test failed / 579 passed / 3 skipped. `ability-dispatch.test.ts` passed this run (confirming flaky, not a regression); `full-run.test.ts`/`hub-ability-use.test.ts` (port-binding timeout) and `ability-vfx.test.ts` Stone Wall centering failed again — both match this story's own Testing Standards "Known pre-existing, NOT caused by this story" list verbatim. No fix applied; both runs' failures fall entirely within the pre-documented set, none touch `apps/simulation-server/src/rooms/GameRoom.ts` or the new test file.
 
 ### Completion Notes List
 
+- **Task 1 (AC1):** Added `if (!Number.isFinite(newX) || !Number.isFinite(newY)) { logger.debug(...); continue; }` immediately after the `toPixels()` read-back in both the phase-3 player loop and phase-3b projectile loop, before the existing `> 0.5` gate. `continue` is equivalent to "skip the whole block" since the gate is the entire remaining loop body at both sites.
+- **Task 2 (AC2):** Enemy AI phase — added a finite check on `enemy.x`/`enemy.y` inside the `aiEvt.type === 'enemy:moved'` branch, before the `body.setPosition(...)` re-sync; non-finite skips both the physics re-sync and the broadcast via `continue` (other event types in the same `result.value` array are unaffected since the loop continues to their iterations). Boss `case 'boss:moved'`: added the finite check as the first statement in the case, `break`-ing before any state write, body move, or broadcast on the non-finite branch.
+- **Task 3 (AC3):** Added a `default` arm to the boss-event `switch (evt.type)` after `case 'boss:defeated'`, structured identically to `apply-delta.ts:303-308` (same comment wording, `const _exhaustive: never = evt; void _exhaustive;` pattern). Confirmed via `npm run typecheck` that no new `case` was required — all six current `BossEvent` variants (`boss:moved`, `boss:stomped`, `boss:phaseChanged`, `boss:charged`, `add:spawned`, `boss:defeated`) already had explicit handlers.
+- **Task 4 (AC4/AC5):** Added `apps/simulation-server/tests/game-room-post-710-deferred-hardening.test.ts` (6 tests) mirroring the finite-gate logic as a standalone `shouldWritePosition` function — asserts `false` for `NaN`/`±Infinity` in either axis and preserves the pre-existing `> 0.5` threshold behavior for finite input. The switch-exhaustiveness guard is proven by `npm run typecheck` per Story 7.10's established precedent for the identical `apply-delta.ts` pattern — no redundant runtime test written for it.
+- **AC5 hook discharge:**
+  - **Simulation-safety hook (TRIGGERED):** typecheck clean (10/10 tsconfigs); new unit tests pass (6/6); full suite 579/583 passing with the remaining 1 failure + 2 setup-timeout suites all matching this story's own pre-documented known-issue list (none in `apps/simulation-server/src/rooms/GameRoom.ts` or new test files).
+  - **Deterministic-tick sanity note:** all four guards are additive `if` checks wrapped around existing writes/broadcasts — no new `GameState` field, no reordering of existing tick phases, no change to iteration order within any loop. On the finite-input path (100% of currently-known/reachable inputs, per AC4), execution is byte-for-byte identical to pre-story behavior, so determinism is unaffected.
+  - **Perf sanity note:** `Number.isFinite` adds one extra scalar comparison-pair per finite-check per tick, so the added cost scales with live entity count — O(players + projectiles + enemies + 1 boss) comparisons per tick, not a fixed constant — and remains negligible against the 33 ms/30 Hz tick budget at any currently-supported room size (`MAX_PLAYERS` plus a bounded enemy/projectile count per level).
+  - **Contract-change hook:** confirmed NOT triggered — no file under `packages/shared-types/**` or `packages/net-protocol/**` touched; `BossEvent` (defined in `packages/game-rules`) is unchanged, only its consumer switch in `GameRoom.ts` gained a guard.
+- No new dependencies, no ownership-hook escalation (100% within `apps/simulation-server/**`, Simulation Engineer's own area, matching the `game-room-post-4xx` test-file precedent).
+- **Confidence: 92%** — both fixes are mechanical, pattern-matched exactly against an already-shipped sibling (`apply-delta.ts`) and the story's own acceptance criteria/task text, and are provably no-ops on every currently-reachable input path. Residual uncertainty is only the inherent unfalsifiability of "planck.js/game-rules never actually produce non-finite output today" (AC4's own stated non-goal — not investigated, matching scope), not anything about the guards' correctness or discharge.
+
 ### File List
+
+- `apps/simulation-server/src/rooms/GameRoom.ts` (modified) — finite guards at all four `:moved` broadcast sites (phase 3 player, phase 3b projectile, enemy AI `enemy:moved`, boss-event `boss:moved`); `default` exhaustiveness arm added to the boss-event switch.
+- `apps/simulation-server/tests/game-room-post-710-deferred-hardening.test.ts` (new, then patched during code review) — 10 unit tests: 6 for the finite-gate logic (D-7.10-B), 4 added during code review for the enemy-loop/boss-switch control-flow scoping.
 
 ## Change Log
 
 | Date | Change |
 |---|---|
 | 2026-07-27 | Story 7.12 created — simulation-only half of the Epic 7 post-7.10 deferred-hardening sweep. Re-verified D-7.10-B and D-7.7a-B against current source: confirmed no finite guard exists at any of the four `:moved` broadcast sites, and confirmed the boss-event switch still has no exhaustiveness arm while its net-protocol sibling (`apply-delta.ts`) does. Split from the host-side findings (D-7.3-A, D-7.4-A, D-7.4-B) into sibling Story 7.11 per user decision, matching CLAUDE.md's ownership-split rule. |
+| 2026-07-27 | Implemented: added `Number.isFinite` guards at all four `:moved` broadcast sites (player, projectile, enemy, boss) and a `default` exhaustiveness arm to the boss-event switch, mirroring `apply-delta.ts`'s established pattern exactly. Added `game-room-post-710-deferred-hardening.test.ts` (6 tests). Typecheck clean (10/10 tsconfigs). Full suite: 579/583 passing across two runs, remaining failures all pre-existing/documented and unrelated to this story's paths. Status set to review. |
+| 2026-07-27 | Code review (3 parallel layers, full spec mode): 0 decision_needed, 2 patch, 2 defer, 12 dismissed. Patches applied — added 4 control-flow tests (`processEnemyEvents`/`processBossEvents` mirror functions, 10/10 tests passing) and fixed a self-contradictory perf-note wording. Deferred D-7.12-A (`boss:charged` lacks the finite guard its `boss:moved` sibling now has) and D-7.12-B (`enemy:stomped` bypasses the guard entirely) to `deferred-work.md` — both real but outside AC2's literal scope. Typecheck clean. Status set to done. |
