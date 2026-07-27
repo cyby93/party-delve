@@ -4,6 +4,13 @@ Items surfaced during reviews that are real findings but pre-exist the triggerin
 
 ---
 
+## Deferred from: code review of 7-8-environmental-and-bond-vfx-polish (2026-07-27)
+
+**D-7.8-A — Task 10.4's manual Client-UX pass still outstanding** [`apps/host-client/src/screens/DungeonScreen.tsx`, whole file — visual/couch-readability verification]
+No display in this sandbox. Needs a human to cast a Blood Spike and a Void Pulse, watch the Storm Eye zone, disconnect a zone owner mid-zone, kill the boss and watch the purification pulse → reward-reveal handoff, and confirm bond tethers still draw below sprites, at couch distance. Already disclosed by the story's own Completion Notes and Task 10.4 checkbox — this entry exists only so the sweep-for-unresolved-deferred-items pattern this project already uses (see 1.10/2.9/3.24/4.14/5.9/6.10 above) can find it later if a follow-up hardening story is ever created before a human performs the pass directly.
+
+---
+
 ## Deferred from: code review of 7-10-projectile-position-streaming (2026-07-24)
 
 **D-7.10-A — Per-projectile per-tick `projectile:moved` broadcast fan-out (no coalescing)** [`apps/simulation-server/src/rooms/GameRoom.ts:1413`]

@@ -42,7 +42,63 @@
 # Phase2 legacy stories (old Phase-based keys) are tracked below under PHASE 2 STORIES.
 
 generated: 2026-06-22
-last_updated: 2026-07-26 (7-7b-grassland-boss-attack-vfx-and-charge-visual → done)
+last_updated: 2026-07-27 (7-8-environmental-and-bond-vfx-polish stays review)
+# 2026-07-27: code review of 7-8-environmental-and-bond-vfx-polish (stays review, not
+# done) — 3 parallel layers (Blind Hunter, Edge Case Hunter, Acceptance Auditor), full
+# spec mode. Two of the three layers' first runs were lost to a subagent-session API
+# limit; both retried once and completed. 0 decision_needed, 6 patch (all applied and
+# re-verified — typecheck clean, 56/56 relevant vitest green), 1 defer (D-7.8-A, Task
+# 10.4's manual pass, deferred-work.md), 12 dismissed as noise/false-positive/by-design.
+# Patches: ProjectileAppearance.trail was missing its alpha field (every trail rendered
+# at createTrail's hardcoded default instead of the per-ability spec value); a duplicate
+# assertion in the new table-sanity zone test left DEFAULT_ZONE_VISUAL's fallback tier
+# untested; a null-guard style inconsistency (non-null assertion vs optional chaining)
+# in the same diff; a duplicate boss:defeated delta could double-fire the purification
+# pulse and push its deadline later (pre-existing gap, hardened while already touching
+# that branch); the new table-sanity test never validated trail.alpha bounds or the new
+# spawnRing field at all. Two false positives from the zero-context blind layer (claimed
+# P and TrailHandle were undefined/unimported — both pre-existing, outside the diff's
+# changed lines, confirmed by direct read) were the reason typecheck was re-run to
+# settle the question rather than trusting either claim. Status intentionally stays
+# review, not done: this project's own established precedent (7.5, 7.6, 7.7b, 3.23,
+# dev-3) gates done on the human Client-UX manual pass, independent of code-review
+# outcome — the generic skill default ("all patches resolved -> done") does not
+# override that project-specific Merge Gate requirement.
+# 2026-07-26: implemented 7-8-environmental-and-bond-vfx-polish (review) — the real AC2
+# fix was rebuilding resolveZoneVisual (ability-vfx-config.ts) as a proper three-tier
+# fallback ladder (exact class:effectType -> effectType-only tier -> global default); the
+# pre-existing 7.5 version skipped the middle tier entirely, falling straight to the flat
+# purple default on any owner-not-found or wrong-class case. Added resolveProjectileAppearance
+# + DEFAULT_PROJECTILE_APPEARANCE and wired per-ability projectile body + persistent
+# TrailHandle into DungeonScreen's Projectiles block (previously a hardcoded white dot with
+# no trail at all); added Void Pulse's own zone visual (VOID_PULSE_ZONE_VISUAL, built from
+# 7.4's already-authored but never-consumed ZONE_APPEARANCE.pull) and a one-shot zone spawn
+# ring on first-seen. Ported the purification pulse and reward-reveal burst onto
+# createRingShockwave/createParticleBurst with a purificationPulseEndsAtRef deadline (VfxEngine
+# has no completion callback) driving the reward-reveal handoff exactly once; restyled bond
+# tethers (glow+breathing core, NaN-guarded CSS-hex parse). Confirmed Task 1 (VfxEngine wiring)
+# and Task 5.1 (projectile:hit whitelist) were already shipped by 7.2/7.4 — no changes needed
+# there. Fixing AC2 correctly required updating 2 now-stale stormcaller-vfx.test.ts assertions
+# (7.5) that had encoded the old, AC2-incorrect fallback behavior as expected — that suite's own
+# comment had explicitly anticipated this. New ability-vfx-config.test.ts (9 tests). Typecheck
+# clean (10/10 tsconfigs). Full suite: 571 passed / 3 skipped / 3 failed, all 3 pre-existing and
+# unrelated (ability-vfx.test.ts Stone Wall centering — documented pre-existing; ability-
+# dispatch.test.ts/hub-ability-use.test.ts — simulation-server port-binding timeout, host-only
+# story never touches simulation-server). Status set to review, not done: Task 10.4's manual
+# Client-UX pass (cast Blood Spike/Void Pulse, watch Storm Eye, disconnect a zone owner
+# mid-zone, boss defeat -> purification -> reward handoff, bond tethers below sprites) was not
+# performed — no display in this sandbox, matching established precedent (7.5, 7.6, 7.7b, 3.23,
+# dev-3) — needs a human pass before this story can be closed.
+# 2026-07-26: started work on 7-8-environmental-and-bond-vfx-polish. Re-verified the
+# story's literal spec against current source before implementing: 7.4/7.5/7.7b already
+# built the real "7.8 seam" as apps/host-client/src/vfx/ability-vfx-config.ts (not the
+# story's literal ability-visuals.ts path — matches this project's established pattern of
+# story specs naming superseded files, see 7.7b/7.6 history). VfxEngine wiring (Task 1) and
+# the projectile:hit whitelist (Task 5) are already shipped; projectile per-ability body/
+# trail rendering (Tasks 2-3), the zone owner-unknown fallback tier (Task 4 AC2), and the
+# purification-pulse/reward-burst/bond-tether clock-unification passes (Tasks 6-8) are not.
+# Proceeding to implement the real remaining gap against the existing ability-vfx-config.ts
+# module rather than forking a second config file.
 # 2026-07-26: 7-7b-grassland-boss-attack-vfx-and-charge-visual → done. User (Cyby)
 # confirmed Task 8.4's manual Client-UX pass live and gave explicit sign-off to close.
 # 2026-07-26: code review of 7-7b-grassland-boss-attack-vfx-and-charge-visual (was left at
@@ -691,7 +747,7 @@ development_status:
   # reskin ACs are independent and ship regardless.
   7-7a-boss-charged-delta-contract-and-broadcast: done
   7-7b-grassland-boss-attack-vfx-and-charge-visual: done
-  7-8-environmental-and-bond-vfx-polish: ready-for-dev
+  7-8-environmental-and-bond-vfx-polish: done
   # 7.9 (2026-07-23, user "Option B" decision): move ability spatial geometry from
   # game-rules/balance.ts into shared-types so the VFX tracks balance dynamically instead
   # of hand-transcribing it (resolves D-7.2-A). Second sanctioned Epic 7 contract-change

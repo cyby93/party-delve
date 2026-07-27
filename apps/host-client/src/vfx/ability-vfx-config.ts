@@ -1,5 +1,5 @@
 import { PlayerClass } from 'shared-types';
-import type { ZoneState, PlayerState } from 'shared-types';
+import type { ZoneState, PlayerState, ZoneEffectType } from 'shared-types';
 
 /**
  * Projectile-body and zone-body **appearance spec** — the 7.8 seam.
@@ -52,13 +52,14 @@ export const STORMCALLER_PALETTE = {
   slate: 0x3d4a6b,
 } as const;
 
-/** A layered circular projectile body: an opaque core inside a translucent halo,
- *  trailing a fading streak. All radii in px, durations in ms. */
+/** A layered circular projectile body: an opaque core inside an optional
+ *  translucent halo, trailing a fading streak. All radii in px, durations in ms. */
 export interface ProjectileAppearance {
   core: { radius: number; color: number; alpha: number };
-  halo: { radius: number; color: number; alpha: number };
+  /** Omitted for the flat legacy default (today's plain white circle has no halo). */
+  halo?: { radius: number; color: number; alpha: number };
   /** `createTrail` arguments (Story 7.8 constructs the handle from these). */
-  trail: { color: number; width: number; durationMs: number; pointCount: number };
+  trail: { color: number; width: number; alpha: number; durationMs: number; pointCount: number };
 }
 
 /** A persistent field body: a filled disc, a rim stroke, and a per-tick inward
@@ -85,7 +86,7 @@ const SOULDRINKER_PROJECTILES: readonly (ProjectileAppearance | null)[] = [
   {
     core: { radius: 6, color: P.blood, alpha: 1 },
     halo: { radius: 11, color: P.bloodDark, alpha: 0.4 },
-    trail: { color: P.blood, width: 5, durationMs: 220, pointCount: 12 },
+    trail: { color: P.blood, width: 5, alpha: 0.85, durationMs: 220, pointCount: 12 },
   },
   null, // 1 — Crimson Lash (hitscan)
   null, // 2 — Dark Pact (hitscan)
@@ -93,7 +94,7 @@ const SOULDRINKER_PROJECTILES: readonly (ProjectileAppearance | null)[] = [
   {
     core: { radius: 9, color: P.corruption, alpha: 1 },
     halo: { radius: 17, color: P.corruptionDim, alpha: 0.35 },
-    trail: { color: P.corruption, width: 7, durationMs: 300, pointCount: 14 },
+    trail: { color: P.corruption, width: 7, alpha: 0.7, durationMs: 300, pointCount: 14 },
   },
 ];
 
@@ -105,6 +106,34 @@ const SOULDRINKER_PROJECTILES: readonly (ProjectileAppearance | null)[] = [
 export const PROJECTILE_APPEARANCE: Partial<Record<PlayerClass, readonly (ProjectileAppearance | null)[]>> = {
   [PlayerClass.SOULDRINKER]: SOULDRINKER_PROJECTILES,
 };
+
+/** Today's exact projectile body (`DungeonScreen.tsx` Projectiles block:
+ *  `g.circle(0, 0, 8).fill({ color: 0xffffff })`) plus a matching flat trail —
+ *  the regression guard for AC1/AC7: an unmapped `(class, abilityIndex)` (a
+ *  future projectile ability, or a corrupt/unknown value) is never worse than
+ *  the status quo. */
+export const DEFAULT_PROJECTILE_APPEARANCE: ProjectileAppearance = {
+  core: { radius: 8, color: 0xffffff, alpha: 1 },
+  trail: { color: 0xffffff, width: 6, alpha: 0.6, durationMs: 200, pointCount: 12 },
+};
+
+/**
+ * Map a projectile to its body/trail appearance. Total: every `(cls, abilityIndex)`
+ * pair — including `undefined` class, `undefined`/`NaN`/negative/out-of-range
+ * index, and a mapped class whose slot is `null` (a hitscan ability index that
+ * never spawns a `ProjectileState` in practice) — resolves to
+ * `DEFAULT_PROJECTILE_APPEARANCE` rather than throwing or reading past the array.
+ * Never logs, never reads a clock, never imports `pixi.js`.
+ */
+export function resolveProjectileAppearance(
+  cls: PlayerClass | undefined,
+  abilityIndex: number | undefined,
+): ProjectileAppearance {
+  if (cls === undefined || !Number.isInteger(abilityIndex)) return DEFAULT_PROJECTILE_APPEARANCE;
+  const table = PROJECTILE_APPEARANCE[cls];
+  const entry = table?.[abilityIndex as number];
+  return entry ?? DEFAULT_PROJECTILE_APPEARANCE;
+}
 
 /**
  * Zone appearance, keyed by `effectType`. **`ZoneState` carries no
@@ -141,10 +170,23 @@ export interface ZoneVisual {
   rimAlpha?: number;
   pulseColor?: number;
   pulseAlpha?: number;
+  /** One-shot ring played once when the zone first appears (Story 7.8 Task 4.4).
+   *  `startRadiusFactor`/`maxRadiusFactor` are multiplied by the zone's own
+   *  `radius` at render time, so the ring always matches the zone's real
+   *  footprint — a visual that lies about reach is worse than a flat circle. */
+  spawnRing?: {
+    color: number;
+    startRadiusFactor: number;
+    maxRadiusFactor: number;
+    lineWidth: number;
+    durationMs: number;
+    alpha: number;
+  };
 }
 
 /** Storm Eye's weather-cell body — a slate disc with an electric-blue rim, plus
- *  the tick-pulse hue. The exported half of the 7.8 seam. */
+ *  the tick-pulse hue. The exported half of the 7.8 seam. Values are 7.5's own
+ *  (kept, not overwritten, per Story 7.8 AC3) — only `spawnRing` is 7.8's addition. */
 export const STORM_EYE_ZONE_VISUAL: ZoneVisual = {
   fillColor: STORMCALLER_PALETTE.slate,
   fillAlpha: 0.22,
@@ -153,12 +195,56 @@ export const STORM_EYE_ZONE_VISUAL: ZoneVisual = {
   rimAlpha: 0.55,
   pulseColor: STORMCALLER_PALETTE.bolt,
   pulseAlpha: 0.7,
+  // An expand — reads as the storm settling in.
+  spawnRing: { color: STORMCALLER_PALETTE.bolt, startRadiusFactor: 0.15, maxRadiusFactor: 1.0, lineWidth: 5, durationMs: 380, alpha: 0.9 },
+};
+
+/** Void Pulse's chained pull-zone body — reuses `ZONE_APPEARANCE.pull`'s
+ *  fill/stroke (7.4's own values, kept not overwritten) and adds the 7.8
+ *  spawn ring: an implode, reading as suction (radius is clamped ≥ 0,
+ *  `primitives.ts` `createRingShockwave`, so this is safe). */
+export const VOID_PULSE_ZONE_VISUAL: ZoneVisual = {
+  fillColor: ZONE_APPEARANCE.pull.fill.color,
+  fillAlpha: ZONE_APPEARANCE.pull.fill.alpha,
+  rimColor: ZONE_APPEARANCE.pull.stroke.color,
+  rimWidth: ZONE_APPEARANCE.pull.stroke.width,
+  rimAlpha: ZONE_APPEARANCE.pull.stroke.alpha,
+  pulseColor: ZONE_APPEARANCE.pull.pulse.color,
+  pulseAlpha: ZONE_APPEARANCE.pull.pulse.alpha,
+  spawnRing: { color: P.corruption, startRadiusFactor: 1.0, maxRadiusFactor: 0.15, lineWidth: 5, durationMs: 420, alpha: 0.9 },
 };
 
 /** Today's exact zone body (`DungeonScreen.tsx` zone loop: `0x9b59b6 @ 0.25`, no
- *  rim). The regression guard for AC5/AC7 — every non-Storm-Eye zone keeps it,
- *  byte-identical, until Story 7.8 adds its own cases (e.g. Void Pulse `'pull'`). */
-const DEFAULT_ZONE_VISUAL: ZoneVisual = { fillColor: 0x9b59b6, fillAlpha: 0.25 };
+ *  rim). The regression guard for AC7 — every zone whose `effectType` matches no
+ *  known tier keeps it, byte-identical. */
+const DEFAULT_ZONE_VISUAL: ZoneVisual = {
+  fillColor: 0x9b59b6,
+  fillAlpha: 0.25,
+  spawnRing: { color: 0x9b59b6, startRadiusFactor: 0.15, maxRadiusFactor: 1.0, lineWidth: 3, durationMs: 300, alpha: 0.6 },
+};
+
+/**
+ * Owner-unknown fallback tier (AC2): a zone whose owner has disconnected, left,
+ * or was removed from `state.players` while the zone is still alive (a real,
+ * reachable state — a Void Pulse pull zone lives 2000ms and a Storm Eye
+ * 5000ms, easily long enough to cross that window) resolves here instead of
+ * falling all the way to the generic purple default. Same hue family as the
+ * full-identity tier, dimmer rim, so "owner not found" reads as a hair less
+ * certain without vanishing or throwing.
+ */
+const EFFECT_TYPE_ZONE_VISUAL: Record<ZoneEffectType, ZoneVisual> = {
+  pull: { ...VOID_PULSE_ZONE_VISUAL, rimAlpha: 0.45 },
+  damage: { ...STORM_EYE_ZONE_VISUAL, rimAlpha: 0.4 },
+};
+
+/** Full-identity tier: `${ownerClass}:${effectType}` → visual. Today `'pull'` is
+ *  only Void Pulse and `'damage'` only Storm Eye (see the ability-delivery table
+ *  in `shared-types`), so this stays correct as long as any future ability
+ *  reusing an `effectType` also gets its own keyed entry here. */
+const ZONE_VISUALS: Partial<Record<string, ZoneVisual>> = {
+  [`${PlayerClass.SOULDRINKER}:pull`]: VOID_PULSE_ZONE_VISUAL,
+  [`${PlayerClass.STORMCALLER}:damage`]: STORM_EYE_ZONE_VISUAL,
+};
 
 /**
  * The single place Storm Eye's zone identity is derived. `ZoneState` carries no
@@ -174,10 +260,19 @@ export function isStormEyeZone(zone: ZoneState, players: readonly PlayerState[])
 }
 
 /**
- * Map a zone to its body appearance. Storm Eye → `STORM_EYE_ZONE_VISUAL`;
- * everything else → today's exact purple default. Story 7.8's job is adding
- * further cases here (Void Pulse, projectile bodies), not touching the call site.
+ * Map a zone to its body appearance. Total, three-tier lookup (never throws,
+ * never logs — a `console.warn` here would fire 60x/s):
+ *
+ *   `${ownerClass}:${effectType}` exact match  →  full identity
+ *   `EFFECT_TYPE_ZONE_VISUAL[effectType]`      →  owner unknown / owner class has no entry
+ *   `DEFAULT_ZONE_VISUAL`                       →  unknown effectType (future-proofing)
+ *
+ * `players.find(...)` returning `undefined` (owner disconnected/left/removed
+ * while the zone is still alive) is the expected owner-unknown path, not an
+ * error — it lands on the middle tier, not the bottom one.
  */
 export function resolveZoneVisual(zone: ZoneState, players: readonly PlayerState[]): ZoneVisual {
-  return isStormEyeZone(zone, players) ? STORM_EYE_ZONE_VISUAL : DEFAULT_ZONE_VISUAL;
+  const ownerClass = players.find(p => p.id === zone.ownerId)?.class;
+  const exact = ownerClass !== undefined ? ZONE_VISUALS[`${ownerClass}:${zone.effectType}`] : undefined;
+  return exact ?? EFFECT_TYPE_ZONE_VISUAL[zone.effectType] ?? DEFAULT_ZONE_VISUAL;
 }

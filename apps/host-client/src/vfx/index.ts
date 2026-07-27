@@ -69,9 +69,12 @@ export type { CastInput, VfxSpec, HpChange } from './souldrinker-vfx';
 export {
   SOULDRINKER_PALETTE,
   PROJECTILE_APPEARANCE,
+  DEFAULT_PROJECTILE_APPEARANCE,
+  resolveProjectileAppearance,
   ZONE_APPEARANCE,
   STORMCALLER_PALETTE,
   STORM_EYE_ZONE_VISUAL,
+  VOID_PULSE_ZONE_VISUAL,
   isStormEyeZone,
   resolveZoneVisual,
 } from './ability-vfx-config';

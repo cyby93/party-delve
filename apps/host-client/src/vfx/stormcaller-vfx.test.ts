@@ -7,7 +7,7 @@ import {
   type StormcallerCastPlan,
   type StormcallerVfxSpec,
 } from './stormcaller-vfx';
-import { resolveZoneVisual, STORM_EYE_ZONE_VISUAL } from './ability-vfx-config';
+import { resolveZoneVisual, STORM_EYE_ZONE_VISUAL, VOID_PULSE_ZONE_VISUAL } from './ability-vfx-config';
 
 // Pure planner + cadence + zone-seam only — no canvas. Rendering correctness is
 // the Client-UX manual pass (Story 7.5 §8.3). One runnable check per project
@@ -143,17 +143,16 @@ describe('resolveZoneVisual (Story 7.8 seam)', () => {
     expect(v).toBe(STORM_EYE_ZONE_VISUAL);
   });
 
-  it("a 'pull' zone owned by a non-Stormcaller → the default (byte-identical to today)", () => {
+  it("a 'pull' zone owned by a Souldrinker → VOID_PULSE_ZONE_VISUAL (Story 7.8's own case)", () => {
     const v = resolveZoneVisual(zone({ effectType: 'pull' }), [player({ class: PlayerClass.SOULDRINKER })]);
-    expect(v.fillColor).toBe(0x9b59b6);
-    expect(v.fillAlpha).toBe(0.25);
-    expect(v.rimColor).toBeUndefined();
+    expect(v).toBe(VOID_PULSE_ZONE_VISUAL);
   });
 
-  it("a 'damage' zone whose owner is not present → the default, no throw (late join / reconnect)", () => {
+  it("a 'damage' zone whose owner is not present → the effectType-only fallback tier, not the global default, no throw (late join / reconnect, Story 7.8 AC2)", () => {
     expect(() => resolveZoneVisual(zone({ ownerId: 'ghost' }), [player({})])).not.toThrow();
     const v = resolveZoneVisual(zone({ ownerId: 'ghost' }), [player({})]);
-    expect(v.fillColor).toBe(0x9b59b6);
-    expect(v.fillAlpha).toBe(0.25);
+    expect(v).not.toBe(STORM_EYE_ZONE_VISUAL);
+    expect(v.fillColor).toBe(STORM_EYE_ZONE_VISUAL.fillColor);
+    expect(v.fillColor).not.toBe(0x9b59b6);
   });
 });
