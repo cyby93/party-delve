@@ -61,7 +61,7 @@ import {
 interface DungeonScreenProps {
   gameState: GameState | null;
   session: HostSession | null;
-  latestTransientDelta: DeltaEventMsg | null;
+  transientDeltaQueue: DeltaEventMsg[];
 }
 
 const SESSION_COLOR_HEX: Record<SessionColor, number> = {
@@ -787,7 +787,7 @@ interface ReviveDeadline {
   name: string;
 }
 
-export function DungeonScreen({ gameState, session, latestTransientDelta }: DungeonScreenProps) {
+export function DungeonScreen({ gameState, session, transientDeltaQueue }: DungeonScreenProps) {
   const canvasContainerRef = useRef<HTMLDivElement>(null);
   const pixiAppRef = useRef<Application | null>(null);
   const playerGraphicsRef = useRef<Map<string, PlayerEntry>>(new Map());
@@ -1001,15 +1001,18 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
 
   // Handle transient delta visuals: ability flash, enemy kill fade, essence drop flash, level-complete flash
   useEffect(() => {
-    if (!latestTransientDelta) return;
+    for (const latestTransientDelta of transientDeltaQueue) {
     const app = pixiAppRef.current;
 
     if (latestTransientDelta.type === 'bond:assigned') {
-      // ponytail: level:complete flash may be skipped when bond-moment follows in same batch; deferred
+      // Story 7.11: level:complete and bond:assigned in the same batch now both
+      // reach here (queue conversion) — no longer skipped. Two bond:assigned in
+      // the same batch can still collapse to the last one's overlay text, since
+      // setBondOverlay itself is single-slot (see deferred-work.md D-7.11-F).
       const nameA = gameState?.players.find(p => p.id === latestTransientDelta.playerA)?.displayName ?? latestTransientDelta.playerA;
       const nameB = gameState?.players.find(p => p.id === latestTransientDelta.playerB)?.displayName ?? latestTransientDelta.playerB;
       const label = latestTransientDelta.bondType === 'fate' ? 'Fate' : 'Proximity';
-      // ponytail: timers live in a separate effect keyed on trigger counter so they survive latestTransientDelta being cleared at 400ms
+      // ponytail: timers live in a separate effect keyed on trigger counter so they survive transientDeltaQueue being cleared synchronously (Story 7.11)
       setBondOverlay({ text: `${nameA} · ${nameB} — ${label} Bond`, fading: false });
       setBondOverlayTrigger(c => c + 1);
     } else if (latestTransientDelta.type === 'level:complete') {
@@ -1296,7 +1299,36 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
       }));
       purificationPulseEndsAtRef.current = triggeredAt + PURIFICATION_PULSE_DURATION_MS;
     }
-  }, [latestTransientDelta]);
+    }
+  }, [transientDeltaQueue]);
+
+  // Story 7.11 Task 3: populate projectileMetaRef from every gameState update,
+  // not only renderFrame's ticker-cadenced pass — a projectile whose whole
+  // lifetime falls between two ticker frames would otherwise never get cached,
+  // making its projectile:hit cue no-op. renderFrame's own population
+  // (:699-703) and its :676 cleanup on Graphics teardown are untouched.
+  // This effect's own cleanup below (review finding, Story 7.11) prunes any
+  // id no longer in gameState.projectiles: for a projectile the ticker never
+  // observes, no projectileGraphics entry is ever created for it, so
+  // renderFrame's Graphics-teardown cleanup can never reach it either — this
+  // is the only removal path for that specific case. Harmless no-op for ids
+  // renderFrame's own cleanup would also reach.
+  useEffect(() => {
+    if (!gameState) return;
+    const activeIds = new Set(gameState.projectiles.map(p => p.id));
+    for (const p of gameState.projectiles) {
+      if (!projectileMetaRef.current.has(p.id)) {
+        projectileMetaRef.current.set(p.id, {
+          class: p.class,
+          abilityIndex: p.abilityIndex,
+          ownerId: p.ownerId,
+        });
+      }
+    }
+    for (const id of projectileMetaRef.current.keys()) {
+      if (!activeIds.has(id)) projectileMetaRef.current.delete(id);
+    }
+  }, [gameState]);
 
   // Story 7.4 Task 6.2: Dark Pact buff-gained cue — snapshot-driven onset pulse.
   // Uses player.statusEffects (in every snapshot, reconciled across reconnects)
@@ -1358,7 +1390,7 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
 
   // Track revive deadlines from downed/revived/spirit deltas
   useEffect(() => {
-    if (!latestTransientDelta) return;
+    for (const latestTransientDelta of transientDeltaQueue) {
     if (latestTransientDelta.type === 'player:downed') {
       const player = gameState?.players.find(p => p.id === latestTransientDelta.playerId);
       reviveDeadlinesRef.current.set(latestTransientDelta.playerId, {
@@ -1372,7 +1404,8 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
     ) {
       reviveDeadlinesRef.current.delete(latestTransientDelta.playerId);
     }
-  }, [latestTransientDelta, gameState]);
+    }
+  }, [transientDeltaQueue, gameState]);
 
   // Track boss HP reference for damage number computation
   useEffect(() => {
@@ -1418,7 +1451,7 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
     }
   }, [gameState]);
 
-  // Bond overlay fade/clear lifecycle — keyed on trigger counter so timers survive latestTransientDelta being cleared at 400ms
+  // Bond overlay fade/clear lifecycle — keyed on trigger counter so timers survive transientDeltaQueue being cleared synchronously (Story 7.11)
   // and correctly restart if the same pair is bonded again (same text, different trigger)
   useEffect(() => {
     if (bondOverlayTrigger === 0) return;

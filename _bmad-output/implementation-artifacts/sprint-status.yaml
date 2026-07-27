@@ -42,7 +42,7 @@
 # Phase2 legacy stories (old Phase-based keys) are tracked below under PHASE 2 STORIES.
 
 generated: 2026-06-22
-last_updated: 2026-07-27 (7-8-environmental-and-bond-vfx-polish stays review)
+last_updated: 2026-07-27 (7-11 epic-7 post-7.10 deferred-hardening host → done)
 # 2026-07-27: code review of 7-8-environmental-and-bond-vfx-polish (stays review, not
 # done) — 3 parallel layers (Blind Hunter, Edge Case Hunter, Acceptance Auditor), full
 # spec mode. Two of the three layers' first runs were lost to a subagent-session API
@@ -759,6 +759,24 @@ development_status:
   # have no projectile:moved delta, so the host dot freezes/teleports (only the 5 s snapshot syncs
   # it). Protocol + Simulation joint story (mirrors 7.7a); unblocks projectile visuals in 7.4/7.8.
   7-10-projectile-position-streaming: done
+  # 7.11/7.12 (2026-07-27): closes the open Epic 7 deferred-work.md backlog accumulated
+  # since 7.3/7.4/7.7a/7.10 (no hardening pass had picked these up yet). Re-verified each
+  # candidate against current source rather than trusting deferred-work.md's text alone:
+  # confirmed D-7.3-A/D-7.4-A's batch-collapse bug is still live (found a matching in-code
+  # comment at DungeonScreen.tsx:1008 documenting an observed instance) and confirmed
+  # D-7.4-B's assumed fix (Story 7.10) never materialized since 7.10 shipped with zero
+  # apps/host-client changes by design; confirmed D-7.10-B (no finite guard on any :moved
+  # broadcast site) and D-7.7a-B (boss-event switch missing the exhaustiveness guard
+  # apply-delta.ts already has) are both still open. Split into two single-owner stories
+  # (user-confirmed) rather than one cross-boundary story, per CLAUDE.md's ownership-split
+  # rule: 7.11 is host-only (Host Experience Engineer), 7.12 is simulation-only (Simulation
+  # Engineer) — no code or test coupling between them. Re-verified and left re-deferred, not
+  # picked up: D-7.1-A (TrailHandle is added exactly once per id in the shipped 7.8 code, no
+  # double-add path exists despite the original finding's stated revisit trigger), D-7.2-C
+  # (both long-lived VFX consumers named as revisit triggers — 7.6 status auras, 7.8 trails —
+  # already prune/fade correctly by design).
+  7-11-epic-7-post-710-deferred-hardening-host: done
+  7-12-epic-7-post-710-deferred-hardening-simulation: ready-for-dev
   epic-7-retrospective: optional
 
   # ─── E8: Progression & Persistent Meta ──────────────────────────────────────
