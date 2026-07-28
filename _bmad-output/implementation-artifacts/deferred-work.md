@@ -4,6 +4,16 @@ Items surfaced during reviews that are real findings but pre-exist the triggerin
 
 ---
 
+## Deferred from: correct-course review of ability hit-geometry rework (2026-07-28)
+
+**D-CC1 — Ability config tables (`balance.ts`, `ability-geometry.ts`) should consolidate from parallel per-field tables into per-ability config objects, within each existing package boundary** [`packages/game-rules/src/balance.ts` (whole file, ~15 parallel `Record<PlayerClass, [T,T,T,T]>` tables), `packages/shared-types/src/ability-geometry.ts`]
+
+Raised by the user during the CONE hit-shape correct-course session, before approving the addition of two more parallel tables (`ABILITY_HIT_SHAPE`, `ABILITY_CONE_ANGLE_DEG`) on top of the ~15 that already exist. The struct-of-arrays pattern (one flat 4-tuple table per property, indexed by `[class][abilitySlot]`) means every new ability property — this CONE work, a future DOT status, etc. — means finding/adding a new top-level table and back-filling placeholder values (`0`, `null`) for every class/slot that doesn't use it. A single fully-merged per-ability object (`{hitShape, damage, heal, delivery, ...}`) was considered and rejected: it would collide with ADR-0003's host/game-rules authority boundary, which is currently enforced by physically separating spatial fields (`shared-types`, host-importable) from balance fields (`game-rules/balance.ts`, host-forbidden) into different tables in different packages. Merging everything into one object per ability would force that object to live in one package, either breaking the boundary (host gains a zero-friction path to read `ability.damage`, re-creating the exact drift class ADR-0003/`D-7.2-A` fixed) or requiring the "one object" to be reassembled from two files anyway.
+
+**Recommended fix (not applied here — deferred):** keep the package split, but merge *within* each side — one `AbilityGeometry` object per ability in `shared-types` (hit shape, delivery, range) and one `AbilityBalance` object per ability in `game-rules/balance.ts` (damage, heal, cooldown, status effect, lifesteal, self-cost, chained-zone config), instead of one flat table per field. Adding a new property becomes one optional field on the relevant object instead of a new top-level table. This is a wide-blast-radius refactor — touches every read site in `GameRoom.ts` (~20+ call sites), every VFX planner in `apps/host-client/src/vfx/*`, and every test against these tables — so it needs its own story/ADR with Protocol Architect + Simulation Engineer sign-off, sequenced *before* any further ability-property additions land on top of the current flat-table shape (so they get written once, into the new shape, not migrated twice). The CONE work in this same session proceeds against the current flat-table pattern by the user's explicit choice, to avoid blocking on this refactor now.
+
+---
+
 ## Deferred from: code review of 7-11-epic-7-post-710-deferred-hardening-host (2026-07-27)
 
 **D-7.11-A — Per-item branches reading `gameState` inside the multi-item dispatch loop use one final, post-batch snapshot for every queued item, not a per-delta snapshot** [`apps/host-client/src/screens/DungeonScreen.tsx:1004-1300`]

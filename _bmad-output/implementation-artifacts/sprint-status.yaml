@@ -42,7 +42,17 @@
 # Phase2 legacy stories (old Phase-based keys) are tracked below under PHASE 2 STORIES.
 
 generated: 2026-06-22
-last_updated: 2026-07-27 (7-12 epic-7 post-7.10 deferred-hardening simulation → done)
+last_updated: 2026-07-28 (correct-course: 3-25/3-26 cone hit-geometry & stormcaller rework II created → backlog)
+# 2026-07-28: correct-course (sprint-change-proposal-2026-07-28.md, ADR-0005) — closes the
+# 3.16/3.17/3.19 Cone/Line spec drift (Stone Wall, Avalanche, Ancestor's Voice, Crimson Lash
+# never actually hit a cone, only a circle) and reopens 3.20's "Lightning Arc/Tempest Hurl
+# already correct" scoping note per the user's explicit request. Created 3.25 (CONE contract +
+# 3-class conversion) and 3.26 (Lightning Arc chain lightning + Tempest Hurl real projectile +
+# Storm Eye placement alias), both backlog. Also filed D-CC1 (deferred-work.md): ability config
+# tables should eventually consolidate from flat per-property tables to per-ability objects
+# within each existing package boundary — raised by the user, deliberately deferred, not part
+# of this change. Follow-up VFX story still needed for Epic 7 (cone/wedge primitive, chain-arc
+# rendering, resized Tempest Hurl visuals) — not created here, flagged in the proposal.
 # 2026-07-27: code review of 7-12-epic-7-post-710-deferred-hardening-simulation (done) —
 # 3 parallel layers (Blind Hunter, Edge Case Hunter, Acceptance Auditor), full spec mode.
 # Acceptance Auditor independently re-ran typecheck + the new test file, confirmed no AC
@@ -675,6 +685,12 @@ development_status:
   # lift. Also closes 3.22's own review leftovers (e2e cleanup/raceTimeout hygiene, shield
   # magnitude guard) and 3.23's un-run Client-UX text-occlusion finding.
   3-24-epic-3-post-323-deferred-hardening: done
+  # Epic 3 Correction: Cone Hit-Geometry & Stormcaller Delivery Rework
+  # (correct-course, 2026-07-28, sprint-change-proposal-2026-07-28.md) —
+  # closes the 3.16/3.17/3.19 Cone/Line spec drift and reopens 3.20's
+  # Lightning Arc/Tempest Hurl scoping note. Sequenced a(3.25) -> b(3.26).
+  3-25-cone-hit-geometry-contract-and-stonehide-spiritcaller-souldrinker-cone-conversion: backlog
+  3-26-stormcaller-rework-ii-lightning-arc-chain-and-tempest-hurl-projectile: backlog
   epic-3-retrospective: optional
 
   # ─── Dev infra fixes (no epic) ──────────────────────────────────────────────

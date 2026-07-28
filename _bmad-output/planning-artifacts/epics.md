@@ -1203,6 +1203,88 @@ So that the revive objective (reach the body) is visually clear even after the s
 
 ---
 
+### Epic 3 Correction: Cone Hit-Geometry & Stormcaller Delivery Rework
+
+Scoped from the 2026-07-28 correct-course review of the user's own `TODO.md` notes — not new PRD/GDD FRs. Closes a spec/implementation drift: Stories 3.16, 3.17, and 3.19 each documented Stone Wall, Avalanche, Ancestor's Voice, and Crimson Lash as `Cone/Line` delivery, but `isInHitZone` has only ever implemented a circle. Also reopens Story 3.20's explicit "Lightning Arc, Tempest Hurl... already correct, no rework needed" scoping note, per the user's direct request. See ADR-0005. Sequenced 3.25 → 3.26 (3.26 reuses 3.25's `isInConeZone` primitive for Lightning Arc's targeting corridor).
+
+### Story 3.25: CONE Hit-Geometry Contract & Stonehide/Spiritcaller/Souldrinker Cone Conversion
+
+As a player,
+I want Stone Wall, Avalanche, Ancestor's Voice, and Crimson Lash to hit a true cone in front of me instead of a circle offset along my aim,
+So that these abilities match their long-documented "Cone/Line" spec instead of silently behaving as a circle, and reward aiming at a spread of enemies the way a cone reads visually.
+
+**Acceptance Criteria:**
+
+**Given** a new `AbilityHitShape` contract (`packages/shared-types/src/ability-geometry.ts`)
+**When** an ability's `ABILITY_HIT_SHAPE` entry is `'cone'`
+**Then** its hit-test uses a new pure `isInConeZone` function (`packages/game-rules/src/systems/combat.ts`) — apex at the caster, aimed along the cast direction, length = the ability's existing `ABILITY_HIT_RANGE_PX` entry (reused, not duplicated), half-angle = half of a new `ABILITY_CONE_ANGLE_DEG` entry — instead of `isInHitZone`'s circle-vs-circle test
+
+**Given** Stone Wall (stonehide[0], 50°) and Avalanche (stonehide[3], 40°)
+**When** either fires
+**Then** it hits every enemy in its cone instead of its old offset circle; Stone Wall's pull-toward-caster displacement is unaffected
+
+**Given** Ancestor's Voice (spiritcaller[0], 70°)
+**When** it fires
+**Then** its mixed-faction split (allies healed / enemies damaged, `resolveMixedFactionTargets`) resolves over a cone instead of a circle — `gatherPlayersInHitZone` gains an optional cone mode so this is the only caller needing it (Warding Cry's proximity-radius call is unaffected)
+
+**Given** Crimson Lash (souldrinker[1], 45°)
+**When** it fires
+**Then** its HP-scaled damage (`ABILITY_HP_SCALED_DAMAGE`, unchanged) applies over a cone instead of a circle
+
+**Given** `tests/unit/abilities.test.ts` and a new cone-geometry unit test
+**When** the reworked kit and `isInConeZone` are exercised
+**Then** cone-boundary edge cases (exactly at the angle edge, exactly at max length, caster's own position) and each ability's cone conversion are covered
+
+**Given** the Contract-change hook (`packages/shared-types` is touched)
+**Then** this story requires Protocol Architect review, ADR-0005, and the above contract test before merge
+
+**Non-goals:** VFX for the new cone shape — Stone Wall/Avalanche/Ancestor's Voice/Crimson Lash's VFX still draw their old circle/fan visuals until a follow-up Epic 7 VFX story adds a cone/wedge primitive to `primitives.ts` (tracked as new deferred work, not blocking this story). The per-ability config consolidation raised during this story's design discussion (`D-CC1`, `deferred-work.md`) is explicitly deferred — this story adds `ABILITY_HIT_SHAPE`/`ABILITY_CONE_ANGLE_DEG` as two more flat tables in the existing pattern.
+
+---
+
+### Story 3.26: Stormcaller Rework II — Lightning Arc Chain & Tempest Hurl Projectile
+
+As a Stormcaller,
+I want Lightning Arc to strike the first enemy in my aim and chain to nearby enemies, and Tempest Hurl to be a real slow projectile that explodes on impact,
+So that both abilities deliver on Pillar 1's reaction-time feel with real chain/AoE payoff, instead of Lightning Arc being a shape-identical sibling of Avalanche and Tempest Hurl faking a projectile look the sim never actually threw.
+
+**Acceptance Criteria:**
+
+**Given** Lightning Arc (stormcaller[0])
+**When** it fires
+**Then** the sim gathers living enemies (+boss) inside a narrow 30° targeting corridor (`isInConeZone`, reusing Story 3.25's primitive) out to its existing 160px range, and damages only the nearest one — no target in the corridor is a no-op, same rule as every other directional ability
+
+**Given** Lightning Arc's first target is hit
+**When** resolution continues
+**Then** the sim searches from that enemy's position (not re-aimed) for the nearest not-yet-hit living enemy within `LIGHTNING_ARC_CHAIN_RADIUS_PX` (150px) and damages it at `LIGHTNING_ARC_CHAIN_DAMAGE_FALLOFF` (70%) of the previous hit's damage, repeating up to `LIGHTNING_ARC_MAX_BOUNCES` (2) additional bounces, tracked via a `hitIds`-style set so no enemy is hit twice in the same cast
+
+**Given** a new `ability:chain-hit` delta (`{casterId, fromX, fromY, toEnemyId, chainIndex}`, `packages/net-protocol`)
+**When** each strike in the chain resolves (including the first)
+**Then** it is broadcast once per hit, in order, so the host can draw connected chain-lightning arcs without guessing which same-tick deltas belong to which cast
+
+**Given** Tempest Hurl (stormcaller[1])
+**When** it fires
+**Then** `ABILITY_DELIVERY.stormcaller[1]` is `'projectile'` (reusing the existing `ProjectileState`/planck-body infrastructure Blood Spike and Void Pulse already use) with a bigger, slower body (`TEMPEST_HURL_PROJECTILE_RADIUS_PX` 28px vs. the 12px default, `TEMPEST_HURL_SPEED_PX_S` 300px/s vs. the shared 600px/s default)
+
+**Given** Tempest Hurl's projectile contacts an enemy
+**When** impact resolves
+**Then** it deals its configured damage to every living enemy (and the boss) within `TEMPEST_HURL_BLAST_RADIUS_PX` (defined as `TEMPEST_HURL_PROJECTILE_RADIUS_PX * 2`, not a separately-tuned literal) of the impact point, instead of Blood Spike/Void Pulse's single-target resolution
+
+**Given** Storm Eye (stormcaller[3])
+**When** a developer looks for its placement-distance tuning value
+**Then** a new `STORM_EYE_PLACEMENT_RANGE_PX` alias (`= ABILITY_HIT_RANGE_PX.stormcaller[3]`, not a second value) documents where to tune it, next to the existing `STORM_EYE_ZONE_RADIUS_PX`
+
+**Given** `tests/unit/abilities.test.ts` / a new `tests/unit/lightning-arc.test.ts` and a contract round-trip test for `ability:chain-hit`
+**When** the reworked kit is exercised
+**Then** first-target selection, chain bounce/falloff/cap, no-double-hit, Tempest Hurl's projectile spawn+blast resolution, and the new delta's serialize/deserialize round-trip are each covered
+
+**Given** the Contract-change hook (`packages/net-protocol` gains `ability:chain-hit`) and Simulation-safety hook (`apps/simulation-server`, `packages/game-rules` both touched)
+**Then** this story requires Protocol Architect review, ADR-0005 (shared with 3.25), a compatibility note (additive delta, no existing message shape changes), and full simulation-safety verification (typecheck, unit tests, deterministic tick test, perf sanity) before merge
+
+**Non-goals:** VFX for chain-lightning arcs or the bigger/slower Tempest Hurl ball (follow-up Epic 7 VFX story). Reopens Story 3.20's "already correct, no rework needed" scoping note for Lightning Arc and Tempest Hurl only — Thunder Clap remains untouched and out of scope.
+
+---
+
 ## Epic 4: Procedural Dungeon & Full Run Structure
 
 Players vote to start a run at the dungeon entrance. Three procedurally generated dungeon levels (Clear + Survive the Waves) run sequentially with escalating difficulty. A placeholder victory state ends the run. Post-run summary displays on host. Procedural seed system is deterministic.
