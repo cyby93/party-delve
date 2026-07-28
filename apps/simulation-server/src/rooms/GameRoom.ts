@@ -12,8 +12,8 @@ import {
   CAT_BOSS, createZoneBody, createProjectileBody,
 } from '../physics/world.js';
 import type { PoiBeginContactEvent, PoiEndContactEvent, EssenceBeginContactEvent, PhysicsBodyData } from '../physics/world.js';
-import { createRng, tickEnemy, dispatchAbility, getEnemyCount, applyDamage, isInHitZone, ABILITY_HIT_RANGE_PX, ABILITY_HIT_RADIUS_PX, ABILITY_DAMAGE, applyPlayerDamage, getReviveWindowMs, ENEMY_MELEE_DAMAGE, ENEMY_MELEE_RANGE_PX, ENEMY_ATTACK_COOLDOWN_MS, REVIVE_RADIUS_PX, REVIVE_HP, SPIRIT_ABILITY_COOLDOWN_MS, generateFloorLayout, GRASSLAND_ROOM_POOL, WAVE_COUNTS, WAVE_PAUSE_MS, WAVE_ENEMY_SCALE, bondKey, getProximityBuffedPlayers, getFateBuffedPlayers, getFateBondWipeTargets, getProximityDrainTargets, BOND_PROXIMITY_RANGE_PX, BOND_DRAIN_THRESHOLD_S, BOND_DRAIN_HP_PER_TICK, BOND_SPEED_MULT, assignBond, BOND_DESCRIPTIONS, BOND_MECHANICS, createBossState, tickBoss, BOSS_ADD_HP, BOSS_STOMP_DAMAGE, evaluateGrasslandAchievements, JOYSTICK_DEADBAND, createEasyLayers, createNormalLayers, createHardLayers, tickStatusEffects, getStatusEffectMagnitude, applyStatusEffect, resolveProjectileHit, isProjectileExpired, shouldZoneTick, isZoneExpired, PROJECTILE_MAX_RANGE_PX, PROJECTILE_SPEED_PX_S, ABILITY_CHAINED_ZONE, ABILITY_STATUS_EFFECT, ABILITY_DISPLACEMENT_STRENGTH, applyDisplacement, resolveMixedFactionTargets, healPlayer, calculateLifesteal, resolveExpandingRadius, ABILITY_HEAL_AMOUNT, SPIRIT_NOVA_DURATION_MS, SPIRIT_NOVA_MAX_RADIUS_PX, findSoulMendTarget, shouldCancelSoulMendChannel, reviveBySoulMend, SOUL_MEND_CHANNEL_DURATION_MS, SOUL_MEND_LIVENESS_MS, ABILITY_COOLDOWNS_MS, ABILITY_DELIVERY, ABILITY_LIFESTEAL_PCT, VOID_PULSE_PULL_STRENGTH_PX, DARK_PACT_DRAIN_PCT, STORM_EYE_ZONE_RADIUS_PX, STORM_EYE_TICK_MS, STORM_EYE_TICK_DAMAGE, STORM_EYE_DURATION_MS, STORM_EYE_STRIKE_INTERVAL_MS, STORM_EYE_STRIKE_DAMAGE, pickRandomIndex, resolveOutgoingDamage } from 'game-rules';
-import type { BehaviorLayer, EnemyContext, EnemyAIEvent, BossEvent, BossStompedEvent, ChainedZoneConfig } from 'game-rules';
+import { createRng, tickEnemy, dispatchAbility, getEnemyCount, applyDamage, isInHitZone, isInConeZone, ABILITY_HIT_RANGE_PX, ABILITY_HIT_RADIUS_PX, ABILITY_HIT_SHAPE, ABILITY_CONE_ANGLE_DEG, ABILITY_DAMAGE, applyPlayerDamage, getReviveWindowMs, ENEMY_MELEE_DAMAGE, ENEMY_MELEE_RANGE_PX, ENEMY_ATTACK_COOLDOWN_MS, REVIVE_RADIUS_PX, REVIVE_HP, SPIRIT_ABILITY_COOLDOWN_MS, generateFloorLayout, GRASSLAND_ROOM_POOL, WAVE_COUNTS, WAVE_PAUSE_MS, WAVE_ENEMY_SCALE, bondKey, getProximityBuffedPlayers, getFateBuffedPlayers, getFateBondWipeTargets, getProximityDrainTargets, BOND_PROXIMITY_RANGE_PX, BOND_DRAIN_THRESHOLD_S, BOND_DRAIN_HP_PER_TICK, BOND_SPEED_MULT, assignBond, BOND_DESCRIPTIONS, BOND_MECHANICS, createBossState, tickBoss, BOSS_ADD_HP, BOSS_STOMP_DAMAGE, evaluateGrasslandAchievements, JOYSTICK_DEADBAND, createEasyLayers, createNormalLayers, createHardLayers, tickStatusEffects, getStatusEffectMagnitude, applyStatusEffect, resolveProjectileHit, isProjectileExpired, shouldZoneTick, isZoneExpired, PROJECTILE_MAX_RANGE_PX, PROJECTILE_SPEED_PX_S, ABILITY_CHAINED_ZONE, ABILITY_STATUS_EFFECT, ABILITY_DISPLACEMENT_STRENGTH, applyDisplacement, resolveMixedFactionTargets, healPlayer, calculateLifesteal, resolveExpandingRadius, ABILITY_HEAL_AMOUNT, SPIRIT_NOVA_DURATION_MS, SPIRIT_NOVA_MAX_RADIUS_PX, findSoulMendTarget, shouldCancelSoulMendChannel, reviveBySoulMend, SOUL_MEND_CHANNEL_DURATION_MS, SOUL_MEND_LIVENESS_MS, ABILITY_COOLDOWNS_MS, ABILITY_DELIVERY, ABILITY_LIFESTEAL_PCT, VOID_PULSE_PULL_STRENGTH_PX, DARK_PACT_DRAIN_PCT, STORM_EYE_ZONE_RADIUS_PX, STORM_EYE_TICK_MS, STORM_EYE_TICK_DAMAGE, STORM_EYE_DURATION_MS, STORM_EYE_STRIKE_INTERVAL_MS, STORM_EYE_STRIKE_DAMAGE, pickRandomIndex, resolveOutgoingDamage } from 'game-rules';
+import type { BehaviorLayer, EnemyContext, EnemyAIEvent, BossEvent, BossStompedEvent, ChainedZoneConfig, AbilityHitShape } from 'game-rules';
 import { BOSS_ARENA_SPAWN_POINTS, loadBossArena } from '../levels/boss-arena.js';
 import { CLASS_DEFINITIONS } from 'shared-types';
 import type { EnemyState, StatusEffect, ZoneState, ProjectileState } from 'shared-types';
@@ -1150,15 +1150,42 @@ export class GameRoom extends Room {
     hitRangePx: number,
     isDirectional: boolean,
     casterId: string,
+    coneAngleDeg?: number,
   ): PlayerState[] {
     const found: PlayerState[] = [];
     for (const p of this.gameState.players) {
       if (p.id === casterId) continue;
       if (p.isDown || p.isSpirit || p.isFrozen) continue;
-      if (!isInHitZone(originX, originY, dirX, dirY, p.x, p.y, hitRadiusPx, hitRangePx, isDirectional)) continue;
+      const inZone = coneAngleDeg !== undefined
+        ? isInConeZone(originX, originY, dirX, dirY, p.x, p.y, hitRangePx, coneAngleDeg)
+        : isInHitZone(originX, originY, dirX, dirY, p.x, p.y, hitRadiusPx, hitRangePx, isDirectional);
+      if (!inZone) continue;
       found.push(p);
     }
     return found;
+  }
+
+  // Story 3.25 (ADR-0005): shared shape dispatch for the generic hit-scan loop and
+  // Ancestor's Voice's mixed-faction branch — 'cone' delegates to isInConeZone
+  // (length = hitRangePx, half-angle = half of coneAngleDeg), 'circle' keeps calling
+  // isInHitZone exactly as before every ability in this codebase already does.
+  private isInAbilityHitZone(
+    shape: AbilityHitShape,
+    casterX: number,
+    casterY: number,
+    dirX: number,
+    dirY: number,
+    targetX: number,
+    targetY: number,
+    hitRadiusPx: number,
+    hitRangePx: number,
+    coneAngleDeg: number,
+    isDirectional: boolean,
+  ): boolean {
+    if (shape === 'cone') {
+      return isInConeZone(casterX, casterY, dirX, dirY, targetX, targetY, hitRangePx, coneAngleDeg);
+    }
+    return isInHitZone(casterX, casterY, dirX, dirY, targetX, targetY, hitRadiusPx, hitRangePx, isDirectional);
   }
 
   // Ready-to-use for 3.16-3.20's kit-rework stories — no ability calls this yet in 3.12,
@@ -2252,9 +2279,14 @@ export class GameRoom extends Room {
         // and allies in the hit zone from one query, split via resolveMixedFactionTargets,
         // damage enemies / heal allies (Story 3.17, Task 2).
         if (player.class === PlayerClass.SPIRITCALLER && abilityIndex === 0) {
+          const voiceShape = ABILITY_HIT_SHAPE[PlayerClass.SPIRITCALLER][0];
+          const voiceConeAngleDeg = ABILITY_CONE_ANGLE_DEG[PlayerClass.SPIRITCALLER][0];
           const enemiesInZone = this.gameState.enemies.filter(e =>
-            e.isAlive && isInHitZone(casterX, casterY, normDirX, normDirY, e.x, e.y, hitRadius, hitRange, isDirectional));
-          const alliesInZone = this.gatherPlayersInHitZone(casterX, casterY, normDirX, normDirY, hitRadius, hitRange, isDirectional, clientId);
+            e.isAlive && this.isInAbilityHitZone(voiceShape, casterX, casterY, normDirX, normDirY, e.x, e.y, hitRadius, hitRange, voiceConeAngleDeg, isDirectional));
+          const alliesInZone = this.gatherPlayersInHitZone(
+            casterX, casterY, normDirX, normDirY, hitRadius, hitRange, isDirectional, clientId,
+            voiceShape === 'cone' ? voiceConeAngleDeg : undefined,
+          );
           const { allies, enemies } = resolveMixedFactionTargets(clientId, [...enemiesInZone, ...alliesInZone]);
 
           for (const target of enemies) {
@@ -2300,9 +2332,9 @@ export class GameRoom extends Room {
 
           // Story 6.7: boss hit-scan for the mixed-faction cone — same pattern as Task 1.
           if (this.gameState.boss && !this.gameState.boss.isDefeated &&
-              isInHitZone(casterX, casterY, normDirX, normDirY,
+              this.isInAbilityHitZone(voiceShape, casterX, casterY, normDirX, normDirY,
                 this.gameState.boss.position.x, this.gameState.boss.position.y,
-                hitRadius, hitRange, isDirectional)) {
+                hitRadius, hitRange, voiceConeAngleDeg, isDirectional)) {
             this.gameState.boss.hp = Math.max(0, this.gameState.boss.hp - damage);
             this.broadcast(EventNames.DELTA, {
               type: 'boss:damaged' as const,
@@ -2324,10 +2356,13 @@ export class GameRoom extends Room {
           continue;
         }
 
+        const hitShape = ABILITY_HIT_SHAPE[player.class][abilityIndex] ?? 'circle';
+        const coneAngleDeg = ABILITY_CONE_ANGLE_DEG[player.class][abilityIndex] ?? 0;
+
         for (let ei = 0; ei < this.gameState.enemies.length; ei++) {
           const enemy = this.gameState.enemies[ei]!;
           if (!enemy.isAlive) continue;
-          if (!isInHitZone(player.x, player.y, normDirX, normDirY, enemy.x, enemy.y, hitRadius, hitRange, isDirectional)) continue;
+          if (!this.isInAbilityHitZone(hitShape, player.x, player.y, normDirX, normDirY, enemy.x, enemy.y, hitRadius, hitRange, coneAngleDeg, isDirectional)) continue;
 
           const dropId = `drop-${this.tickCount}-${enemy.id}`;
           const dmgResult = applyDamage(enemy, damage, dropId, nowAbility);
@@ -2387,9 +2422,9 @@ export class GameRoom extends Room {
         // status-effect/displacement application — boss defeat/phase transitions are
         // handled entirely by tickBoss reading boss.hp on its own next tick.
         if (this.gameState.boss && !this.gameState.boss.isDefeated &&
-            isInHitZone(player.x, player.y, normDirX, normDirY,
+            this.isInAbilityHitZone(hitShape, player.x, player.y, normDirX, normDirY,
               this.gameState.boss.position.x, this.gameState.boss.position.y,
-              hitRadius, hitRange, isDirectional)) {
+              hitRadius, hitRange, coneAngleDeg, isDirectional)) {
           this.gameState.boss.hp = Math.max(0, this.gameState.boss.hp - damage);
           this.broadcast(EventNames.DELTA, {
             type: 'boss:damaged' as const,

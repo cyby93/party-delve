@@ -4,6 +4,14 @@ Items surfaced during reviews that are real findings but pre-exist the triggerin
 
 ---
 
+## Deferred from: code review of 3-25-cone-hit-geometry-contract-and-stonehide-spiritcaller-souldrinker-cone-conversion (2026-07-28)
+
+**D-3.25-A — `sprint-status.yaml`'s uncommitted diff bundles this story's own status update with a prior, unrelated create-story session's changes** [`_bmad-output/implementation-artifacts/sprint-status.yaml`]
+
+The working-tree diff for this story's `sprint-status.yaml` (as reviewed) shows Story 3-25's own transition (`backlog → review`, plus `epic-3: done → in-progress`) alongside a separate, pre-existing uncommitted change from an earlier create-story session: Story 3-26's `backlog → ready-for-dev` transition and a large multi-paragraph rationale comment block covering both 3-25 and 3-26's story creation (boss physics `filterMaskBits`, Lightning Arc AC inconsistency, `ability:chain-hit`'s boss handling, etc.). Confirmed via the session's initial `git status` snapshot that the 3-26/epic-3 changes predate this dev-story session entirely — they were not introduced while implementing 3-25. Not a code defect; a commit-hygiene note for whoever runs `/commit` next (worth deciding whether to split into two commits — one for 3-25's implementation, one for the pre-existing story-creation bookkeeping — or commit as one intentional batch).
+
+---
+
 ## Deferred from: correct-course review of ability hit-geometry rework (2026-07-28)
 
 **D-CC1 — Ability config tables (`balance.ts`, `ability-geometry.ts`) should consolidate from parallel per-field tables into per-ability config objects, within each existing package boundary** [`packages/game-rules/src/balance.ts` (whole file, ~15 parallel `Record<PlayerClass, [T,T,T,T]>` tables), `packages/shared-types/src/ability-geometry.ts`]

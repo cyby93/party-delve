@@ -35,6 +35,30 @@ export const ABILITY_HIT_RADIUS_PX: Record<PlayerClass, readonly [number, number
   stormcaller:  [ 60, 70, 110,  80],
 };
 
+// ── Ability hit shape (Story 3.25, ADR-0005) ─────────────────────────────────
+// Cone abilities reuse ABILITY_HIT_RANGE_PX for length (no second range value) —
+// only the shape and the cone's full angle are new. 'circle' abilities keep
+// resolving through isInHitZone exactly as before; ABILITY_HIT_RADIUS_PX becomes
+// inert (unread) for 'cone' entries but stays in the table for width symmetry
+// (ADR-0005's "addition, not restructuring" discipline).
+export type AbilityHitShape = 'circle' | 'cone';
+
+export const ABILITY_HIT_SHAPE: Record<PlayerClass, readonly [AbilityHitShape, AbilityHitShape, AbilityHitShape, AbilityHitShape]> = {
+  stonehide:    ['cone', 'circle', 'circle', 'cone'], // Stone Wall, Avalanche
+  spiritcaller: ['cone', 'circle', 'circle', 'circle'], // Ancestor's Voice
+  souldrinker:  ['circle', 'cone', 'circle', 'circle'], // Crimson Lash
+  stormcaller:  ['circle', 'circle', 'circle', 'circle'], // untouched — Story 3.26's scope
+};
+
+// Full cone angle in degrees (half-angle is applied on each side of the aim
+// direction by isInConeZone). Entries are 0 for every 'circle' ability — unread.
+export const ABILITY_CONE_ANGLE_DEG: Record<PlayerClass, readonly [number, number, number, number]> = {
+  stonehide:    [50, 0, 0, 40],
+  spiritcaller: [70, 0, 0, 0],
+  souldrinker:  [0, 45, 0, 0],
+  stormcaller:  [0, 0, 0, 0],
+};
+
 // ── Ability delivery type ────────────────────────────────────────────────────
 // Story 3.19: the first abilities to resolve via a spawned ProjectileState
 // (Story 3.13) instead of the default same-tick hit-scan. Declarative so

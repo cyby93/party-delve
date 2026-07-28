@@ -42,7 +42,34 @@
 # Phase2 legacy stories (old Phase-based keys) are tracked below under PHASE 2 STORIES.
 
 generated: 2026-06-22
-last_updated: 2026-07-28 (correct-course: 3-25/3-26 cone hit-geometry & stormcaller rework II created → backlog)
+last_updated: 2026-07-28 (code-review: 3-25 → done)
+# 2026-07-28: create-story — wrote full context-engine story files for 3-25 and 3-26
+# (exhaustive analysis of epics.md, ADR-0005, sprint-change-proposal-2026-07-28.md,
+# deferred-work.md D-CC1, and direct reads of ability-geometry.ts/combat.ts/balance.ts/
+# GameRoom.ts/world.ts/sensors.ts). Both set to ready-for-dev. epic-3 reopened
+# backlog→in-progress (was closed done after 3.24) — same reopen-for-a-correction-batch
+# pattern already used 3 times before for this epic. Notable findings baked into the
+# story files rather than left for the dev to rediscover: (1) the boss body's physics
+# fixture has filterMaskBits: 0 (GameRoom.ts:1082-1088) — it has never been able to
+# generate ANY planck contact event, so no projectile (including today's Blood Spike/
+# Void Pulse) has ever been able to hit it; Tempest Hurl's own AC requires boss
+# inclusion in its blast, so 3.26 adds a Tempest-Hurl-scoped manual per-tick proximity
+# check rather than widening the boss's physics category generally (Blood Spike/Void
+# Pulse's inability to hit the boss stays exactly as-is, not fixed here). (2) the epics
+# AC text for Lightning Arc's chain is internally inconsistent — first-target gather
+# says "living enemies (+boss)" but the chain-hop re-search line says only "living
+# enemy" — flagged explicitly in 3.26's dev notes as a judgment call (recommend
+# including the boss, for consistency with every other multi-target ability in this
+# codebase) rather than silently resolved either way. (3) ability:chain-hit's
+# toEnemyId field (per ADR-0005's literal wire shape) has no boss variant — resolved
+# as "reuse gameState.boss.id in that string field," not a new field, without
+# Protocol Architect sign-off already secured. (4) isInConeZone's blast-adjacent
+# reasoning also applies to Tempest Hurl's AoE: no new geometry primitive is needed
+# there — isInHitZone's existing non-directional circle test already does it.
+# Ownership: both stories touch packages/shared-types + packages/game-rules/
+# apps/simulation-server (3.26 also packages/net-protocol) — Multi-context, same as
+# every 3.16-3.20 kit-rework story before them; proceeding on that established
+# precedent rather than re-litigating the split.
 # 2026-07-28: correct-course (sprint-change-proposal-2026-07-28.md, ADR-0005) — closes the
 # 3.16/3.17/3.19 Cone/Line spec drift (Stone Wall, Avalanche, Ancestor's Voice, Crimson Lash
 # never actually hit a cone, only a circle) and reopens 3.20's "Lightning Arc/Tempest Hurl
@@ -644,7 +671,7 @@ development_status:
   # dungeon combat. Players use abilities, go down, get revived, enter spirit
   # form. "Clear" objective type is operational.
   # FRs: FR9(Clear), FR11, FR12, FR13, FR17, FR18, FR19, FR20, FR21, FR22, FR23
-  epic-3: done
+  epic-3: in-progress
   3-1-xoshiro128-prng-and-planckjs-physics-world: done
   3-2-enemy-ai-base-fsm-and-layered-difficulty-behaviors: done
   3-3-4-alpha-class-implementations-abilities-and-input-types: done
@@ -689,8 +716,8 @@ development_status:
   # (correct-course, 2026-07-28, sprint-change-proposal-2026-07-28.md) —
   # closes the 3.16/3.17/3.19 Cone/Line spec drift and reopens 3.20's
   # Lightning Arc/Tempest Hurl scoping note. Sequenced a(3.25) -> b(3.26).
-  3-25-cone-hit-geometry-contract-and-stonehide-spiritcaller-souldrinker-cone-conversion: backlog
-  3-26-stormcaller-rework-ii-lightning-arc-chain-and-tempest-hurl-projectile: backlog
+  3-25-cone-hit-geometry-contract-and-stonehide-spiritcaller-souldrinker-cone-conversion: done
+  3-26-stormcaller-rework-ii-lightning-arc-chain-and-tempest-hurl-projectile: ready-for-dev
   epic-3-retrospective: optional
 
   # ─── Dev infra fixes (no epic) ──────────────────────────────────────────────

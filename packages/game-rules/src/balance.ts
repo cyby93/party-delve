@@ -10,6 +10,8 @@ import { VOID_PULSE_ZONE_RADIUS_PX } from 'shared-types';
 export {
   ABILITY_HIT_RANGE_PX,
   ABILITY_HIT_RADIUS_PX,
+  ABILITY_HIT_SHAPE,
+  ABILITY_CONE_ANGLE_DEG,
   ABILITY_DELIVERY,
   PROJECTILE_SPEED_PX_S,
   PROJECTILE_MAX_RANGE_PX,
@@ -18,7 +20,7 @@ export {
   SPIRIT_NOVA_MAX_RADIUS_PX,
   STORM_EYE_ZONE_RADIUS_PX,
 } from 'shared-types';
-export type { AbilityDeliveryType } from 'shared-types';
+export type { AbilityDeliveryType, AbilityHitShape } from 'shared-types';
 
 // ── Movement ──────────────────────────────────────────────────────────────────
 export const JOYSTICK_DEADBAND = 0.05;

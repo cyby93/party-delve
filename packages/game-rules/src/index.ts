@@ -7,6 +7,7 @@ export {
   JOYSTICK_DEADBAND,
   ABILITY_COOLDOWNS_MS, ABILITY_DAMAGE,
   ABILITY_HIT_RANGE_PX, ABILITY_HIT_RADIUS_PX,
+  ABILITY_HIT_SHAPE, ABILITY_CONE_ANGLE_DEG,
   ESSENCE_DROP_AMOUNT, ESSENCE_COLLECT_RADIUS_PX,
   ENEMY_CHASE_RANGE, ENEMY_ATTACK_RANGE, ENEMY_CHASE_SPEED, ENEMY_ATTACK_COOLDOWN_TICKS,
   CHARGE_ACTIVATION_MIN, CHARGE_ACTIVATION_MAX, CHARGE_SPEED, CHARGE_COOLDOWN_TICKS,
@@ -44,12 +45,12 @@ export {
   STORM_EYE_STRIKE_INTERVAL_MS,
   STORM_EYE_STRIKE_DAMAGE,
 } from './balance.js';
-export type { ChainedZoneConfig, AbilityStatusEffectConfig, StatusEffectScope, AbilityDeliveryType } from './balance.js';
+export type { ChainedZoneConfig, AbilityStatusEffectConfig, StatusEffectScope, AbilityDeliveryType, AbilityHitShape } from './balance.js';
 export { applyPlayerDamage, getReviveWindowMs, healPlayer, calculateLifesteal } from './systems/player-health.js';
 export type { PlayerDamageResult, HealthError } from './systems/player-health.js';
 export { resolveMixedFactionTargets, resolveExpandingRadius, pickRandomIndex } from './systems/targeting.js';
 export type { MixedFactionSplit } from './systems/targeting.js';
-export { applyDamage, isInHitZone } from './systems/combat.js';
+export { applyDamage, isInHitZone, isInConeZone } from './systems/combat.js';
 export type { DamageResult, CombatError } from './systems/combat.js';
 export { tickEnemy, tickBaseFSM, createEasyLayers, createNormalLayers, createHardLayers } from './systems/ai/fsm.js';
 export type { EnemyContext, BehaviorLayer, EnemyAIEvent } from './systems/ai/fsm.js';
