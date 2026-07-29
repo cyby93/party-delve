@@ -5,7 +5,7 @@ export { GRASSLAND_ROOM_POOL, BOSS_FLOOR_LAYOUT } from './generation/room-pool.j
 export type { Result, GameError } from './state/result.js';
 export {
   JOYSTICK_DEADBAND,
-  ABILITY_COOLDOWNS_MS, ABILITY_DAMAGE,
+  ABILITY_BALANCE,
   ABILITY_GEOMETRY,
   ESSENCE_DROP_AMOUNT, ESSENCE_COLLECT_RADIUS_PX,
   ENEMY_CHASE_RANGE, ENEMY_ATTACK_RANGE, ENEMY_CHASE_SPEED, ENEMY_ATTACK_COOLDOWN_TICKS,
@@ -23,13 +23,6 @@ export {
   BOSS_STOMP_DAMAGE,
   PROJECTILE_SPEED_PX_S,
   PROJECTILE_MAX_RANGE_PX,
-  ABILITY_CHAINED_ZONE,
-  ABILITY_SELF_COST_HP,
-  ABILITY_HP_SCALED_DAMAGE,
-  ABILITY_LIFESTEAL_PCT,
-  ABILITY_STATUS_EFFECT,
-  ABILITY_DISPLACEMENT_STRENGTH,
-  ABILITY_HEAL_AMOUNT,
   VOID_PULSE_PULL_STRENGTH_PX,
   DARK_PACT_DRAIN_PCT,
   LIGHTNING_ARC_CORRIDOR_ANGLE_DEG,
@@ -51,7 +44,7 @@ export {
   TEMPEST_HURL_SPEED_PX_S,
   TEMPEST_HURL_BLAST_RADIUS_PX,
 } from './balance.js';
-export type { ChainedZoneConfig, AbilityStatusEffectConfig, StatusEffectScope, AbilityDeliveryType, AbilityHitShape, AbilityGeometry } from './balance.js';
+export type { AbilityBalance, ChainedZoneConfig, AbilityStatusEffectConfig, StatusEffectScope, AbilityDeliveryType, AbilityHitShape, AbilityGeometry } from './balance.js';
 export { applyPlayerDamage, getReviveWindowMs, healPlayer, calculateLifesteal } from './systems/player-health.js';
 export type { PlayerDamageResult, HealthError } from './systems/player-health.js';
 export { resolveMixedFactionTargets, resolveExpandingRadius, pickRandomIndex, findNearestCandidate, resolveLightningArcChain } from './systems/targeting.js';

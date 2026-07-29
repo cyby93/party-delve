@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { dispatchAbility, applyDamage, applyStatusEffect, applyDisplacement, applyPlayerDamage, healPlayer, calculateLifesteal, resolveProjectileHit, resolveMixedFactionTargets, ABILITY_STATUS_EFFECT, ABILITY_DISPLACEMENT_STRENGTH, ABILITY_DAMAGE, ABILITY_HEAL_AMOUNT, ABILITY_GEOMETRY, ABILITY_SELF_COST_HP, ABILITY_HP_SCALED_DAMAGE, ABILITY_LIFESTEAL_PCT, ABILITY_CHAINED_ZONE, DARK_PACT_DRAIN_PCT, VOID_PULSE_PULL_STRENGTH_PX } from 'game-rules';
+import { dispatchAbility, applyDamage, applyStatusEffect, applyDisplacement, applyPlayerDamage, healPlayer, calculateLifesteal, resolveProjectileHit, resolveMixedFactionTargets, ABILITY_BALANCE, ABILITY_GEOMETRY, DARK_PACT_DRAIN_PCT, VOID_PULSE_PULL_STRENGTH_PX } from 'game-rules';
 import { PlayerClass, CLASS_DEFINITIONS, EnemyType, DifficultyTier, EnemyFSMState, SessionColor } from 'shared-types';
 import type { EnemyState, PlayerState, ProjectileState } from 'shared-types';
 
@@ -142,7 +142,7 @@ describe('dispatchAbility', () => {
     expect(result.ok).toBe(false);
   });
 
-  it('cooldown value matches ABILITY_COOLDOWNS_MS for each class', () => {
+  it('cooldown value matches ABILITY_BALANCE for each class', () => {
     // stonehide slot 0 cooldown = 2000ms
     const r = dispatchAbility({ ...baseCtx, playerClass: PlayerClass.STONEHIDE, abilityIndex: 0 });
     expect(r.ok).toBe(true);
@@ -189,7 +189,7 @@ describe('Stonehide kit rework (Story 3.16)', () => {
   }
 
   it('Iron Skin (slot 2, self scope): applies a damageReduction that mitigates the caster\'s next damage taken', () => {
-    const config = ABILITY_STATUS_EFFECT[PlayerClass.STONEHIDE][2];
+    const config = ABILITY_BALANCE[PlayerClass.STONEHIDE][2].statusEffect;
     expect(config).toEqual({ effectType: 'damageReduction', magnitude: 0.3, durationMs: 3000, scope: 'self' });
 
     const nowMs = 0; // matches GameRoom.ts's `nowAbility + statusConfig.durationMs` with nowAbility=0
@@ -207,9 +207,9 @@ describe('Stonehide kit rework (Story 3.16)', () => {
   });
 
   it('Tremor Stomp (slot 1, enemies-in-zone scope): deals AoE damage and applies a slow to each hit enemy', () => {
-    const config = ABILITY_STATUS_EFFECT[PlayerClass.STONEHIDE][1];
+    const config = ABILITY_BALANCE[PlayerClass.STONEHIDE][1].statusEffect;
     expect(config).toEqual({ effectType: 'slow', magnitude: 0.4, durationMs: 2000, scope: 'enemies-in-zone' });
-    const damage = ABILITY_DAMAGE.stonehide[1];
+    const damage = ABILITY_BALANCE.stonehide[1].damage;
     expect(damage).toBeGreaterThan(0);
 
     const nowMs = 0;
@@ -242,10 +242,10 @@ describe('Stonehide kit rework (Story 3.16)', () => {
   });
 
   it('Stone Wall (slot 0, no status config): deals damage and pulls the hit enemy toward the caster', () => {
-    expect(ABILITY_STATUS_EFFECT.stonehide[0]).toBeNull();
-    const strength = ABILITY_DISPLACEMENT_STRENGTH.stonehide[0];
+    expect(ABILITY_BALANCE.stonehide[0].statusEffect).toBeNull();
+    const strength = ABILITY_BALANCE.stonehide[0].displacementStrength;
     expect(strength).toBeGreaterThan(0);
-    const damage = ABILITY_DAMAGE.stonehide[0];
+    const damage = ABILITY_BALANCE.stonehide[0].damage;
     expect(damage).toBeGreaterThan(0);
 
     const enemy = mockEnemy({ x: 200, y: 0 });
@@ -261,16 +261,16 @@ describe('Stonehide kit rework (Story 3.16)', () => {
   });
 
   it('Avalanche (slot 3): unchanged — no status effect or displacement config, damage still configured', () => {
-    expect(ABILITY_STATUS_EFFECT.stonehide[3]).toBeNull();
-    expect(ABILITY_DISPLACEMENT_STRENGTH.stonehide[3]).toBe(0);
-    expect(ABILITY_DAMAGE.stonehide[3]).toBeGreaterThan(0);
+    expect(ABILITY_BALANCE.stonehide[3].statusEffect).toBeNull();
+    expect(ABILITY_BALANCE.stonehide[3].displacementStrength).toBe(0);
+    expect(ABILITY_BALANCE.stonehide[3].damage).toBeGreaterThan(0);
   });
 
   it('no other class has a displacement config yet (Stonehide-only in this story); status-effect config is Stonehide-only except Spiritcaller\'s Warding Cry (Story 3.17) and Souldrinker\'s Dark Pact (Story 3.19)', () => {
     for (const cls of [PlayerClass.SPIRITCALLER, PlayerClass.SOULDRINKER, PlayerClass.STORMCALLER]) {
-      expect(ABILITY_DISPLACEMENT_STRENGTH[cls]).toEqual([0, 0, 0, 0]);
+      expect(ABILITY_BALANCE[cls].map(a => a.displacementStrength)).toEqual([0, 0, 0, 0]);
     }
-    expect(ABILITY_STATUS_EFFECT[PlayerClass.STORMCALLER]).toEqual([null, null, null, null]);
+    expect(ABILITY_BALANCE[PlayerClass.STORMCALLER].map(a => a.statusEffect)).toEqual([null, null, null, null]);
   });
 });
 
@@ -297,8 +297,8 @@ describe('Spiritcaller kit rework (Story 3.17)', () => {
   }
 
   it('Ancestor\'s Voice (slot 0, AUTO): resolveMixedFactionTargets splits one gathered zone into a damaged enemy and a healed ally', () => {
-    const damage = ABILITY_DAMAGE.spiritcaller[0];
-    const heal = ABILITY_HEAL_AMOUNT.spiritcaller[0];
+    const damage = ABILITY_BALANCE.spiritcaller[0].damage;
+    const heal = ABILITY_BALANCE.spiritcaller[0].healAmount;
     expect(damage).toBeGreaterThan(0);
     expect(heal).toBeGreaterThan(0);
 
@@ -318,13 +318,13 @@ describe('Spiritcaller kit rework (Story 3.17)', () => {
     expect(healed.hp).toBe(60 + heal);
   });
 
-  it('Spirit Nova (slot 1): both ABILITY_DAMAGE and ABILITY_HEAL_AMOUNT are configured (mixed-faction, fixing the damage-only mislabel)', () => {
-    expect(ABILITY_DAMAGE.spiritcaller[1]).toBeGreaterThan(0);
-    expect(ABILITY_HEAL_AMOUNT.spiritcaller[1]).toBeGreaterThan(0);
+  it('Spirit Nova (slot 1): both damage and healAmount are configured (mixed-faction, fixing the damage-only mislabel)', () => {
+    expect(ABILITY_BALANCE.spiritcaller[1].damage).toBeGreaterThan(0);
+    expect(ABILITY_BALANCE.spiritcaller[1].healAmount).toBeGreaterThan(0);
   });
 
   it('Warding Cry (slot 3, allies-in-zone scope): applies a flat-HP shield status effect', () => {
-    const config = ABILITY_STATUS_EFFECT[PlayerClass.SPIRITCALLER][3];
+    const config = ABILITY_BALANCE[PlayerClass.SPIRITCALLER][3].statusEffect;
     expect(config).toEqual({ effectType: 'shield', magnitude: 30, durationMs: 4000, scope: 'allies-in-zone' });
 
     const nowMs = 0;
@@ -341,14 +341,14 @@ describe('Spiritcaller kit rework (Story 3.17)', () => {
   });
 
   it('Soul Mend (slot 2) is untouched — out of scope, no status-effect/heal config (Story 3.18)', () => {
-    expect(ABILITY_STATUS_EFFECT.spiritcaller[2]).toBeNull();
-    expect(ABILITY_HEAL_AMOUNT.spiritcaller[2]).toBe(0);
+    expect(ABILITY_BALANCE.spiritcaller[2].statusEffect).toBeNull();
+    expect(ABILITY_BALANCE.spiritcaller[2].healAmount).toBe(0);
   });
 
   it('no other class has an allies-in-zone status config or nonzero heal amount (Spiritcaller-only in this story)', () => {
     for (const cls of [PlayerClass.STONEHIDE, PlayerClass.SOULDRINKER, PlayerClass.STORMCALLER]) {
-      expect(ABILITY_HEAL_AMOUNT[cls]).toEqual([0, 0, 0, 0]);
-      for (const config of ABILITY_STATUS_EFFECT[cls]) {
+      expect(ABILITY_BALANCE[cls].map(a => a.healAmount)).toEqual([0, 0, 0, 0]);
+      for (const config of ABILITY_BALANCE[cls].map(a => a.statusEffect)) {
         expect(config?.scope).not.toBe('allies-in-zone');
       }
     }
@@ -380,8 +380,8 @@ describe('Souldrinker kit rework (Story 3.19)', () => {
   it('Blood Spike (slot 0, renamed from Blood Draw): projectile delivery, self-cost on cast, 50% lifesteal on hit', () => {
     expect(CLASS_DEFINITIONS[PlayerClass.SOULDRINKER].abilities[0]!.name).toBe('Blood Spike');
     expect(ABILITY_GEOMETRY.souldrinker[0].delivery).toBe('projectile');
-    expect(ABILITY_SELF_COST_HP.souldrinker[0]).toBeGreaterThan(0);
-    expect(ABILITY_LIFESTEAL_PCT.souldrinker[0]).toBe(0.5);
+    expect(ABILITY_BALANCE.souldrinker[0].selfCostHp).toBeGreaterThan(0);
+    expect(ABILITY_BALANCE.souldrinker[0].lifestealPct).toBe(0.5);
 
     const result = dispatchAbility({
       playerClass: PlayerClass.SOULDRINKER, abilityIndex: 0,
@@ -390,13 +390,13 @@ describe('Souldrinker kit rework (Story 3.19)', () => {
     });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.value.selfCostHpApplied).toBe(ABILITY_SELF_COST_HP.souldrinker[0]);
+    expect(result.value.selfCostHpApplied).toBe(ABILITY_BALANCE.souldrinker[0].selfCostHp);
 
     // Lifesteal composes healPlayer + calculateLifesteal — applied at projectile-hit
     // time in GameRoom.ts, not inside dispatchAbility itself (matches Story 3.15's
     // "no new drain primitive" design).
-    const damageDealt = ABILITY_DAMAGE.souldrinker[0];
-    const healed = healPlayer(mockPlayer({ hp: 50 }), calculateLifesteal(damageDealt, ABILITY_LIFESTEAL_PCT.souldrinker[0]));
+    const damageDealt = ABILITY_BALANCE.souldrinker[0].damage;
+    const healed = healPlayer(mockPlayer({ hp: 50 }), calculateLifesteal(damageDealt, ABILITY_BALANCE.souldrinker[0].lifestealPct));
     expect(healed.hp).toBe(50 + damageDealt * 0.5);
   });
 
@@ -412,7 +412,7 @@ describe('Souldrinker kit rework (Story 3.19)', () => {
 
   it('Crimson Lash (slot 1): damage scales inversely with caster HP, unchanged hitscan delivery', () => {
     expect(ABILITY_GEOMETRY.souldrinker[1].delivery).toBe('hitscan');
-    expect(ABILITY_HP_SCALED_DAMAGE.souldrinker[1]).toBeGreaterThan(0);
+    expect(ABILITY_BALANCE.souldrinker[1].hpScaledDamage).toBeGreaterThan(0);
 
     const baseCtx = { playerClass: PlayerClass.SOULDRINKER, abilityIndex: 1, directionX: 1, directionY: 0, cooldownExpiresAt: 0, nowMs: 0 };
     const fullHp = dispatchAbility({ ...baseCtx, casterHp: 100, casterMaxHp: 100 });
@@ -426,7 +426,7 @@ describe('Souldrinker kit rework (Story 3.19)', () => {
   });
 
   it('Dark Pact (slot 2): drains a percentage of the target ally\'s current HP to the caster and grants a self damageBuff', () => {
-    const config = ABILITY_STATUS_EFFECT.souldrinker[2];
+    const config = ABILITY_BALANCE.souldrinker[2].statusEffect;
     expect(config).toEqual({ effectType: 'damageBuff', magnitude: 0.25, durationMs: 4000, scope: 'self' });
 
     const target = mockPlayer({ id: 'ally', hp: 80 });
@@ -457,13 +457,13 @@ describe('Souldrinker kit rework (Story 3.19)', () => {
 
   it('Void Pulse (slot 3): projectile delivery, impact damage, then a pull-effect chained zone', () => {
     expect(ABILITY_GEOMETRY.souldrinker[3].delivery).toBe('projectile');
-    const chainConfig = ABILITY_CHAINED_ZONE.souldrinker[3];
+    const chainConfig = ABILITY_BALANCE.souldrinker[3].chainedZone;
     expect(chainConfig?.effectType).toBe('pull');
     expect(chainConfig?.radius).toBeGreaterThan(0);
     expect(chainConfig?.tickIntervalMs).toBeGreaterThan(0);
     expect(chainConfig?.durationMs).toBeGreaterThan(0);
 
-    const damage = ABILITY_DAMAGE.souldrinker[3];
+    const damage = ABILITY_BALANCE.souldrinker[3].damage;
     expect(damage).toBeGreaterThan(0);
 
     // Impact damage first (existing projectile-hit path, Story 3.13's AC4 ordering) —
@@ -482,9 +482,9 @@ describe('Souldrinker kit rework (Story 3.19)', () => {
   it('no other class has projectile delivery or a chained-zone config (Souldrinker-only in this story; Stormcaller gains zone delivery in 3.20 and projectile delivery — Tempest Hurl — in 3.26)', () => {
     for (const cls of [PlayerClass.STONEHIDE, PlayerClass.SPIRITCALLER]) {
       expect(ABILITY_GEOMETRY[cls].map(g => g.delivery)).not.toContain('projectile');
-      expect(ABILITY_CHAINED_ZONE[cls]).toEqual([null, null, null, null]);
+      expect(ABILITY_BALANCE[cls].map(a => a.chainedZone)).toEqual([null, null, null, null]);
     }
-    expect(ABILITY_CHAINED_ZONE[PlayerClass.STORMCALLER]).toEqual([null, null, null, null]);
+    expect(ABILITY_BALANCE[PlayerClass.STORMCALLER].map(a => a.chainedZone)).toEqual([null, null, null, null]);
     // Stonehide/Spiritcaller remain untouched by both 3.19's projectile delivery
     // and 3.20's zone delivery; Stormcaller gains 'zone' delivery in 3.20 (Storm Eye)
     // and 'projectile' delivery in 3.26 (Tempest Hurl) — this is the exact stale

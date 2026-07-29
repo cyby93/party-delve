@@ -12,7 +12,7 @@ import {
   CAT_BOSS, createZoneBody, createProjectileBody,
 } from '../physics/world.js';
 import type { PoiBeginContactEvent, PoiEndContactEvent, EssenceBeginContactEvent, PhysicsBodyData } from '../physics/world.js';
-import { createRng, tickEnemy, dispatchAbility, getEnemyCount, applyDamage, isInHitZone, isInConeZone, ABILITY_GEOMETRY, ABILITY_DAMAGE, applyPlayerDamage, getReviveWindowMs, ENEMY_MELEE_DAMAGE, ENEMY_MELEE_RANGE_PX, ENEMY_ATTACK_COOLDOWN_MS, REVIVE_RADIUS_PX, REVIVE_HP, SPIRIT_ABILITY_COOLDOWN_MS, generateFloorLayout, GRASSLAND_ROOM_POOL, WAVE_COUNTS, WAVE_PAUSE_MS, WAVE_ENEMY_SCALE, bondKey, getProximityBuffedPlayers, getFateBuffedPlayers, getFateBondWipeTargets, getProximityDrainTargets, BOND_PROXIMITY_RANGE_PX, BOND_DRAIN_THRESHOLD_S, BOND_DRAIN_HP_PER_TICK, BOND_SPEED_MULT, assignBond, BOND_DESCRIPTIONS, BOND_MECHANICS, createBossState, tickBoss, BOSS_ADD_HP, BOSS_STOMP_DAMAGE, evaluateGrasslandAchievements, JOYSTICK_DEADBAND, createEasyLayers, createNormalLayers, createHardLayers, tickStatusEffects, getStatusEffectMagnitude, applyStatusEffect, resolveProjectileHit, isProjectileExpired, shouldZoneTick, isZoneExpired, PROJECTILE_MAX_RANGE_PX, PROJECTILE_SPEED_PX_S, ABILITY_CHAINED_ZONE, ABILITY_STATUS_EFFECT, ABILITY_DISPLACEMENT_STRENGTH, applyDisplacement, resolveMixedFactionTargets, healPlayer, calculateLifesteal, resolveExpandingRadius, ABILITY_HEAL_AMOUNT, SPIRIT_NOVA_DURATION_MS, SPIRIT_NOVA_MAX_RADIUS_PX, findSoulMendTarget, shouldCancelSoulMendChannel, reviveBySoulMend, SOUL_MEND_CHANNEL_DURATION_MS, SOUL_MEND_LIVENESS_MS, ABILITY_COOLDOWNS_MS, ABILITY_LIFESTEAL_PCT, VOID_PULSE_PULL_STRENGTH_PX, DARK_PACT_DRAIN_PCT, STORM_EYE_ZONE_RADIUS_PX, STORM_EYE_TICK_MS, STORM_EYE_TICK_DAMAGE, STORM_EYE_DURATION_MS, STORM_EYE_STRIKE_INTERVAL_MS, STORM_EYE_STRIKE_DAMAGE, pickRandomIndex, resolveOutgoingDamage, LIGHTNING_ARC_CORRIDOR_ANGLE_DEG, LIGHTNING_ARC_CHAIN_RADIUS_PX, LIGHTNING_ARC_MAX_BOUNCES, LIGHTNING_ARC_CHAIN_DAMAGE_FALLOFF, findNearestCandidate, resolveLightningArcChain, TEMPEST_HURL_PROJECTILE_RADIUS_PX, TEMPEST_HURL_SPEED_PX_S, TEMPEST_HURL_BLAST_RADIUS_PX } from 'game-rules';
+import { createRng, tickEnemy, dispatchAbility, getEnemyCount, applyDamage, isInHitZone, isInConeZone, ABILITY_GEOMETRY, ABILITY_BALANCE, applyPlayerDamage, getReviveWindowMs, ENEMY_MELEE_DAMAGE, ENEMY_MELEE_RANGE_PX, ENEMY_ATTACK_COOLDOWN_MS, REVIVE_RADIUS_PX, REVIVE_HP, SPIRIT_ABILITY_COOLDOWN_MS, generateFloorLayout, GRASSLAND_ROOM_POOL, WAVE_COUNTS, WAVE_PAUSE_MS, WAVE_ENEMY_SCALE, bondKey, getProximityBuffedPlayers, getFateBuffedPlayers, getFateBondWipeTargets, getProximityDrainTargets, BOND_PROXIMITY_RANGE_PX, BOND_DRAIN_THRESHOLD_S, BOND_DRAIN_HP_PER_TICK, BOND_SPEED_MULT, assignBond, BOND_DESCRIPTIONS, BOND_MECHANICS, createBossState, tickBoss, BOSS_ADD_HP, BOSS_STOMP_DAMAGE, evaluateGrasslandAchievements, JOYSTICK_DEADBAND, createEasyLayers, createNormalLayers, createHardLayers, tickStatusEffects, getStatusEffectMagnitude, applyStatusEffect, resolveProjectileHit, isProjectileExpired, shouldZoneTick, isZoneExpired, PROJECTILE_MAX_RANGE_PX, PROJECTILE_SPEED_PX_S, applyDisplacement, resolveMixedFactionTargets, healPlayer, calculateLifesteal, resolveExpandingRadius, SPIRIT_NOVA_DURATION_MS, SPIRIT_NOVA_MAX_RADIUS_PX, findSoulMendTarget, shouldCancelSoulMendChannel, reviveBySoulMend, SOUL_MEND_CHANNEL_DURATION_MS, SOUL_MEND_LIVENESS_MS, VOID_PULSE_PULL_STRENGTH_PX, DARK_PACT_DRAIN_PCT, STORM_EYE_ZONE_RADIUS_PX, STORM_EYE_TICK_MS, STORM_EYE_TICK_DAMAGE, STORM_EYE_DURATION_MS, STORM_EYE_STRIKE_INTERVAL_MS, STORM_EYE_STRIKE_DAMAGE, pickRandomIndex, resolveOutgoingDamage, LIGHTNING_ARC_CORRIDOR_ANGLE_DEG, LIGHTNING_ARC_CHAIN_RADIUS_PX, LIGHTNING_ARC_MAX_BOUNCES, LIGHTNING_ARC_CHAIN_DAMAGE_FALLOFF, findNearestCandidate, resolveLightningArcChain, TEMPEST_HURL_PROJECTILE_RADIUS_PX, TEMPEST_HURL_SPEED_PX_S, TEMPEST_HURL_BLAST_RADIUS_PX } from 'game-rules';
 import type { BehaviorLayer, EnemyContext, EnemyAIEvent, BossEvent, BossStompedEvent, ChainedZoneConfig, AbilityGeometry, LightningArcCandidate } from 'game-rules';
 import { BOSS_ARENA_SPAWN_POINTS, loadBossArena } from '../levels/boss-arena.js';
 import { CLASS_DEFINITIONS } from 'shared-types';
@@ -523,7 +523,7 @@ export class GameRoom extends Room {
             // the *remaining* time, which made the arc animate as if the whole
             // cooldown were that short — the RELEASE "overlay reset" symptom).
             const fullCooldownMs = player.class !== null
-              ? ABILITY_COOLDOWNS_MS[player.class][i as 0 | 1 | 2 | 3]
+              ? ABILITY_BALANCE[player.class][i as 0 | 1 | 2 | 3].cooldownMs
               : expiresAt - nowReconnect;
             this.sendCooldownUpdate(reconnectedClient, i, expiresAt - fullCooldownMs, expiresAt);
           }
@@ -1206,7 +1206,7 @@ export class GameRoom extends Room {
   }
 
   // Called from the projectile-hit-resolution phase when the hitting ability's
-  // ABILITY_CHAINED_ZONE entry is non-null (Story 3.19's Void Pulse). Declarative —
+  // AbilityBalance.chainedZone entry is non-null (Story 3.19's Void Pulse). Declarative —
   // this method has no knowledge of which ability triggered it.
   private spawnChainedZone(
     ownerId: string,
@@ -1346,7 +1346,7 @@ export class GameRoom extends Room {
       hp: this.gameState.players[casterIdx]!.hp,
     } satisfies DeltaEventMsg);
 
-    const buffConfig = ABILITY_STATUS_EFFECT[PlayerClass.SOULDRINKER][abilityIndex];
+    const buffConfig = ABILITY_BALANCE[PlayerClass.SOULDRINKER][abilityIndex].statusEffect;
     if (buffConfig) {
       this.gameState.players[casterIdx] = this.applyStatusEffectToTarget(
         this.gameState.players[casterIdx]!,
@@ -1657,7 +1657,7 @@ export class GameRoom extends Room {
         const triggerRadius = TEMPEST_HURL_PROJECTILE_RADIUS_PX + 48;
         if (dx * dx + dy * dy > triggerRadius * triggerRadius) continue;
 
-        const rawDamage = ABILITY_DAMAGE[projectile.class][projectile.abilityIndex as 0 | 1 | 2 | 3] ?? 0;
+        const rawDamage = ABILITY_BALANCE[projectile.class][projectile.abilityIndex as 0 | 1 | 2 | 3]?.damage ?? 0;
         const damage = resolveOutgoingDamage(rawDamage, proximityBuffed.has(projectile.ownerId), this.godModePlayerIds.has(projectile.ownerId));
 
         this.gameState.boss.hp = Math.max(0, this.gameState.boss.hp - damage);
@@ -1987,7 +1987,8 @@ export class GameRoom extends Room {
       if (!enemy.isAlive) continue;
 
       const projectile = this.gameState.projectiles[pi]!;
-      const rawDamage = ABILITY_DAMAGE[projectile.class][projectile.abilityIndex as 0 | 1 | 2 | 3] ?? 0;
+      const projectileBalance = ABILITY_BALANCE[projectile.class][projectile.abilityIndex as 0 | 1 | 2 | 3];
+      const rawDamage = projectileBalance?.damage ?? 0;
       const damage = resolveOutgoingDamage(rawDamage, proximityBuffed.has(projectile.ownerId), this.godModePlayerIds.has(projectile.ownerId));
       const hitResult = resolveProjectileHit(projectile, enemy, damage, tickNowMs);
       if (!hitResult.ok) continue;
@@ -2048,13 +2049,13 @@ export class GameRoom extends Room {
       }
 
       // Lifesteal (Blood Spike, Story 3.19): declarative, fires for any projectile
-      // ability with a nonzero ABILITY_LIFESTEAL_PCT entry. Only on a hit — a miss
-      // (projectile expiry, handled elsewhere) already paid the self-cost with no
+      // ability with a nonzero AbilityBalance.lifestealPct entry. Only on a hit — a
+      // miss (projectile expiry, handled elsewhere) already paid the self-cost with no
       // compensating heal. Resolves D-3.15-A's still-open caster-only case: skips
       // the heal if the caster went down/entered spirit form mid-flight (projectile
       // travel time can outlast the caster's own survival), same isDown/isSpirit
       // exclusion gatherPlayersInHitZone already applies to ally heal targets.
-      const lifestealPct = ABILITY_LIFESTEAL_PCT[projectile.class][projectile.abilityIndex as 0 | 1 | 2 | 3];
+      const lifestealPct = projectileBalance?.lifestealPct ?? 0;
       if (lifestealPct > 0) {
         const casterIdx = this.gameState.players.findIndex(p => p.id === projectile.ownerId);
         if (casterIdx !== -1 && !this.gameState.players[casterIdx]!.isDown && !this.gameState.players[casterIdx]!.isSpirit) {
@@ -2074,8 +2075,8 @@ export class GameRoom extends Room {
         y: projectile.y,
       } satisfies DeltaEventMsg);
 
-      // Declarative chain: only fires once 3.19/3.20 populate ABILITY_CHAINED_ZONE for their ability.
-      const chainConfig = ABILITY_CHAINED_ZONE[projectile.class][projectile.abilityIndex as 0 | 1 | 2 | 3];
+      // Declarative chain: only fires once 3.19/3.20 populate AbilityBalance.chainedZone for their ability.
+      const chainConfig = projectileBalance?.chainedZone ?? null;
       if (chainConfig) {
         this.spawnChainedZone(projectile.ownerId, projectile.x, projectile.y, chainConfig, damage, tickNowMs);
       }
@@ -2341,7 +2342,7 @@ export class GameRoom extends Room {
       }
 
       // Self-cost (Blood Spike, Story 3.19): generic for any ability with a nonzero
-      // ABILITY_SELF_COST_HP entry — dispatchAbility already computed the 1-HP-floored
+      // AbilityBalance.selfCostHp entry — dispatchAbility already computed the 1-HP-floored
       // amount, this just applies it. Runs regardless of dungeon/training-dummy phase,
       // same as the cooldown update above, since it's a caster-resource cost, not a
       // combat hit effect.
@@ -2461,10 +2462,15 @@ export class GameRoom extends Room {
           continue;
         }
 
+        // Hoisted once, reused by the status-effect branch below and the
+        // displacement/heal reads further down (same slot, no reassignment
+        // of player.class/abilityIndex in between).
+        const abilityBalance = ABILITY_BALANCE[player.class][abilityIndex];
+
         // Self-scope status effect (e.g. Iron Skin) applies independently of
         // the damage hit-scan below — must run before the damage=0 guard,
         // since buff abilities carry no damage.
-        const statusConfig = ABILITY_STATUS_EFFECT[player.class][abilityIndex];
+        const statusConfig = abilityBalance?.statusEffect;
         if (statusConfig?.scope === 'self') {
           const casterIdx = this.gameState.players.findIndex(p => p.id === clientId);
           if (casterIdx !== -1) {
@@ -2511,8 +2517,8 @@ export class GameRoom extends Room {
         const geometry = ABILITY_GEOMETRY[player.class][abilityIndex] ?? { hitRangePx: 0, hitRadiusPx: 60, hitShape: 'circle' as const, delivery: 'hitscan' as const };
         const hitRange = geometry.hitRangePx;
         const hitRadius = geometry.hitRadiusPx;
-        const displacementStrength = ABILITY_DISPLACEMENT_STRENGTH[player.class][abilityIndex] ?? 0;
-        const healAmount = ABILITY_HEAL_AMOUNT[player.class][abilityIndex] ?? 0;
+        const displacementStrength = abilityBalance?.displacementStrength ?? 0;
+        const healAmount = abilityBalance?.healAmount ?? 0;
         const casterX = player.x;
         const casterY = player.y;
         const rawDamage = result.value.damage;
@@ -2716,12 +2722,13 @@ export class GameRoom extends Room {
 
         if (enemiesInRing.length > 0 || alliesInRing.length > 0 || bossInRing) {
           const { allies, enemies } = resolveMixedFactionTargets(nova.casterId, [...enemiesInRing, ...alliesInRing]);
-          const rawNovaDamage = ABILITY_DAMAGE[PlayerClass.SPIRITCALLER][1];
+          const novaBalance = ABILITY_BALANCE[PlayerClass.SPIRITCALLER][1];
+          const rawNovaDamage = novaBalance.damage;
           // Same Bond proximity-damage-buff treatment as every other damaging ability
           // (see Ancestor's Voice a few lines above) — heal is intentionally unbuffed,
           // matching Ancestor's Voice's heal side (BOND_DAMAGE_MULT is a damage-only buff).
           const novaDamage = resolveOutgoingDamage(rawNovaDamage, proximityBuffed.has(nova.casterId), this.godModePlayerIds.has(nova.casterId));
-          const novaHeal = ABILITY_HEAL_AMOUNT[PlayerClass.SPIRITCALLER][1];
+          const novaHeal = novaBalance.healAmount;
 
           for (const target of enemies) {
             nova.hitIds.add(target.id);
@@ -3352,7 +3359,7 @@ export class GameRoom extends Room {
     if (caster?.class) {
       const cooldowns = this.cooldownMap.get(casterId);
       if (cooldowns) {
-        const cooldownMs = ABILITY_COOLDOWNS_MS[caster.class][abilityIndex as 0 | 1 | 2 | 3];
+        const cooldownMs = ABILITY_BALANCE[caster.class][abilityIndex as 0 | 1 | 2 | 3].cooldownMs;
         const nowCd = Date.now();
         cooldowns[abilityIndex] = nowCd + cooldownMs;
         const casterClient = this.clients.find(c => c.sessionId === casterId);

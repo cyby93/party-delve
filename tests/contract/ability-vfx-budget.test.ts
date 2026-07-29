@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { PlayerClass, SPIRIT_NOVA_DURATION_MS } from 'shared-types';
-import { ABILITY_COOLDOWNS_MS } from 'game-rules';
+import { ABILITY_BALANCE } from 'game-rules';
 import {
   getAbilityVfxConfig,
   type AbilityVfxConfig,
@@ -11,7 +11,7 @@ import {
  * tier permitted to import BOTH `game-rules` and the host visual constants, so it
  * backstops the 7.2 **AC5 budget invariant** — every on-screen effect must be
  * strictly shorter than its ability's cooldown, so at most one instance per
- * ability per player is ever live — against the LIVE `ABILITY_COOLDOWNS_MS`
+ * ability per player is ever live — against the LIVE `ABILITY_BALANCE` cooldowns
  * rather than a hand-copied cooldown literal in the host unit test (which drifts;
  * that literal was removed from `ability-vfx.test.ts` by this story).
  *
@@ -55,7 +55,7 @@ function collectConfigChecks(): { label: string; longest: number; cooldown: numb
       checks.push({
         label: `${cls}[${i}]`,
         longest: Math.max(...durations),
-        cooldown: ABILITY_COOLDOWNS_MS[cls][i as 0 | 1 | 2 | 3],
+        cooldown: ABILITY_BALANCE[cls][i as 0 | 1 | 2 | 3].cooldownMs,
       });
     }
   }
@@ -81,6 +81,6 @@ describe('ability VFX cooldown-budget invariant (7.2 AC5, live cooldowns)', () =
   it('Spirit Nova sweep is shorter than its live cooldown (importable-constant coverage)', () => {
     // Spiritcaller's longest effect is the Spirit Nova ring sweep, whose duration
     // is the shared SPIRIT_NOVA_DURATION_MS. Spirit Nova is slot 1.
-    expect(SPIRIT_NOVA_DURATION_MS).toBeLessThan(ABILITY_COOLDOWNS_MS[PlayerClass.SPIRITCALLER][1]);
+    expect(SPIRIT_NOVA_DURATION_MS).toBeLessThan(ABILITY_BALANCE[PlayerClass.SPIRITCALLER][1].cooldownMs);
   });
 });

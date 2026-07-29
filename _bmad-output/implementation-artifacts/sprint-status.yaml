@@ -42,7 +42,30 @@
 # Phase2 legacy stories (old Phase-based keys) are tracked below under PHASE 2 STORIES.
 
 generated: 2026-06-22
-last_updated: 2026-07-29 (code-review: 3-27 → done)
+last_updated: 2026-07-29 (code review: 3-28 → done)
+# 2026-07-29: create-story — wrote 3-28-ability-balance-consolidation,
+# resolving D-CC1's remaining AbilityBalance half (3.27/ADR-0006 already
+# resolved the AbilityGeometry half and explicitly split this half out as
+# single-owner Simulation Engineer, future 3-28). Not in epics.md — pure
+# internal refactor. Ownership-scope check confirmed single-owner
+# (apps/simulation-server/** + packages/game-rules/** only, zero
+# host-client consumers verified via repo-wide grep). Via AskUserQuestion,
+# user chose to skip a new ADR (docs/adr/** is Orchestrator/Protocol
+# Architect territory; no CLAUDE.md hook requires one here since
+# packages/game-rules isn't a Contract-change-hook trigger path) —
+# documented instead via a deferred-work.md resolution note and the
+# story's own Dev Notes. Exhaustive research: full current balance.ts
+# content (9 tables), every read site in GameRoom.ts (~12 expressions) and
+# dispatchAbility (4 lookups), both real test-file consumers
+# (tests/unit/abilities.test.ts — 4 whole-tuple assertions need a logic
+# rewrite — and tests/contract/ability-vfx-budget.test.ts), confirmed
+# packages/game-rules/tests/unit/balance.test.ts needs no change. A
+# fresh-context subagent review verified the transcribed AbilityBalance
+# literal byte-identical against live balance.ts, confirmed the GameRoom.ts
+# read-site list complete, and caught one imprecision (Task 4's `?? 0`
+# fallback note didn't flag that 3 non-literal-index sites, including line
+# ~2467, need `?.field` for noUncheckedIndexedAccess to typecheck) — fixed
+# before finalizing. Set to ready-for-dev.
 # 2026-07-29: code-review of 3-27-ability-geometry-consolidation-per-ability-
 # objects (review → done) — 3 parallel layers (Blind Hunter, Edge Case Hunter,
 # Acceptance Auditor). Acceptance Auditor: zero AC violations, full AC1-AC8
@@ -815,6 +838,10 @@ development_status:
   # Simulation Engineer, future 3-28, not yet created) because host-client only
   # ever consumes the geometry side, not game-rules/balance.ts.
   3-27-ability-geometry-consolidation-per-ability-objects: done
+  # Resolves D-CC1's remaining game-rules/balance.ts half (single-owner
+  # Simulation Engineer, no new ADR — packages/game-rules isn't a
+  # Contract-change-hook trigger path, unlike shared-types in 3.27).
+  3-28-ability-balance-consolidation: done
   epic-3-retrospective: optional
 
   # ─── Dev infra fixes (no epic) ──────────────────────────────────────────────

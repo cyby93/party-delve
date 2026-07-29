@@ -1,7 +1,7 @@
 import type { PlayerClass, AbilityInputType } from 'shared-types';
 import { CLASS_DEFINITIONS } from 'shared-types';
 import type { Result } from '../state/result.js';
-import { ABILITY_COOLDOWNS_MS, ABILITY_DAMAGE, ABILITY_SELF_COST_HP, ABILITY_HP_SCALED_DAMAGE } from '../balance.js';
+import { ABILITY_BALANCE } from '../balance.js';
 
 export interface AbilityDispatchContext {
   playerClass: PlayerClass;
@@ -53,14 +53,15 @@ export function dispatchAbility(ctx: AbilityDispatchContext): Result<AbilityFire
   }
 
   const idx = ctx.abilityIndex as 0 | 1 | 2 | 3;
-  const cooldownMs = ABILITY_COOLDOWNS_MS[ctx.playerClass][idx];
+  const balance = ABILITY_BALANCE[ctx.playerClass][idx];
+  const cooldownMs = balance.cooldownMs;
   const damage = calculateHpScaledDamage(
-    ABILITY_DAMAGE[ctx.playerClass][idx],
-    ABILITY_HP_SCALED_DAMAGE[ctx.playerClass][idx],
+    balance.damage,
+    balance.hpScaledDamage,
     ctx.casterHp,
     ctx.casterMaxHp,
   );
-  const selfCostHpApplied = calculateSelfCostHp(ABILITY_SELF_COST_HP[ctx.playerClass][idx], ctx.casterHp);
+  const selfCostHpApplied = calculateSelfCostHp(balance.selfCostHp, ctx.casterHp);
 
   const inputType: AbilityInputType = ability.inputType;
 
