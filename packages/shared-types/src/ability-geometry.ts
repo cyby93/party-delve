@@ -72,12 +72,21 @@ export const ABILITY_DELIVERY: Record<PlayerClass, readonly [AbilityDeliveryType
   stonehide:    ['hitscan', 'hitscan', 'hitscan', 'hitscan'],
   spiritcaller: ['hitscan', 'hitscan', 'hitscan', 'hitscan'],
   souldrinker:  ['projectile', 'hitscan', 'hitscan', 'projectile'], // Blood Spike, Void Pulse
-  stormcaller:  ['hitscan', 'hitscan', 'hitscan', 'zone'], // Storm Eye
+  stormcaller:  ['hitscan', 'projectile', 'hitscan', 'zone'], // Tempest Hurl (Story 3.26), Storm Eye
 };
 
 // ── Projectiles ───────────────────────────────────────────────────────────────
 export const PROJECTILE_SPEED_PX_S = 600;
 export const PROJECTILE_MAX_RANGE_PX = 800;
+
+// ── Tempest Hurl projectile + blast (Story 3.26) ─────────────────────────────
+// Plain named constants, not a per-class table — mirrors Spirit Nova/Storm Eye's
+// single-consumer-constant convention. Bigger/slower than the shared projectile
+// defaults (28px vs. 12px radius, 300px/s vs. 600px/s speed). Blast radius is
+// derived from the projectile radius, not a separately-tuned literal (AC5).
+export const TEMPEST_HURL_PROJECTILE_RADIUS_PX = 28;
+export const TEMPEST_HURL_SPEED_PX_S = 300;
+export const TEMPEST_HURL_BLAST_RADIUS_PX = TEMPEST_HURL_PROJECTILE_RADIUS_PX * 2;
 
 // ── Void Pulse chained-zone radius (Story 3.19) ──────────────────────────────
 // The spatial radius of Void Pulse's chained 'pull' zone. Extracted out of
@@ -101,3 +110,7 @@ export const SPIRIT_NOVA_MAX_RADIUS_PX = 220;
 // game-logic and stay in balance.ts; only the visible zone *radius* is a contract
 // value the host renders.
 export const STORM_EYE_ZONE_RADIUS_PX = 150;
+
+// Documents where to tune Storm Eye's placement distance (Story 3.26) — not a
+// second tunable value, just an alias onto the existing hit-range entry.
+export const STORM_EYE_PLACEMENT_RANGE_PX = ABILITY_HIT_RANGE_PX.stormcaller[3];

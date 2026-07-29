@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { resolveProjectileHit, isProjectileExpired } from 'game-rules';
+import {
+  resolveProjectileHit,
+  isProjectileExpired,
+  isInHitZone,
+  ABILITY_DELIVERY,
+  TEMPEST_HURL_PROJECTILE_RADIUS_PX,
+  TEMPEST_HURL_SPEED_PX_S,
+  TEMPEST_HURL_BLAST_RADIUS_PX,
+} from 'game-rules';
 import { EnemyType, DifficultyTier, EnemyFSMState, PlayerClass } from 'shared-types';
 import type { EnemyState, ProjectileState } from 'shared-types';
 
@@ -94,5 +102,46 @@ describe('isProjectileExpired', () => {
     // Same position reached via different "paths" (irrelevant to this pure check) yields the same result
     expect(isProjectileExpired({ x: 100, y: 0 }, spawnX, spawnY, maxRangePx)).toBe(true);
     expect(isProjectileExpired({ x: 99, y: 0 }, spawnX, spawnY, maxRangePx)).toBe(false);
+  });
+});
+
+describe('Tempest Hurl projectile spawn parameters (AC4, Story 3.26)', () => {
+  it('is a projectile-delivery ability', () => {
+    expect(ABILITY_DELIVERY[PlayerClass.STORMCALLER][1]).toBe('projectile');
+  });
+
+  it('has a bigger, slower body than the shared projectile defaults', () => {
+    expect(TEMPEST_HURL_PROJECTILE_RADIUS_PX).toBe(28);
+    expect(TEMPEST_HURL_SPEED_PX_S).toBe(300);
+  });
+
+  it('derives its blast radius from the projectile radius, not a separately-tuned literal (AC5)', () => {
+    expect(TEMPEST_HURL_BLAST_RADIUS_PX).toBe(TEMPEST_HURL_PROJECTILE_RADIUS_PX * 2);
+  });
+});
+
+describe('Tempest Hurl blast resolution (AC5, Story 3.26)', () => {
+  it('hits every living enemy within the blast radius of the impact point, not just the contacted one', () => {
+    const impactX = 500, impactY = 300;
+    const enemies = [
+      mockEnemy({ id: 'contacted', x: 500, y: 300 }),
+      mockEnemy({ id: 'nearby', x: 520, y: 300 }), // 20px away — within a 56px blast
+      mockEnemy({ id: 'far', x: 700, y: 300 }),    // 200px away — outside the blast
+    ];
+    const inBlast = enemies.filter(e =>
+      isInHitZone(impactX, impactY, 0, 0, e.x, e.y, TEMPEST_HURL_BLAST_RADIUS_PX, 0, false));
+    expect(inBlast.map(e => e.id)).toEqual(['contacted', 'nearby']);
+  });
+
+  it('the boss counts as a blast target via the same non-directional circle test (manual proximity check, since the boss never fires a contact event)', () => {
+    const impactX = 500, impactY = 300;
+    const bossPos = { x: 530, y: 300 }; // 30px from impact — within the 56px blast
+    expect(isInHitZone(impactX, impactY, 0, 0, bossPos.x, bossPos.y, TEMPEST_HURL_BLAST_RADIUS_PX, 0, false)).toBe(true);
+  });
+
+  it('excludes a boss position outside the blast radius', () => {
+    const impactX = 500, impactY = 300;
+    const bossPos = { x: 700, y: 300 }; // 200px away — outside the blast
+    expect(isInHitZone(impactX, impactY, 0, 0, bossPos.x, bossPos.y, TEMPEST_HURL_BLAST_RADIUS_PX, 0, false)).toBe(false);
   });
 });

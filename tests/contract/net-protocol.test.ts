@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { serialize, deserialize, applyDelta, EventNames } from 'net-protocol';
-import type { SnapshotMsg, DeltaEventMsg, InputEventMsg, PlayerPoiEnteredDelta, PlayerPoiExitedDelta, AbilityFiredDelta, EnemyDamagedDelta, PlayerDownedDelta, BondNotificationMsg, ContinueMsg, BossDamagedDelta, BossPhaseChangedDelta, BossDefeatedDelta, BossChargedDelta, RunVictoryMsg, StatusAppliedDelta, StatusExpiredDelta, ProjectileMovedDelta, ProjectileHitDelta, ProjectileExpiredDelta, ZoneTickDelta, ZoneExpiredDelta, ZoneStrikeDelta } from 'net-protocol';
+import type { SnapshotMsg, DeltaEventMsg, InputEventMsg, PlayerPoiEnteredDelta, PlayerPoiExitedDelta, AbilityFiredDelta, AbilityChainHitDelta, EnemyDamagedDelta, PlayerDownedDelta, BondNotificationMsg, ContinueMsg, BossDamagedDelta, BossPhaseChangedDelta, BossDefeatedDelta, BossChargedDelta, RunVictoryMsg, StatusAppliedDelta, StatusExpiredDelta, ProjectileMovedDelta, ProjectileHitDelta, ProjectileExpiredDelta, ZoneTickDelta, ZoneExpiredDelta, ZoneStrikeDelta } from 'net-protocol';
 import type { GameState, PlayerState, RunReward, ProjectileState, ZoneState, BossState } from 'shared-types';
 import { PlayerClass, SessionColor, EnemyType, DifficultyTier, EnemyFSMState, BondType, BossPhase, BossFSMState, GrasslandAchievement } from 'shared-types';
 
@@ -1013,6 +1013,43 @@ describe('net-protocol contract tests', () => {
     it('applyDelta zone:strike is a no-op on state (visual-only; HP change is a separate delta)', () => {
       const state: GameState = { ...mockGameState(), zones: [mockZone()] };
       const delta: DeltaEventMsg = { type: 'zone:strike', zoneId: 'zone-1', targetId: 'enemy-1', damage: 30 };
+      expect(applyDelta(state, delta)).toBe(state);
+    });
+
+    it('AbilityChainHitDelta survives serialize → deserialize', () => {
+      const delta: AbilityChainHitDelta = {
+        type: 'ability:chain-hit',
+        casterId: 'player-1',
+        fromX: 100,
+        fromY: 200,
+        toEnemyId: 'enemy-1',
+        chainIndex: 0,
+      };
+      expect(deserialize<DeltaEventMsg>(serialize(delta))).toEqual(delta);
+    });
+
+    it('AbilityChainHitDelta round-trips with the boss id in toEnemyId (Lightning Arc hitting the boss)', () => {
+      const delta: AbilityChainHitDelta = {
+        type: 'ability:chain-hit',
+        casterId: 'player-1',
+        fromX: 100,
+        fromY: 200,
+        toEnemyId: 'boss-grassland-42',
+        chainIndex: 2,
+      };
+      expect(deserialize<DeltaEventMsg>(serialize(delta))).toEqual(delta);
+    });
+
+    it('applyDelta ability:chain-hit is a no-op on state (visual-only; HP change comes via a separate enemy:damaged/boss:damaged delta)', () => {
+      const state = mockGameState();
+      const delta: DeltaEventMsg = {
+        type: 'ability:chain-hit',
+        casterId: 'player-1',
+        fromX: 100,
+        fromY: 200,
+        toEnemyId: 'enemy-1',
+        chainIndex: 0,
+      };
       expect(applyDelta(state, delta)).toBe(state);
     });
   });

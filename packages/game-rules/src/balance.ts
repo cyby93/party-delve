@@ -19,6 +19,10 @@ export {
   SPIRIT_NOVA_DURATION_MS,
   SPIRIT_NOVA_MAX_RADIUS_PX,
   STORM_EYE_ZONE_RADIUS_PX,
+  TEMPEST_HURL_PROJECTILE_RADIUS_PX,
+  TEMPEST_HURL_SPEED_PX_S,
+  TEMPEST_HURL_BLAST_RADIUS_PX,
+  STORM_EYE_PLACEMENT_RANGE_PX,
 } from 'shared-types';
 export type { AbilityDeliveryType, AbilityHitShape } from 'shared-types';
 
@@ -146,6 +150,15 @@ export const VOID_PULSE_PULL_STRENGTH_PX = 50;
 // Dark Pact's ally-HP drain percentage (Story 3.19) — named rather than a
 // bare literal at the call site, matching this file's tunable-constant convention.
 export const DARK_PACT_DRAIN_PCT = 0.10;
+
+// ── Lightning Arc corridor + chain (Story 3.26) ──────────────────────────────
+// Plain named constants, not a per-class table — Lightning Arc is the only
+// ability in the full spec with this mechanic, same rationale as Spirit Nova/
+// Soul Mend/Storm Eye's constants above.
+export const LIGHTNING_ARC_CORRIDOR_ANGLE_DEG = 30;
+export const LIGHTNING_ARC_CHAIN_RADIUS_PX = 150;
+export const LIGHTNING_ARC_MAX_BOUNCES = 2;
+export const LIGHTNING_ARC_CHAIN_DAMAGE_FALLOFF = 0.7;
 
 // ── Declarative per-ability status-effect application ───────────────────────
 // Populated per-ability by each kit-rework story (3.16 sets Stonehide; 3.17

@@ -12,8 +12,8 @@ import {
   CAT_BOSS, createZoneBody, createProjectileBody,
 } from '../physics/world.js';
 import type { PoiBeginContactEvent, PoiEndContactEvent, EssenceBeginContactEvent, PhysicsBodyData } from '../physics/world.js';
-import { createRng, tickEnemy, dispatchAbility, getEnemyCount, applyDamage, isInHitZone, isInConeZone, ABILITY_HIT_RANGE_PX, ABILITY_HIT_RADIUS_PX, ABILITY_HIT_SHAPE, ABILITY_CONE_ANGLE_DEG, ABILITY_DAMAGE, applyPlayerDamage, getReviveWindowMs, ENEMY_MELEE_DAMAGE, ENEMY_MELEE_RANGE_PX, ENEMY_ATTACK_COOLDOWN_MS, REVIVE_RADIUS_PX, REVIVE_HP, SPIRIT_ABILITY_COOLDOWN_MS, generateFloorLayout, GRASSLAND_ROOM_POOL, WAVE_COUNTS, WAVE_PAUSE_MS, WAVE_ENEMY_SCALE, bondKey, getProximityBuffedPlayers, getFateBuffedPlayers, getFateBondWipeTargets, getProximityDrainTargets, BOND_PROXIMITY_RANGE_PX, BOND_DRAIN_THRESHOLD_S, BOND_DRAIN_HP_PER_TICK, BOND_SPEED_MULT, assignBond, BOND_DESCRIPTIONS, BOND_MECHANICS, createBossState, tickBoss, BOSS_ADD_HP, BOSS_STOMP_DAMAGE, evaluateGrasslandAchievements, JOYSTICK_DEADBAND, createEasyLayers, createNormalLayers, createHardLayers, tickStatusEffects, getStatusEffectMagnitude, applyStatusEffect, resolveProjectileHit, isProjectileExpired, shouldZoneTick, isZoneExpired, PROJECTILE_MAX_RANGE_PX, PROJECTILE_SPEED_PX_S, ABILITY_CHAINED_ZONE, ABILITY_STATUS_EFFECT, ABILITY_DISPLACEMENT_STRENGTH, applyDisplacement, resolveMixedFactionTargets, healPlayer, calculateLifesteal, resolveExpandingRadius, ABILITY_HEAL_AMOUNT, SPIRIT_NOVA_DURATION_MS, SPIRIT_NOVA_MAX_RADIUS_PX, findSoulMendTarget, shouldCancelSoulMendChannel, reviveBySoulMend, SOUL_MEND_CHANNEL_DURATION_MS, SOUL_MEND_LIVENESS_MS, ABILITY_COOLDOWNS_MS, ABILITY_DELIVERY, ABILITY_LIFESTEAL_PCT, VOID_PULSE_PULL_STRENGTH_PX, DARK_PACT_DRAIN_PCT, STORM_EYE_ZONE_RADIUS_PX, STORM_EYE_TICK_MS, STORM_EYE_TICK_DAMAGE, STORM_EYE_DURATION_MS, STORM_EYE_STRIKE_INTERVAL_MS, STORM_EYE_STRIKE_DAMAGE, pickRandomIndex, resolveOutgoingDamage } from 'game-rules';
-import type { BehaviorLayer, EnemyContext, EnemyAIEvent, BossEvent, BossStompedEvent, ChainedZoneConfig, AbilityHitShape } from 'game-rules';
+import { createRng, tickEnemy, dispatchAbility, getEnemyCount, applyDamage, isInHitZone, isInConeZone, ABILITY_HIT_RANGE_PX, ABILITY_HIT_RADIUS_PX, ABILITY_HIT_SHAPE, ABILITY_CONE_ANGLE_DEG, ABILITY_DAMAGE, applyPlayerDamage, getReviveWindowMs, ENEMY_MELEE_DAMAGE, ENEMY_MELEE_RANGE_PX, ENEMY_ATTACK_COOLDOWN_MS, REVIVE_RADIUS_PX, REVIVE_HP, SPIRIT_ABILITY_COOLDOWN_MS, generateFloorLayout, GRASSLAND_ROOM_POOL, WAVE_COUNTS, WAVE_PAUSE_MS, WAVE_ENEMY_SCALE, bondKey, getProximityBuffedPlayers, getFateBuffedPlayers, getFateBondWipeTargets, getProximityDrainTargets, BOND_PROXIMITY_RANGE_PX, BOND_DRAIN_THRESHOLD_S, BOND_DRAIN_HP_PER_TICK, BOND_SPEED_MULT, assignBond, BOND_DESCRIPTIONS, BOND_MECHANICS, createBossState, tickBoss, BOSS_ADD_HP, BOSS_STOMP_DAMAGE, evaluateGrasslandAchievements, JOYSTICK_DEADBAND, createEasyLayers, createNormalLayers, createHardLayers, tickStatusEffects, getStatusEffectMagnitude, applyStatusEffect, resolveProjectileHit, isProjectileExpired, shouldZoneTick, isZoneExpired, PROJECTILE_MAX_RANGE_PX, PROJECTILE_SPEED_PX_S, ABILITY_CHAINED_ZONE, ABILITY_STATUS_EFFECT, ABILITY_DISPLACEMENT_STRENGTH, applyDisplacement, resolveMixedFactionTargets, healPlayer, calculateLifesteal, resolveExpandingRadius, ABILITY_HEAL_AMOUNT, SPIRIT_NOVA_DURATION_MS, SPIRIT_NOVA_MAX_RADIUS_PX, findSoulMendTarget, shouldCancelSoulMendChannel, reviveBySoulMend, SOUL_MEND_CHANNEL_DURATION_MS, SOUL_MEND_LIVENESS_MS, ABILITY_COOLDOWNS_MS, ABILITY_DELIVERY, ABILITY_LIFESTEAL_PCT, VOID_PULSE_PULL_STRENGTH_PX, DARK_PACT_DRAIN_PCT, STORM_EYE_ZONE_RADIUS_PX, STORM_EYE_TICK_MS, STORM_EYE_TICK_DAMAGE, STORM_EYE_DURATION_MS, STORM_EYE_STRIKE_INTERVAL_MS, STORM_EYE_STRIKE_DAMAGE, pickRandomIndex, resolveOutgoingDamage, LIGHTNING_ARC_CORRIDOR_ANGLE_DEG, LIGHTNING_ARC_CHAIN_RADIUS_PX, LIGHTNING_ARC_MAX_BOUNCES, LIGHTNING_ARC_CHAIN_DAMAGE_FALLOFF, findNearestCandidate, resolveLightningArcChain, TEMPEST_HURL_PROJECTILE_RADIUS_PX, TEMPEST_HURL_SPEED_PX_S, TEMPEST_HURL_BLAST_RADIUS_PX } from 'game-rules';
+import type { BehaviorLayer, EnemyContext, EnemyAIEvent, BossEvent, BossStompedEvent, ChainedZoneConfig, AbilityHitShape, LightningArcCandidate } from 'game-rules';
 import { BOSS_ARENA_SPAWN_POINTS, loadBossArena } from '../levels/boss-arena.js';
 import { CLASS_DEFINITIONS } from 'shared-types';
 import type { EnemyState, StatusEffect, ZoneState, ProjectileState } from 'shared-types';
@@ -1362,6 +1362,181 @@ export class GameRoom extends Room {
     }
   }
 
+  // Every currently-living damageable candidate (enemies + boss, if alive) as
+  // plain {id,x,y} points — the shape Lightning Arc's pure chain math needs.
+  // Re-queried at each chain hop (not a frozen snapshot) so a same-cast kill
+  // earlier in the chain can't leave a stale, already-dead candidate behind.
+  private gatherLightningArcCandidates(): LightningArcCandidate[] {
+    const candidates: LightningArcCandidate[] = this.gameState.enemies
+      .filter(e => e.isAlive)
+      .map(e => ({ id: e.id, x: e.x, y: e.y }));
+    if (this.gameState.boss && !this.gameState.boss.isDefeated) {
+      candidates.push({ id: this.gameState.boss.id, x: this.gameState.boss.position.x, y: this.gameState.boss.position.y });
+    }
+    return candidates;
+  }
+
+  // Applies a single Lightning Arc hit's damage to whichever candidate id it
+  // resolved to (enemy or boss) and broadcasts the matching delta(s) — mirrors
+  // the generic hit-scan loop's own enemy/boss application exactly (applyDamage
+  // for enemies, the same direct Math.max(0, boss.hp - damage) pattern for the
+  // boss), just addressed by id instead of iterating a hit-zone query.
+  // Returns whether the hit actually applied — the caller uses this to gate the
+  // ability:chain-hit visual broadcast, so the host never draws an arc landing
+  // on a target that received no damage and no accompanying enemy:damaged/
+  // boss:damaged delta (a target can only fail to resolve here if it was
+  // concurrently invalidated, e.g. killed by another source in the same tick
+  // before this chain hop was reached).
+  private resolveLightningArcHit(casterId: string, targetId: string, damage: number, nowMs: number): boolean {
+    const ei = this.gameState.enemies.findIndex(e => e.id === targetId);
+    if (ei !== -1) {
+      const enemy = this.gameState.enemies[ei]!;
+      const dropId = `drop-${this.tickCount}-${enemy.id}`;
+      const dmgResult = applyDamage(enemy, damage, dropId, nowMs);
+      if (!dmgResult.ok) return false;
+      this.gameState.enemies[ei] = dmgResult.value.enemy;
+      this.broadcast(EventNames.DELTA, {
+        type: 'enemy:damaged' as const,
+        enemyId: enemy.id,
+        damage,
+        remainingHp: dmgResult.value.enemy.hp,
+      } satisfies DeltaEventMsg);
+
+      if (dmgResult.value.killed) {
+        this.broadcast(EventNames.DELTA, {
+          type: 'enemy:killed' as const,
+          enemyId: enemy.id,
+          byPlayerId: casterId,
+        } satisfies DeltaEventMsg);
+        const enemyBody = this.enemyBodies.get(enemy.id);
+        if (enemyBody) {
+          this.physicsWorld.destroyBody(enemyBody);
+          this.enemyBodies.delete(enemy.id);
+        }
+        this.enemyAttackCooldowns.delete(enemy.id);
+
+        const drop = dmgResult.value.essenceDrop!;
+        this.gameState.essenceDrops.push(drop);
+        this.broadcast(EventNames.DELTA, { type: 'essence:dropped' as const, drop } satisfies DeltaEventMsg);
+        const sensor = createEssenceSensorBody(this.physicsWorld, drop.id, drop.x, drop.y);
+        this.essenceSensorBodies.set(drop.id, sensor);
+      }
+      return true;
+    }
+
+    if (this.gameState.boss && this.gameState.boss.id === targetId) {
+      this.gameState.boss.hp = Math.max(0, this.gameState.boss.hp - damage);
+      this.broadcast(EventNames.DELTA, {
+        type: 'boss:damaged' as const,
+        bossId: this.gameState.boss.id,
+        newHp: this.gameState.boss.hp,
+      } satisfies DeltaEventMsg);
+      return true;
+    }
+
+    return false; // target id resolved to neither a living enemy nor the boss
+  }
+
+  // Lightning Arc (Stormcaller slot 0, Story 3.26): first target in a narrow
+  // directional corridor (isInConeZone, Story 3.25's primitive), then chains up
+  // to LIGHTNING_ARC_MAX_BOUNCES additional bounces at
+  // LIGHTNING_ARC_CHAIN_DAMAGE_FALLOFF per bounce, searching from the PREVIOUS
+  // hit's position (not re-aimed) — resolveLightningArcChain (game-rules) does
+  // the pure nearest/falloff math; this method only gathers live candidates and
+  // applies the resolved hits. Its own dispatch branch, structurally mirroring
+  // handleDarkPact — not the generic hit-scan loop, since chain targeting isn't
+  // a single hit-zone query. `rawDamage` here is already bond/god-mode adjusted
+  // by the caller (see the dispatch loop), same convention as the generic loop's
+  // pre-adjusted `damage` local.
+  //
+  // The epics AC text says the first-target gather includes "(+boss)" but the
+  // chain-hop re-search line says only "living enemy" — an ambiguity flagged
+  // (not silently resolved) in this story's Dev Notes. Implemented reading:
+  // the boss DOES participate in chain hops, for consistency with every other
+  // multi-hit ability in this codebase (generic hit-scan loop, Ancestor's Voice,
+  // Spirit Nova) which never excludes the boss from AoE/sweep continuations.
+  private handleLightningArc(casterId: string, caster: PlayerState, dirX: number, dirY: number, rawDamage: number, nowMs: number): void {
+    const mag = Math.hypot(dirX, dirY);
+    if (mag === 0) return; // no direction = no target — belt-and-suspenders; dispatchAbility already rejects zero-aim before this is ever called
+    const normDirX = dirX / mag;
+    const normDirY = dirY / mag;
+
+    const hitRange = ABILITY_HIT_RANGE_PX[PlayerClass.STORMCALLER][0];
+    const allCandidates = this.gatherLightningArcCandidates();
+    const inCorridor = allCandidates.filter(c =>
+      isInConeZone(caster.x, caster.y, normDirX, normDirY, c.x, c.y, hitRange, LIGHTNING_ARC_CORRIDOR_ANGLE_DEG));
+    const firstTarget = findNearestCandidate(caster.x, caster.y, inCorridor);
+    if (!firstTarget) return; // no target in corridor — no-op, cooldown still applies (handled by the caller)
+
+    const remaining = allCandidates.filter(c => c.id !== firstTarget.id);
+    const hits = resolveLightningArcChain(
+      caster.x, caster.y, firstTarget, rawDamage, remaining,
+      LIGHTNING_ARC_CHAIN_RADIUS_PX, LIGHTNING_ARC_MAX_BOUNCES, LIGHTNING_ARC_CHAIN_DAMAGE_FALLOFF,
+    );
+
+    for (const hit of hits) {
+      const applied = this.resolveLightningArcHit(casterId, hit.id, hit.damage, nowMs);
+      if (!applied) continue; // target invalidated (e.g. concurrently killed) — no damage applied, no visual for a hit that didn't land
+      this.broadcast(EventNames.DELTA, {
+        type: 'ability:chain-hit' as const,
+        casterId,
+        fromX: hit.fromX,
+        fromY: hit.fromY,
+        toEnemyId: hit.id,
+        chainIndex: hit.chainIndex,
+      } satisfies DeltaEventMsg);
+    }
+  }
+
+  // Tempest Hurl's blast AoE (Story 3.26): reused by both its primary-contact
+  // resolution (a regular projectile-enemy contact) and its boss-proximity
+  // detonation (the boss's fixture never generates a planck contact event, so
+  // it needs its own per-tick manual check) — same enemy sweep, two triggers.
+  // Boss damage is NOT applied here — each call site handles the boss hit
+  // itself (the boss can never be `excludeEnemyId`'s contact target, but it CAN
+  // be the detonation trigger itself in the proximity-check call site, which
+  // would double-hit it if this helper also checked the boss).
+  private resolveTempestHurlEnemyBlast(x: number, y: number, damage: number, ownerId: string, excludeEnemyId: string | undefined, nowMs: number): void {
+    for (const enemy of this.gameState.enemies) {
+      if (!enemy.isAlive || enemy.id === excludeEnemyId) continue;
+      if (!isInHitZone(x, y, 0, 0, enemy.x, enemy.y, TEMPEST_HURL_BLAST_RADIUS_PX, 0, false)) continue;
+
+      const ei = this.gameState.enemies.findIndex(e => e.id === enemy.id);
+      const dropId = `drop-${this.tickCount}-${enemy.id}`;
+      const blastResult = applyDamage(this.gameState.enemies[ei]!, damage, dropId, nowMs);
+      if (!blastResult.ok) continue;
+      this.gameState.enemies[ei] = blastResult.value.enemy;
+      this.broadcast(EventNames.DELTA, {
+        type: 'enemy:damaged' as const,
+        enemyId: enemy.id,
+        damage,
+        remainingHp: blastResult.value.enemy.hp,
+      } satisfies DeltaEventMsg);
+
+      if (blastResult.value.killed) {
+        this.broadcast(EventNames.DELTA, {
+          type: 'enemy:killed' as const,
+          enemyId: enemy.id,
+          byPlayerId: ownerId,
+        } satisfies DeltaEventMsg);
+        const enemyBody = this.enemyBodies.get(enemy.id);
+        if (enemyBody) {
+          this.physicsWorld.destroyBody(enemyBody);
+          this.enemyBodies.delete(enemy.id);
+        }
+        this.enemyAttackCooldowns.delete(enemy.id);
+
+        if (blastResult.value.essenceDrop) {
+          const drop = blastResult.value.essenceDrop;
+          this.gameState.essenceDrops.push(drop);
+          this.broadcast(EventNames.DELTA, { type: 'essence:dropped' as const, drop } satisfies DeltaEventMsg);
+          const sensor = createEssenceSensorBody(this.physicsWorld, drop.id, drop.x, drop.y);
+          this.essenceSensorBodies.set(drop.id, sensor);
+        }
+      }
+    }
+  }
+
   private tick(): void {
     this.tickCount++;
     this.gameState.tick = this.tickCount;
@@ -1468,6 +1643,52 @@ export class GameRoom extends Room {
           y: projectile.y,
         } satisfies DeltaEventMsg;
         this.broadcast(EventNames.DELTA, delta);
+      }
+    }
+
+    // ── Tempest Hurl boss-proximity detonation (Story 3.26) ──────────────────────
+    // The boss body's fixture has filterMaskBits: 0 (GameRoom.ts boss setup) — it
+    // structurally cannot generate a planck contact event, so a Tempest Hurl
+    // projectile thrown straight at the boss (missing every regular enemy) would
+    // otherwise never detonate. Scoped to Tempest Hurl's own projectiles only —
+    // does NOT touch the boss's general physics posture or any other projectile
+    // ability (Blood Spike/Void Pulse still cannot hit the boss, unchanged).
+    if (this.gameState.boss && !this.gameState.boss.isDefeated) {
+      for (let pi = this.gameState.projectiles.length - 1; pi >= 0; pi--) {
+        const projectile = this.gameState.projectiles[pi]!;
+        if (projectile.class !== PlayerClass.STORMCALLER || projectile.abilityIndex !== 1) continue;
+
+        const dx = projectile.x - this.gameState.boss.position.x;
+        const dy = projectile.y - this.gameState.boss.position.y;
+        const triggerRadius = TEMPEST_HURL_PROJECTILE_RADIUS_PX + 48;
+        if (dx * dx + dy * dy > triggerRadius * triggerRadius) continue;
+
+        const rawDamage = ABILITY_DAMAGE[projectile.class][projectile.abilityIndex as 0 | 1 | 2 | 3] ?? 0;
+        const damage = resolveOutgoingDamage(rawDamage, proximityBuffed.has(projectile.ownerId), this.godModePlayerIds.has(projectile.ownerId));
+
+        this.gameState.boss.hp = Math.max(0, this.gameState.boss.hp - damage);
+        this.broadcast(EventNames.DELTA, {
+          type: 'boss:damaged' as const,
+          bossId: this.gameState.boss.id,
+          newHp: this.gameState.boss.hp,
+        } satisfies DeltaEventMsg);
+
+        this.resolveTempestHurlEnemyBlast(projectile.x, projectile.y, damage, projectile.ownerId, undefined, tickNowMs);
+
+        this.broadcast(EventNames.DELTA, {
+          type: 'projectile:hit' as const,
+          projectileId: projectile.id,
+          x: projectile.x,
+          y: projectile.y,
+        } satisfies DeltaEventMsg);
+
+        this.gameState.projectiles.splice(pi, 1);
+        const projectileBody = this.projectileBodies.get(projectile.id);
+        if (projectileBody) {
+          this.physicsWorld.destroyBody(projectileBody);
+          this.projectileBodies.delete(projectile.id);
+        }
+        this.projectileSpawnPositions.delete(projectile.id);
       }
     }
 
@@ -1815,6 +2036,23 @@ export class GameRoom extends Room {
         }
       }
 
+      // Tempest Hurl blast (Stormcaller slot 1, Story 3.26): the primary contacted
+      // enemy above is resolved exactly as any other projectile hit; this additionally
+      // sweeps every OTHER living enemy (and the boss, which never generates its own
+      // contact event) within TEMPEST_HURL_BLAST_RADIUS_PX of the impact point.
+      if (projectile.class === PlayerClass.STORMCALLER && projectile.abilityIndex === 1) {
+        this.resolveTempestHurlEnemyBlast(projectile.x, projectile.y, damage, projectile.ownerId, enemyId, tickNowMs);
+        if (this.gameState.boss && !this.gameState.boss.isDefeated &&
+            isInHitZone(projectile.x, projectile.y, 0, 0, this.gameState.boss.position.x, this.gameState.boss.position.y, TEMPEST_HURL_BLAST_RADIUS_PX, 0, false)) {
+          this.gameState.boss.hp = Math.max(0, this.gameState.boss.hp - damage);
+          this.broadcast(EventNames.DELTA, {
+            type: 'boss:damaged' as const,
+            bossId: this.gameState.boss.id,
+            newHp: this.gameState.boss.hp,
+          } satisfies DeltaEventMsg);
+        }
+      }
+
       // Lifesteal (Blood Spike, Story 3.19): declarative, fires for any projectile
       // ability with a nonzero ABILITY_LIFESTEAL_PCT entry. Only on a hit — a miss
       // (projectile expiry, handled elsewhere) already paid the self-cost with no
@@ -2155,7 +2393,16 @@ export class GameRoom extends Room {
             abilityIndex,
           };
           this.gameState.projectiles.push(projectile);
-          const projectileBody = createProjectileBody(this.physicsWorld, projectileId, player.x, player.y, projDirX, projDirY, PROJECTILE_SPEED_PX_S);
+          // Tempest Hurl (Stormcaller slot 1, Story 3.26): bigger/slower body than
+          // the shared projectile defaults — class/index-gated, same style as every
+          // other per-ability special-case in this dispatch block.
+          const isTempestHurl = player.class === PlayerClass.STORMCALLER && abilityIndex === 1;
+          const projectileSpeed = isTempestHurl ? TEMPEST_HURL_SPEED_PX_S : PROJECTILE_SPEED_PX_S;
+          // No radiusPx arg for non-Tempest-Hurl casts — createProjectileBody's own
+          // default (12) applies, rather than re-stating that literal here too.
+          const projectileBody = isTempestHurl
+            ? createProjectileBody(this.physicsWorld, projectileId, player.x, player.y, projDirX, projDirY, projectileSpeed, TEMPEST_HURL_PROJECTILE_RADIUS_PX)
+            : createProjectileBody(this.physicsWorld, projectileId, player.x, player.y, projDirX, projDirY, projectileSpeed);
           this.projectileBodies.set(projectileId, projectileBody);
           this.projectileSpawnPositions.set(projectileId, { x: player.x, y: player.y });
           // No dedicated "projectile:spawned" delta type exists (net-protocol is a
@@ -2206,6 +2453,16 @@ export class GameRoom extends Room {
         // effect is gated on a drain target actually being found).
         if (player.class === PlayerClass.SOULDRINKER && abilityIndex === 2) {
           this.handleDarkPact(clientId, player, dirX, dirY, nowAbility);
+          continue;
+        }
+
+        // Lightning Arc (Stormcaller slot 0, Story 3.26): corridor-gather + chain,
+        // not a single hit-zone query — its own dispatch branch, before the generic
+        // hit-scan's hitRange/hitRadius computation. Never falls through to the
+        // generic loop below.
+        if (player.class === PlayerClass.STORMCALLER && abilityIndex === 0) {
+          const chainDamage = resolveOutgoingDamage(result.value.damage, proximityBuffed.has(clientId), this.godModePlayerIds.has(clientId));
+          this.handleLightningArc(clientId, player, dirX, dirY, chainDamage, nowAbility);
           continue;
         }
 

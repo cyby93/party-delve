@@ -123,6 +123,20 @@ export type AbilityFiredDelta = {
   directionY: number;
 };
 
+// Lightning Arc's chain-lightning visual signal (Story 3.26) — broadcast once
+// per hit in the chain (including the first) so the host can draw connected
+// arcs without guessing which same-tick deltas belong to which cast. toEnemyId
+// may carry the boss's id (gameState.boss.id) — plain string, no separate boss
+// field, per ADR-0005's exact wire shape.
+export type AbilityChainHitDelta = {
+  type: 'ability:chain-hit';
+  casterId: string;
+  fromX: number;
+  fromY: number;
+  toEnemyId: string;
+  chainIndex: number;
+};
+
 export type PlayerHpUpdatedDelta = {
   type: 'player:hp-updated';
   playerId: string;
@@ -321,6 +335,7 @@ export type DeltaEventMsg =
   | PlayerPoiExitedDelta
   | PlayerClassUpdatedDelta
   | AbilityFiredDelta
+  | AbilityChainHitDelta
   | PlayerHpUpdatedDelta
   | PlayerSpiritDelta
   | SpiritAbilityFiredDelta

@@ -150,6 +150,8 @@ export function applyDelta(state: GameState, evt: DeltaEventMsg): GameState {
       return state; // ponytail: visual indicator only; HP changes come via separate player:hp-updated deltas
     case 'ability:fired':
       return state;  // ponytail: no-op on state — visual effect only; DungeonScreen reads raw delta
+    case 'ability:chain-hit':
+      return state;  // ponytail: visual only — no GameState mutation; DungeonScreen reads raw delta
     case 'spirit-ability:fired':
       return state;  // ponytail: visual only — no GameState mutation
     case 'run:failed':

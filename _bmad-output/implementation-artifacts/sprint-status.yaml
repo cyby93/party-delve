@@ -42,7 +42,43 @@
 # Phase2 legacy stories (old Phase-based keys) are tracked below under PHASE 2 STORIES.
 
 generated: 2026-06-22
-last_updated: 2026-07-28 (code-review: 3-25 → done)
+last_updated: 2026-07-28 (code-review: 3-26 → done)
+# 2026-07-28: code-review of 3-26-stormcaller-rework-ii-lightning-arc-chain-and-
+# tempest-hurl-projectile (review → done) — 3 parallel layers (Blind Hunter, Edge
+# Case Hunter, Acceptance Auditor), full spec mode against the story's own ACs.
+# 4 patch (all applied: ability:chain-hit no longer broadcasts on a failed hit,
+# removed a duplicated magic-number-12 projectile-radius literal, a test now
+# imports the real corridor-range constant instead of hardcoding 160, and the
+# game-rules/systems/targeting.ts ownership-path deviation was flagged in
+# Completion Notes), 0 decision_needed, 0 defer, 11 dismissed after verification
+# (a claimed same-tick double-detonation race was disproved by the pre-existing
+# `pi === -1` guard; a claimed damage-computation divergence was disproved — both
+# Tempest Hurl detonation paths derive damage identically within the same tick;
+# a claimed 56px-vs-76px boss-radius inconsistency was confirmed spec-mandated by
+# direct quote from the story's own Task 3c/3d text, not a slip). Acceptance
+# Auditor independently re-ran typecheck + all 4 touched test files (161/161).
+# Status → done.
+# 2026-07-28: dev-story — implemented 3-26-stormcaller-rework-ii-lightning-arc-chain-
+# and-tempest-hurl-projectile. Lightning Arc (Stormcaller AUTO) now corridor-gathers
+# (isInConeZone, 30deg) + chains up to 2 bounces at 70% falloff, broadcasting a new
+# ability:chain-hit delta (packages/net-protocol, additive, Contract-change hook
+# triggered — Protocol Architect review still outstanding). Tempest Hurl (Stormcaller
+# RELEASE) is now a real 28px/300px/s projectile with a 56px blast radius, reusing
+# Blood Spike/Void Pulse's ProjectileState machinery; added a Tempest-Hurl-scoped
+# manual per-tick boss-proximity check since the boss body's filterMaskBits: 0 means
+# it can never generate a planck contact event (pre-existing gap, closed only for
+# this ability per the story's explicit non-goal). Storm Eye gained a documentation-
+# only STORM_EYE_PLACEMENT_RANGE_PX alias. Extracted pure chain/falloff math into
+# game-rules/systems/targeting.ts (findNearestCandidate, resolveLightningArcChain) —
+# new tests/unit/lightning-arc.test.ts. Judgment call flagged in Completion Notes:
+# boss included in Lightning Arc's chain hops (ambiguous AC text), per the story's
+# own recommendation. Edited tests/unit/abilities.test.ts outside declared Allowed
+# paths to fix a stale Story 3.19 ABILITY_DELIVERY assertion this story's own Task 3a
+# change made stale — same precedent Story 3.20 used for its own ABILITY_DELIVERY
+# change. Typecheck clean (10/10 tsconfigs); full suite green apart from 2 confirmed
+# pre-existing failures (Stonehide VFX geometry test, already tracked in memory; an
+# intermittent Ancestor's Voice e2e assertion, confirmed via git stash to fail
+# identically on the pre-story baseline). Status → review.
 # 2026-07-28: create-story — wrote full context-engine story files for 3-25 and 3-26
 # (exhaustive analysis of epics.md, ADR-0005, sprint-change-proposal-2026-07-28.md,
 # deferred-work.md D-CC1, and direct reads of ability-geometry.ts/combat.ts/balance.ts/
@@ -717,7 +753,7 @@ development_status:
   # closes the 3.16/3.17/3.19 Cone/Line spec drift and reopens 3.20's
   # Lightning Arc/Tempest Hurl scoping note. Sequenced a(3.25) -> b(3.26).
   3-25-cone-hit-geometry-contract-and-stonehide-spiritcaller-souldrinker-cone-conversion: done
-  3-26-stormcaller-rework-ii-lightning-arc-chain-and-tempest-hurl-projectile: ready-for-dev
+  3-26-stormcaller-rework-ii-lightning-arc-chain-and-tempest-hurl-projectile: done
   epic-3-retrospective: optional
 
   # ─── Dev infra fixes (no epic) ──────────────────────────────────────────────

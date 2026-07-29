@@ -479,14 +479,19 @@ describe('Souldrinker kit rework (Story 3.19)', () => {
     expect(dy).toBeCloseTo(0);
   });
 
-  it('no other class has projectile delivery or a chained-zone config (Souldrinker-only in this story; Stormcaller gains zone delivery separately in 3.20)', () => {
-    for (const cls of [PlayerClass.STONEHIDE, PlayerClass.SPIRITCALLER, PlayerClass.STORMCALLER]) {
+  it('no other class has projectile delivery or a chained-zone config (Souldrinker-only in this story; Stormcaller gains zone delivery in 3.20 and projectile delivery — Tempest Hurl — in 3.26)', () => {
+    for (const cls of [PlayerClass.STONEHIDE, PlayerClass.SPIRITCALLER]) {
       expect(ABILITY_DELIVERY[cls]).not.toContain('projectile');
       expect(ABILITY_CHAINED_ZONE[cls]).toEqual([null, null, null, null]);
     }
+    expect(ABILITY_CHAINED_ZONE[PlayerClass.STORMCALLER]).toEqual([null, null, null, null]);
     // Stonehide/Spiritcaller remain untouched by both 3.19's projectile delivery
-    // and 3.20's zone delivery; Stormcaller gains 'zone' delivery in 3.20 (Storm Eye).
+    // and 3.20's zone delivery; Stormcaller gains 'zone' delivery in 3.20 (Storm Eye)
+    // and 'projectile' delivery in 3.26 (Tempest Hurl) — this is the exact stale
+    // hardcoded literal Story 3.26's Task 3a change makes stale (same class of edit
+    // 3.20 needed for its own ABILITY_DELIVERY change, see that story's Debug Log).
     expect(ABILITY_DELIVERY[PlayerClass.STONEHIDE]).toEqual(['hitscan', 'hitscan', 'hitscan', 'hitscan']);
     expect(ABILITY_DELIVERY[PlayerClass.SPIRITCALLER]).toEqual(['hitscan', 'hitscan', 'hitscan', 'hitscan']);
+    expect(ABILITY_DELIVERY[PlayerClass.STORMCALLER]).toEqual(['hitscan', 'projectile', 'hitscan', 'zone']);
   });
 });

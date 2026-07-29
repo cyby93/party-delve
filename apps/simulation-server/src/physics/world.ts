@@ -112,13 +112,14 @@ export function createProjectileBody(
   dirX: number,
   dirY: number,
   speed: number,
+  radiusPx: number = 12,
 ): Body {
   const body = world.createBody({
     type: 'dynamic',
     position: Vec2(toMeters(x), toMeters(y)),
   });
   body.createFixture({
-    shape: new Circle(toMeters(12)),
+    shape: new Circle(toMeters(radiusPx)),
     isSensor: true,
     filterCategoryBits: CAT_PROJECTILE,
     filterMaskBits: CAT_ENEMY,
