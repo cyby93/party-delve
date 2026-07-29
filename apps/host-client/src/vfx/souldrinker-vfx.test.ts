@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ABILITY_HIT_RANGE_PX, ABILITY_HIT_RADIUS_PX, VOID_PULSE_ZONE_RADIUS_PX } from 'shared-types';
+import { ABILITY_GEOMETRY, VOID_PULSE_ZONE_RADIUS_PX } from 'shared-types';
 import {
   planSouldrinkerCast,
   planVoidPulseImpact,
@@ -51,9 +51,9 @@ describe('planSouldrinkerCast', () => {
     const specs = planSouldrinkerCast(cast({ abilityIndex: 1, casterX: 500, casterY: 400, dirX: 1, dirY: 0 }));
     const impactRing = specs.find((s): s is Extract<VfxSpec, { kind: 'ring' }> => s.kind === 'ring');
     expect(impactRing).toBeDefined();
-    expect(impactRing!.x).toBeCloseTo(500 + ABILITY_HIT_RANGE_PX.souldrinker[1], 6);
+    expect(impactRing!.x).toBeCloseTo(500 + ABILITY_GEOMETRY.souldrinker[1].hitRangePx, 6);
     expect(impactRing!.y).toBeCloseTo(400, 6);
-    expect(impactRing!.maxRadius).toBe(ABILITY_HIT_RADIUS_PX.souldrinker[1]);
+    expect(impactRing!.maxRadius).toBe(ABILITY_GEOMETRY.souldrinker[1].hitRadiusPx);
   });
 
   it('Crimson Lash beam width increases monotonically as hpFraction falls (HP-scaled read)', () => {

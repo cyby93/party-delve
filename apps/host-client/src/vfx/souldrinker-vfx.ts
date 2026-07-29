@@ -1,6 +1,5 @@
 import {
-  ABILITY_HIT_RANGE_PX,
-  ABILITY_HIT_RADIUS_PX,
+  ABILITY_GEOMETRY,
   PlayerClass,
   VOID_PULSE_ZONE_RADIUS_PX,
 } from 'shared-types';
@@ -43,9 +42,8 @@ export const VOID = SOULDRINKER_PALETTE.corruption;
 /** Shade of `accent-corruption` — pull-zone fill (spec for Story 7.8). */
 export const VOID_DIM = SOULDRINKER_PALETTE.corruptionDim;
 
-// ── Geometry, read live from the shared contract (Story 7.9 / ADR-0003) ──────
-const SOULDRINKER_RANGE = ABILITY_HIT_RANGE_PX[PlayerClass.SOULDRINKER];   // [150, 180, 180, 0]
-const SOULDRINKER_RADIUS = ABILITY_HIT_RADIUS_PX[PlayerClass.SOULDRINKER]; // [ 50,  65,  80, 80]
+// ── Geometry, read live from the shared contract (Story 7.9 / ADR-0003, consolidated 3.27 / ADR-0006) ──
+const SOULDRINKER_GEOMETRY = ABILITY_GEOMETRY[PlayerClass.SOULDRINKER]; // hitRangePx: [150, 180, 180, 0], hitRadiusPx: [50, 65, 80, 80]
 
 // ── Cosmetic constants (no corresponding sim value — local to the visual) ────
 const PLAYER_RADIUS = 24; // mirror of DungeonScreen's PLAYER_RADIUS (host-only)
@@ -162,8 +160,8 @@ function planBloodSpikeCast(px: number, py: number, dx: number, dy: number): Vfx
 // damage mechanic (a rendering read of broadcast state, not a damage calc).
 function planCrimsonLashCast(px: number, py: number, dx: number, dy: number, hpFraction: number): VfxSpec[] {
   const lowHp = 1 - (Number.isFinite(hpFraction) ? clamp01(hpFraction) : 1);
-  const cx = px + dx * SOULDRINKER_RANGE[1];
-  const cy = py + dy * SOULDRINKER_RANGE[1];
+  const cx = px + dx * SOULDRINKER_GEOMETRY[1].hitRangePx;
+  const cy = py + dy * SOULDRINKER_GEOMETRY[1].hitRangePx;
   const specs: VfxSpec[] = [];
   for (const k of [-1, 0, 1] as const) {
     const theta = k * CRIMSON_LASH_FAN_RAD;
@@ -178,7 +176,7 @@ function planCrimsonLashCast(px: number, py: number, dx: number, dy: number, hpF
     }));
   }
   specs.push(ring({
-    x: cx, y: cy, color: BLOOD, startRadius: 10, maxRadius: SOULDRINKER_RADIUS[1],
+    x: cx, y: cy, color: BLOOD, startRadius: 10, maxRadius: SOULDRINKER_GEOMETRY[1].hitRadiusPx,
     lineWidth: 3, alpha: 0.5 + 0.4 * lowHp, durationMs: 260,
   }));
   specs.push(burst({
@@ -192,12 +190,12 @@ function planCrimsonLashCast(px: number, py: number, dx: number, dy: number, hpF
 // at the cone end (start == max radius = a fading outline). Always rendered,
 // target found or not: the delta carries no target and the host must not stall.
 function planDarkPactCast(px: number, py: number, dx: number, dy: number): VfxSpec[] {
-  const ex = px + dx * SOULDRINKER_RANGE[2];
-  const ey = py + dy * SOULDRINKER_RANGE[2];
+  const ex = px + dx * SOULDRINKER_GEOMETRY[2].hitRangePx;
+  const ey = py + dy * SOULDRINKER_GEOMETRY[2].hitRangePx;
   return [
     beam({ x: px, y: py, toX: ex, toY: ey, color: BLOOD_DARK, width: 9, alpha: 0.5, durationMs: 340 }),
     ring({
-      x: ex, y: ey, color: BLOOD_DARK, startRadius: SOULDRINKER_RADIUS[2], maxRadius: SOULDRINKER_RADIUS[2],
+      x: ex, y: ey, color: BLOOD_DARK, startRadius: SOULDRINKER_GEOMETRY[2].hitRadiusPx, maxRadius: SOULDRINKER_GEOMETRY[2].hitRadiusPx,
       lineWidth: 2, alpha: 0.35, durationMs: 340,
     }),
   ];
@@ -209,7 +207,7 @@ function planDarkPactCast(px: number, py: number, dx: number, dy: number): VfxSp
 function planVoidPulseCast(px: number, py: number): VfxSpec[] {
   return [
     ring({
-      x: px, y: py, color: VOID, startRadius: 8, maxRadius: SOULDRINKER_RADIUS[3],
+      x: px, y: py, color: VOID, startRadius: 8, maxRadius: SOULDRINKER_GEOMETRY[3].hitRadiusPx,
       lineWidth: 3, alpha: 0.8, durationMs: 260,
     }),
     burst({ x: px, y: py, color: VOID, count: 8, speed: 0.05, spread: 1.0, particleRadius: 4, alpha: 0.7, durationMs: 300 }),

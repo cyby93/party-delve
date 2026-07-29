@@ -42,7 +42,62 @@
 # Phase2 legacy stories (old Phase-based keys) are tracked below under PHASE 2 STORIES.
 
 generated: 2026-06-22
-last_updated: 2026-07-28 (code-review: 3-26 → done)
+last_updated: 2026-07-29 (code-review: 3-27 → done)
+# 2026-07-29: code-review of 3-27-ability-geometry-consolidation-per-ability-
+# objects (review → done) — 3 parallel layers (Blind Hunter, Edge Case Hunter,
+# Acceptance Auditor). Acceptance Auditor: zero AC violations, full AC1-AC8
+# compliance confirmed independently. 5 patch (all applied: readonly
+# AbilityGeometry fields, hoisted single geometry lookup in GameRoom.ts's
+# zone-delivery branch, 2 misleading/stale comment fixes, contract test's
+# EXPECTED type tightened to a 4-tuple), 3 defer (D-3.27-A/B/C — pre-existing
+# helper-design characteristics / deliberate documented choices, appended to
+# deferred-work.md), 3 dismissed (2 Edge Case Hunter findings — Soul Mend's
+# "dropped ?? 0 fallback" — confirmed false positives via a clean typecheck
+# proving literal-union tuple indices can't be undefined, plus codebase
+# precedent at the pre-existing Dark Pact call site; 1 Blind Hunter finding
+# resolved by fuller story context the context-free layer lacked). Re-ran
+# typecheck (clean) + full suite (637/639, 2 pre-existing unrelated failures)
+# after applying patches. Status → done.
+# 2026-07-29: dev-story — implemented 3-27-ability-geometry-consolidation-per-
+# ability-objects. Replaced ability-geometry.ts's 5 flat per-class tables
+# (ABILITY_HIT_RANGE_PX/RADIUS_PX/SHAPE/CONE_ANGLE_DEG/DELIVERY) with one
+# AbilityGeometry object per ability (ABILITY_GEOMETRY), hard cutover — resolves
+# D-CC1's shared-types half (ADR-0006; balance half split to future 3-28).
+# Migrated every read site: GameRoom.ts (~17 expressions + gatherPlayersInHitZone/
+# isInAbilityHitZone now take one AbilityGeometry param instead of 3-5 scalars),
+# 4 host-client VFX files, 10 test files. New tests/contract/ability-geometry-
+# shape.test.ts byte-identical migration guard. Typecheck clean (10/10 tsconfigs)
+# after fixing one read-site the story's own task list missed (Spirit Nova sweep,
+# caught by first typecheck pass). Full suite: 0 regressions — 2 pre-existing
+# failures confirmed via git stash against the clean baseline (Stonehide VFX
+# geometry test, already memory-tracked; an intermittent Ancestor's Voice e2e
+# heal assertion, also previously flagged by 3.26's own session — new memory
+# note added). Status → review.
+# 2026-07-29: create-story — wrote 3-27-ability-geometry-consolidation-per-
+# ability-objects, resolving D-CC1's shared-types half (deferred-work.md,
+# raised during 3.25's correct-course session, target shape already named in
+# ADR-0005's "Alternatives considered": AbilityGeometry in shared-types,
+# AbilityBalance in game-rules). Not in epics.md — a pure internal refactor,
+# no new gameplay FR. Ownership-scope check (per CLAUDE.md's ownership hook)
+# found this spans 3 areas: Protocol Architect (shared-types schema),
+# Simulation Engineer (GameRoom.ts read-sites), Host Experience Engineer
+# (4 host-client VFX files' read-sites) — confirmed via import-graph grep
+# that host-client never imports game-rules/balance.ts, so the geometry vs.
+# balance halves of D-CC1 split cleanly on real code boundaries. User chose,
+# via AskUserQuestion, to (1) implement D-CC1 now as a dedicated story rather
+# than just re-deferring it in a routine hardening sweep, and (2) split
+# geometry (this story, pre-approved 3-way cross-boundary, mechanical-only
+# consumer edits) from balance (future 3-28, single-owner Simulation
+# Engineer, not yet created) rather than one combined cross-boundary story.
+# Hard-cutover design (5 old flat tables removed, not soft-deprecated) per
+# D-CC1's own "needs its own story" framing. New ADR-0006 required (first
+# non-additive change to ability-geometry.ts since ADR-0003). Exhaustive
+# research via a dedicated Explore subagent: full current file content,
+# every read-site in GameRoom.ts (~15 expressions) and 4 host-client VFX
+# files, all 10 affected test files (3 need logic changes beyond import
+# rename, not just mechanical), ADR-0003/ADR-0005 full text, and the
+# tests/contract/ precedent (ability-vfx-budget.test.ts) to mirror for the
+# new byte-identical migration guard test. Set to ready-for-dev.
 # 2026-07-28: code-review of 3-26-stormcaller-rework-ii-lightning-arc-chain-and-
 # tempest-hurl-projectile (review → done) — 3 parallel layers (Blind Hunter, Edge
 # Case Hunter, Acceptance Auditor), full spec mode against the story's own ACs.
@@ -754,6 +809,12 @@ development_status:
   # Lightning Arc/Tempest Hurl scoping note. Sequenced a(3.25) -> b(3.26).
   3-25-cone-hit-geometry-contract-and-stonehide-spiritcaller-souldrinker-cone-conversion: done
   3-26-stormcaller-rework-ii-lightning-arc-chain-and-tempest-hurl-projectile: done
+  # Resolves D-CC1's shared-types half (deferred-work.md, raised during 3.25's
+  # correct-course session; target shape pre-named in ADR-0005's "Alternatives
+  # considered"). Geometry-only — split from the balance half (single-owner
+  # Simulation Engineer, future 3-28, not yet created) because host-client only
+  # ever consumes the geometry side, not game-rules/balance.ts.
+  3-27-ability-geometry-consolidation-per-ability-objects: done
   epic-3-retrospective: optional
 
   # ─── Dev infra fixes (no epic) ──────────────────────────────────────────────

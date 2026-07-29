@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PlayerClass, ABILITY_HIT_RANGE_PX } from 'shared-types';
+import { PlayerClass, ABILITY_GEOMETRY } from 'shared-types';
 import type { StatusEffect } from 'shared-types';
 import {
   getAbilityVfxConfig,
@@ -73,7 +73,7 @@ describe('resolveAbilityVfxPlacement', () => {
   it('puts Avalanche at caster + normalizedDirection x the live contract range for a non-unit direction (AC2/AC4)', () => {
     // Reads the shared contract, not a literal 200 — proves the VFX placement is
     // driven by the same value the sim resolves the hit with (Story 7.9 / D-7.2-A).
-    const range = ABILITY_HIT_RANGE_PX.stonehide[3];
+    const range = ABILITY_GEOMETRY.stonehide[3].hitRangePx;
     const p = place(3, 3, 4)!; // magnitude 5 — proves normalization
     expect(p.hitX).toBeCloseTo(500 + (3 / 5) * range, 6);
     expect(p.hitY).toBeCloseTo(400 + (4 / 5) * range, 6);

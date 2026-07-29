@@ -1,7 +1,6 @@
 import {
   PlayerClass,
-  ABILITY_HIT_RANGE_PX,
-  ABILITY_HIT_RADIUS_PX,
+  ABILITY_GEOMETRY,
   SPIRIT_NOVA_MAX_RADIUS_PX,
   SPIRIT_NOVA_DURATION_MS,
 } from 'shared-types';
@@ -35,17 +34,16 @@ export const FIZZLE_ASH = 0xa89ec0;
 
 // ── Geometry constants (derived live from the shared ability presentation
 //    contract in shared-types, Story 7.9 / ADR-0003 — not transcribed) ─────────
-const SPIRITCALLER_RANGE = ABILITY_HIT_RANGE_PX[PlayerClass.SPIRITCALLER];
-const SPIRITCALLER_RADIUS = ABILITY_HIT_RADIUS_PX[PlayerClass.SPIRITCALLER];
-export const ANCESTORS_VOICE_RANGE_PX = SPIRITCALLER_RANGE[0];    // real hit range 180
-export const ANCESTORS_VOICE_RADIUS_PX = SPIRITCALLER_RADIUS[0];  // real hit radius 50
+const SPIRITCALLER_GEOMETRY = ABILITY_GEOMETRY[PlayerClass.SPIRITCALLER];
+export const ANCESTORS_VOICE_RANGE_PX = SPIRITCALLER_GEOMETRY[0].hitRangePx;    // real hit range 100
+export const ANCESTORS_VOICE_RADIUS_PX = SPIRITCALLER_GEOMETRY[0].hitRadiusPx;  // real hit radius 120
 export const SPIRIT_NOVA_MAX_RADIUS_VFX_PX = SPIRIT_NOVA_MAX_RADIUS_PX; // visible sweep == real swept radius 220
 export const SPIRIT_NOVA_DURATION_VFX_MS = SPIRIT_NOVA_DURATION_MS;     // sweep duration 600
 // Soul Mend (slot 2, AIM_CAST) needs no host range constant: its channel VFX draws
 // a beam to the *actual* downed ally the sim selected via findSoulMendTarget (which
-// uses ABILITY_HIT_RANGE_PX.spiritcaller[2] = 200), so the visual tracks a range
+// uses ABILITY_GEOMETRY.spiritcaller[2].hitRangePx = 200), so the visual tracks a range
 // re-tune implicitly — the beam follows wherever the real target is.
-export const WARDING_CRY_RADIUS_PX = SPIRITCALLER_RADIUS[3];      // real hit radius 90
+export const WARDING_CRY_RADIUS_PX = SPIRITCALLER_GEOMETRY[3].hitRadiusPx;      // real hit radius 90
 // Cosmetic-only, no corresponding sim value: a fallback used when the state/delta
 // carries no channel duration (prefer the real durationMs when present).
 export const SOUL_MEND_CHANNEL_VFX_MS = 2500;

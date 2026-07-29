@@ -1,6 +1,5 @@
 import {
-  ABILITY_HIT_RANGE_PX,
-  ABILITY_HIT_RADIUS_PX,
+  ABILITY_GEOMETRY,
   PlayerClass,
   STORM_EYE_ZONE_RADIUS_PX,
 } from 'shared-types';
@@ -42,9 +41,8 @@ export const STORM_CHARGE = STORMCALLER_PALETTE.charge;
 /** Dark storm slate — the Storm Eye zone body. */
 export const STORM_SLATE = STORMCALLER_PALETTE.slate;
 
-// ── Geometry, read live from the shared contract (Story 7.9 / ADR-0003) ──────
-const STORMCALLER_RANGE = ABILITY_HIT_RANGE_PX[PlayerClass.STORMCALLER];   // [160, 200, 0, 160]
-const STORMCALLER_RADIUS = ABILITY_HIT_RADIUS_PX[PlayerClass.STORMCALLER]; // [ 60,  70, 110,  80]
+// ── Geometry, read live from the shared contract (Story 7.9 / ADR-0003, consolidated 3.27 / ADR-0006) ──
+const STORMCALLER_GEOMETRY = ABILITY_GEOMETRY[PlayerClass.STORMCALLER]; // hitRangePx: [160, 200, 0, 160], hitRadiusPx: [60, 70, 110, 80]
 
 // ── Cosmetic constants (no corresponding sim value — local to the visual) ────
 /** Tempest Hurl's host-side thrown-flight duration. Kept short: the hit already
@@ -143,14 +141,14 @@ export function resolveStormcallerCast(
 // "fork" read — there is no forked-bolt primitive and none is hand-rolled), then
 // an honest crack ring at the real hit circle.
 function planLightningArc(px: number, py: number, nx: number, ny: number): StormcallerCastPlan {
-  const ex = px + nx * STORMCALLER_RANGE[0];
-  const ey = py + ny * STORMCALLER_RANGE[0];
+  const ex = px + nx * STORMCALLER_GEOMETRY[0].hitRangePx;
+  const ey = py + ny * STORMCALLER_GEOMETRY[0].hitRangePx;
   return {
     abilityIndex: 0,
     specs: [
       beam({ x: px, y: py, toX: ex, toY: ey, color: STORM_BOLT, width: 9, alpha: 0.45, durationMs: 200 }),
       beam({ x: px, y: py, toX: ex, toY: ey, color: STORM_CORE, width: 3, alpha: 1, durationMs: 140 }),
-      ring({ x: ex, y: ey, color: STORM_BOLT, startRadius: 12, maxRadius: STORMCALLER_RADIUS[0], lineWidth: 3, alpha: 0.9, durationMs: 220 }),
+      ring({ x: ex, y: ey, color: STORM_BOLT, startRadius: 12, maxRadius: STORMCALLER_GEOMETRY[0].hitRadiusPx, lineWidth: 3, alpha: 0.9, durationMs: 220 }),
     ],
   };
 }
@@ -160,18 +158,18 @@ function planLightningArc(px: number, py: number, nx: number, ny: number): Storm
 // launch puff at the caster, a moving trail flourish, then a fat violet impact
 // ring + burst at the real hit circle.
 function planTempestHurl(px: number, py: number, nx: number, ny: number): StormcallerCastPlan {
-  const ex = px + nx * STORMCALLER_RANGE[1];
-  const ey = py + ny * STORMCALLER_RANGE[1];
+  const ex = px + nx * STORMCALLER_GEOMETRY[1].hitRangePx;
+  const ey = py + ny * STORMCALLER_GEOMETRY[1].hitRangePx;
   return {
     abilityIndex: 1,
     specs: [
       burst({ x: px, y: py, color: [STORM_CHARGE, STORM_BOLT], count: 7, speed: 0.10, spread: 0.9, particleRadius: 4, alpha: 1, durationMs: 200 }),
     ],
     flight: {
-      originX: px, originY: py, dirX: nx, dirY: ny, rangePx: STORMCALLER_RANGE[1],
+      originX: px, originY: py, dirX: nx, dirY: ny, rangePx: STORMCALLER_GEOMETRY[1].hitRangePx,
       trail: { color: STORM_BOLT, width: 11, pointCount: 10, alpha: 0.9, durationMs: 160 },
       impact: [
-        ring({ x: ex, y: ey, color: STORM_CHARGE, startRadius: 18, maxRadius: STORMCALLER_RADIUS[1], lineWidth: 5, alpha: 0.95, durationMs: 300 }),
+        ring({ x: ex, y: ey, color: STORM_CHARGE, startRadius: 18, maxRadius: STORMCALLER_GEOMETRY[1].hitRadiusPx, lineWidth: 5, alpha: 0.95, durationMs: 300 }),
         burst({ x: ex, y: ey, color: [STORM_CORE, STORM_CHARGE], count: 12, speed: 0.18, spread: 0.6, particleRadius: 6, alpha: 1, durationMs: 320 }),
       ],
     },
@@ -187,7 +185,7 @@ function planThunderClap(px: number, py: number): StormcallerCastPlan {
     abilityIndex: 2,
     specs: [
       ring({ x: px, y: py, color: STORM_BOLT, startRadius: 150, maxRadius: 24, lineWidth: 4, alpha: 0.7, durationMs: 180 }),
-      ring({ x: px, y: py, color: STORM_CORE, startRadius: 0, maxRadius: STORMCALLER_RADIUS[2], lineWidth: 8, alpha: 0.95, durationMs: 260 }),
+      ring({ x: px, y: py, color: STORM_CORE, startRadius: 0, maxRadius: STORMCALLER_GEOMETRY[2].hitRadiusPx, lineWidth: 8, alpha: 0.95, durationMs: 260 }),
       ring({ x: px, y: py, color: STORM_CHARGE, startRadius: 30, maxRadius: 132, lineWidth: 3, alpha: 0.5, durationMs: 420 }),
       burst({ x: px, y: py, color: [STORM_CORE, STORM_BOLT, STORM_CHARGE], count: 14, speed: 0.40, spread: 0.9, particleRadius: 4, alpha: 1, durationMs: 275 }),
     ],
@@ -200,8 +198,8 @@ function planThunderClap(px: number, py: number): StormcallerCastPlan {
 // which is dead data for this ability), with the vertical sky-bolt motif striking
 // down into it and a ground burst.
 function planStormEye(px: number, py: number, nx: number, ny: number): StormcallerCastPlan {
-  const ex = px + nx * STORMCALLER_RANGE[3];
-  const ey = py + ny * STORMCALLER_RANGE[3];
+  const ex = px + nx * STORMCALLER_GEOMETRY[3].hitRangePx;
+  const ey = py + ny * STORMCALLER_GEOMETRY[3].hitRangePx;
   return {
     abilityIndex: 3,
     specs: [

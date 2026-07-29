@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { dispatchAbility, applyDamage, applyStatusEffect, applyDisplacement, applyPlayerDamage, healPlayer, calculateLifesteal, resolveProjectileHit, resolveMixedFactionTargets, ABILITY_STATUS_EFFECT, ABILITY_DISPLACEMENT_STRENGTH, ABILITY_DAMAGE, ABILITY_HEAL_AMOUNT, ABILITY_DELIVERY, ABILITY_SELF_COST_HP, ABILITY_HP_SCALED_DAMAGE, ABILITY_LIFESTEAL_PCT, ABILITY_CHAINED_ZONE, DARK_PACT_DRAIN_PCT, VOID_PULSE_PULL_STRENGTH_PX } from 'game-rules';
+import { dispatchAbility, applyDamage, applyStatusEffect, applyDisplacement, applyPlayerDamage, healPlayer, calculateLifesteal, resolveProjectileHit, resolveMixedFactionTargets, ABILITY_STATUS_EFFECT, ABILITY_DISPLACEMENT_STRENGTH, ABILITY_DAMAGE, ABILITY_HEAL_AMOUNT, ABILITY_GEOMETRY, ABILITY_SELF_COST_HP, ABILITY_HP_SCALED_DAMAGE, ABILITY_LIFESTEAL_PCT, ABILITY_CHAINED_ZONE, DARK_PACT_DRAIN_PCT, VOID_PULSE_PULL_STRENGTH_PX } from 'game-rules';
 import { PlayerClass, CLASS_DEFINITIONS, EnemyType, DifficultyTier, EnemyFSMState, SessionColor } from 'shared-types';
 import type { EnemyState, PlayerState, ProjectileState } from 'shared-types';
 
@@ -379,7 +379,7 @@ describe('Souldrinker kit rework (Story 3.19)', () => {
 
   it('Blood Spike (slot 0, renamed from Blood Draw): projectile delivery, self-cost on cast, 50% lifesteal on hit', () => {
     expect(CLASS_DEFINITIONS[PlayerClass.SOULDRINKER].abilities[0]!.name).toBe('Blood Spike');
-    expect(ABILITY_DELIVERY.souldrinker[0]).toBe('projectile');
+    expect(ABILITY_GEOMETRY.souldrinker[0].delivery).toBe('projectile');
     expect(ABILITY_SELF_COST_HP.souldrinker[0]).toBeGreaterThan(0);
     expect(ABILITY_LIFESTEAL_PCT.souldrinker[0]).toBe(0.5);
 
@@ -411,7 +411,7 @@ describe('Souldrinker kit rework (Story 3.19)', () => {
   });
 
   it('Crimson Lash (slot 1): damage scales inversely with caster HP, unchanged hitscan delivery', () => {
-    expect(ABILITY_DELIVERY.souldrinker[1]).toBe('hitscan');
+    expect(ABILITY_GEOMETRY.souldrinker[1].delivery).toBe('hitscan');
     expect(ABILITY_HP_SCALED_DAMAGE.souldrinker[1]).toBeGreaterThan(0);
 
     const baseCtx = { playerClass: PlayerClass.SOULDRINKER, abilityIndex: 1, directionX: 1, directionY: 0, cooldownExpiresAt: 0, nowMs: 0 };
@@ -456,7 +456,7 @@ describe('Souldrinker kit rework (Story 3.19)', () => {
   });
 
   it('Void Pulse (slot 3): projectile delivery, impact damage, then a pull-effect chained zone', () => {
-    expect(ABILITY_DELIVERY.souldrinker[3]).toBe('projectile');
+    expect(ABILITY_GEOMETRY.souldrinker[3].delivery).toBe('projectile');
     const chainConfig = ABILITY_CHAINED_ZONE.souldrinker[3];
     expect(chainConfig?.effectType).toBe('pull');
     expect(chainConfig?.radius).toBeGreaterThan(0);
@@ -481,7 +481,7 @@ describe('Souldrinker kit rework (Story 3.19)', () => {
 
   it('no other class has projectile delivery or a chained-zone config (Souldrinker-only in this story; Stormcaller gains zone delivery in 3.20 and projectile delivery — Tempest Hurl — in 3.26)', () => {
     for (const cls of [PlayerClass.STONEHIDE, PlayerClass.SPIRITCALLER]) {
-      expect(ABILITY_DELIVERY[cls]).not.toContain('projectile');
+      expect(ABILITY_GEOMETRY[cls].map(g => g.delivery)).not.toContain('projectile');
       expect(ABILITY_CHAINED_ZONE[cls]).toEqual([null, null, null, null]);
     }
     expect(ABILITY_CHAINED_ZONE[PlayerClass.STORMCALLER]).toEqual([null, null, null, null]);
@@ -490,8 +490,8 @@ describe('Souldrinker kit rework (Story 3.19)', () => {
     // and 'projectile' delivery in 3.26 (Tempest Hurl) — this is the exact stale
     // hardcoded literal Story 3.26's Task 3a change makes stale (same class of edit
     // 3.20 needed for its own ABILITY_DELIVERY change, see that story's Debug Log).
-    expect(ABILITY_DELIVERY[PlayerClass.STONEHIDE]).toEqual(['hitscan', 'hitscan', 'hitscan', 'hitscan']);
-    expect(ABILITY_DELIVERY[PlayerClass.SPIRITCALLER]).toEqual(['hitscan', 'hitscan', 'hitscan', 'hitscan']);
-    expect(ABILITY_DELIVERY[PlayerClass.STORMCALLER]).toEqual(['hitscan', 'projectile', 'hitscan', 'zone']);
+    expect(ABILITY_GEOMETRY[PlayerClass.STONEHIDE].map(g => g.delivery)).toEqual(['hitscan', 'hitscan', 'hitscan', 'hitscan']);
+    expect(ABILITY_GEOMETRY[PlayerClass.SPIRITCALLER].map(g => g.delivery)).toEqual(['hitscan', 'hitscan', 'hitscan', 'hitscan']);
+    expect(ABILITY_GEOMETRY[PlayerClass.STORMCALLER].map(g => g.delivery)).toEqual(['hitscan', 'projectile', 'hitscan', 'zone']);
   });
 });

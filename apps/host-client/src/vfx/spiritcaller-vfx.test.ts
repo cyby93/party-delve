@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PlayerClass, ABILITY_HIT_RANGE_PX } from 'shared-types';
+import { PlayerClass, ABILITY_GEOMETRY } from 'shared-types';
 import {
   planSpiritcallerCast,
   factionAccentFor,
@@ -15,10 +15,10 @@ describe('planSpiritcallerCast', () => {
   it('places Ancestor\'s Voice focus at the live contract range, not a transcribed literal (AC4)', () => {
     // Asserts the planner's placement math against the contract *directly* — a
     // re-hardcoded ANCESTORS_VOICE_RANGE_PX (or a drifted transcription) would
-    // move the focus off `caster + aim × ABILITY_HIT_RANGE_PX.spiritcaller[0]`
+    // move the focus off `caster + aim × ABILITY_GEOMETRY.spiritcaller[0].hitRangePx`
     // and fail this, which `expect(export).toBe(export)` could never catch.
     const plan = planSpiritcallerCast(spiritcaller(500, 400), 0, 1, 0)!;
-    expect(plan.focusX).toBeCloseTo(500 + ABILITY_HIT_RANGE_PX.spiritcaller[0], 6);
+    expect(plan.focusX).toBeCloseTo(500 + ABILITY_GEOMETRY.spiritcaller[0].hitRangePx, 6);
     expect(plan.focusY).toBeCloseTo(400, 6);
   });
 

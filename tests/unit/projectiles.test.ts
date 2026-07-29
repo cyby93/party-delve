@@ -3,7 +3,7 @@ import {
   resolveProjectileHit,
   isProjectileExpired,
   isInHitZone,
-  ABILITY_DELIVERY,
+  ABILITY_GEOMETRY,
   TEMPEST_HURL_PROJECTILE_RADIUS_PX,
   TEMPEST_HURL_SPEED_PX_S,
   TEMPEST_HURL_BLAST_RADIUS_PX,
@@ -107,7 +107,7 @@ describe('isProjectileExpired', () => {
 
 describe('Tempest Hurl projectile spawn parameters (AC4, Story 3.26)', () => {
   it('is a projectile-delivery ability', () => {
-    expect(ABILITY_DELIVERY[PlayerClass.STORMCALLER][1]).toBe('projectile');
+    expect(ABILITY_GEOMETRY[PlayerClass.STORMCALLER][1].delivery).toBe('projectile');
   });
 
   it('has a bigger, slower body than the shared projectile defaults', () => {

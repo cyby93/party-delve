@@ -1,18 +1,14 @@
 import type { PlayerClass, BondType, ZoneEffectType, StatusEffectType } from 'shared-types';
 import { VOID_PULSE_ZONE_RADIUS_PX } from 'shared-types';
 
-// ── Ability presentation contract (Story 7.9 / ADR-0003) ─────────────────────
-// The ability spatial + delivery + spatial-sweep constants now live in
-// `shared-types` so the host renderer and the sim read the SAME values (VFX
-// tracks balance; resolves D-7.2-A). Re-exported here so every existing
-// `import { ABILITY_HIT_RANGE_PX, ... } from 'game-rules'` keeps resolving with
+// ── Ability presentation contract (Story 7.9 / ADR-0003, consolidated 3.27 / ADR-0006) ──
+// The ability spatial + delivery + spatial-sweep constants live in `shared-types`
+// so the host renderer and the sim read the SAME values (VFX tracks balance;
+// resolves D-7.2-A). Re-exported here so every existing
+// `import { ABILITY_GEOMETRY, ... } from 'game-rules'` keeps resolving with
 // zero sim churn — the public surface of game-rules is unchanged.
 export {
-  ABILITY_HIT_RANGE_PX,
-  ABILITY_HIT_RADIUS_PX,
-  ABILITY_HIT_SHAPE,
-  ABILITY_CONE_ANGLE_DEG,
-  ABILITY_DELIVERY,
+  ABILITY_GEOMETRY,
   PROJECTILE_SPEED_PX_S,
   PROJECTILE_MAX_RANGE_PX,
   VOID_PULSE_ZONE_RADIUS_PX,
@@ -24,7 +20,7 @@ export {
   TEMPEST_HURL_BLAST_RADIUS_PX,
   STORM_EYE_PLACEMENT_RANGE_PX,
 } from 'shared-types';
-export type { AbilityDeliveryType, AbilityHitShape } from 'shared-types';
+export type { AbilityDeliveryType, AbilityHitShape, AbilityGeometry } from 'shared-types';
 
 // ── Movement ──────────────────────────────────────────────────────────────────
 export const JOYSTICK_DEADBAND = 0.05;
@@ -121,9 +117,9 @@ export const STOMP_ACTIVATION_RANGE = 80;     // pixels — player must be this 
 export const STOMP_RADIUS = 150;              // pixels — AoE radius of stomp effect
 export const STOMP_COOLDOWN_TICKS = 240;      // 8 seconds at 30hz
 
-// ABILITY_HIT_RANGE_PX, ABILITY_HIT_RADIUS_PX, ABILITY_DELIVERY (+ AbilityDeliveryType),
-// PROJECTILE_SPEED_PX_S, PROJECTILE_MAX_RANGE_PX moved to shared-types/ability-geometry.ts
-// (Story 7.9 / ADR-0003) and are re-exported at the top of this file.
+// ABILITY_GEOMETRY (+ AbilityGeometry, AbilityDeliveryType, AbilityHitShape),
+// PROJECTILE_SPEED_PX_S, PROJECTILE_MAX_RANGE_PX live in shared-types/ability-geometry.ts
+// (Story 7.9 / ADR-0003, consolidated 3.27 / ADR-0006) and are re-exported at the top of this file.
 
 // ── Declarative projectile→zone chaining ─────────────────────────────────────
 // Populated per-ability by Story 3.19 (Void Pulse); all-null until then so
@@ -183,7 +179,7 @@ export const SOUL_MEND_LIVENESS_MS = 150;
 // delivery ability in the full spec, same rationale as Spirit Nova/Soul Mend above.
 // STORM_EYE_TICK_DAMAGE is separate from ABILITY_DAMAGE's stormcaller[3]=0 entry:
 // that table is read by the hit-scan path only, which this ability's 'zone'
-// delivery never reaches (see GameRoom.ts's ABILITY_DELIVERY branch).
+// delivery never reaches (see GameRoom.ts's ABILITY_GEOMETRY delivery-dispatch branch).
 // STORM_EYE_ZONE_RADIUS_PX moved to shared-types/ability-geometry.ts (Story 7.9) —
 // the visible zone radius is a contract value; its tick cadence/damage/duration below
 // stay balance-only. Re-exported at the top of this file.

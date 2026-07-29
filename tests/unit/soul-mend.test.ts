@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { findSoulMendTarget, shouldCancelSoulMendChannel, reviveBySoulMend, ABILITY_HIT_RANGE_PX, ABILITY_HIT_RADIUS_PX, REVIVE_HP } from 'game-rules';
+import { findSoulMendTarget, shouldCancelSoulMendChannel, reviveBySoulMend, ABILITY_GEOMETRY, REVIVE_HP } from 'game-rules';
 import { PlayerClass, SessionColor } from 'shared-types';
 import type { PlayerState } from 'shared-types';
 
-const HIT_RANGE = ABILITY_HIT_RANGE_PX[PlayerClass.SPIRITCALLER][2];
-const HIT_RADIUS = ABILITY_HIT_RADIUS_PX[PlayerClass.SPIRITCALLER][2];
+const HIT_RANGE = ABILITY_GEOMETRY[PlayerClass.SPIRITCALLER][2].hitRangePx;
+const HIT_RADIUS = ABILITY_GEOMETRY[PlayerClass.SPIRITCALLER][2].hitRadiusPx;
 
 function mockPlayer(overrides: Partial<PlayerState> = {}): PlayerState {
   return {

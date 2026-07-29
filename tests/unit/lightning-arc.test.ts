@@ -3,7 +3,7 @@ import {
   isInConeZone,
   findNearestCandidate,
   resolveLightningArcChain,
-  ABILITY_HIT_RANGE_PX,
+  ABILITY_GEOMETRY,
   LIGHTNING_ARC_CORRIDOR_ANGLE_DEG,
   LIGHTNING_ARC_CHAIN_RADIUS_PX,
   LIGHTNING_ARC_MAX_BOUNCES,
@@ -12,7 +12,7 @@ import {
 import { PlayerClass } from 'shared-types';
 import type { LightningArcCandidate } from 'game-rules';
 
-const LIGHTNING_ARC_RANGE_PX = ABILITY_HIT_RANGE_PX[PlayerClass.STORMCALLER][0];
+const LIGHTNING_ARC_RANGE_PX = ABILITY_GEOMETRY[PlayerClass.STORMCALLER][0].hitRangePx;
 
 // Composes the same pure pipeline GameRoom.ts's handleLightningArc uses: corridor
 // gather (isInConeZone) -> nearest pick (findNearestCandidate) -> chain resolution

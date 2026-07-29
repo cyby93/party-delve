@@ -6,8 +6,7 @@ export type { Result, GameError } from './state/result.js';
 export {
   JOYSTICK_DEADBAND,
   ABILITY_COOLDOWNS_MS, ABILITY_DAMAGE,
-  ABILITY_HIT_RANGE_PX, ABILITY_HIT_RADIUS_PX,
-  ABILITY_HIT_SHAPE, ABILITY_CONE_ANGLE_DEG,
+  ABILITY_GEOMETRY,
   ESSENCE_DROP_AMOUNT, ESSENCE_COLLECT_RADIUS_PX,
   ENEMY_CHASE_RANGE, ENEMY_ATTACK_RANGE, ENEMY_CHASE_SPEED, ENEMY_ATTACK_COOLDOWN_TICKS,
   CHARGE_ACTIVATION_MIN, CHARGE_ACTIVATION_MAX, CHARGE_SPEED, CHARGE_COOLDOWN_TICKS,
@@ -31,7 +30,6 @@ export {
   ABILITY_STATUS_EFFECT,
   ABILITY_DISPLACEMENT_STRENGTH,
   ABILITY_HEAL_AMOUNT,
-  ABILITY_DELIVERY,
   VOID_PULSE_PULL_STRENGTH_PX,
   DARK_PACT_DRAIN_PCT,
   LIGHTNING_ARC_CORRIDOR_ANGLE_DEG,
@@ -53,7 +51,7 @@ export {
   TEMPEST_HURL_SPEED_PX_S,
   TEMPEST_HURL_BLAST_RADIUS_PX,
 } from './balance.js';
-export type { ChainedZoneConfig, AbilityStatusEffectConfig, StatusEffectScope, AbilityDeliveryType, AbilityHitShape } from './balance.js';
+export type { ChainedZoneConfig, AbilityStatusEffectConfig, StatusEffectScope, AbilityDeliveryType, AbilityHitShape, AbilityGeometry } from './balance.js';
 export { applyPlayerDamage, getReviveWindowMs, healPlayer, calculateLifesteal } from './systems/player-health.js';
 export type { PlayerDamageResult, HealthError } from './systems/player-health.js';
 export { resolveMixedFactionTargets, resolveExpandingRadius, pickRandomIndex, findNearestCandidate, resolveLightningArcChain } from './systems/targeting.js';

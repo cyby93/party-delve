@@ -6,60 +6,22 @@ import type { PlayerClass } from './player.js';
  * renderer must agree on, so a range/radius change moves the sim hit *and* its
  * on-screen effect from a single edit (Story 7.9, ADR-0003).
  *
- * These constants used to live in `packages/game-rules/src/balance.ts` and were
- * hand-transcribed into `apps/host-client` (the host may not import game-rules
- * *logic*). That transcription silently drifted (`D-7.2-A`). They now live here,
- * in `shared-types`, which both the sim (via a `game-rules` re-export) and the
- * host import directly. Values are byte-identical to their former `balance.ts`
- * definitions — this is a relocation, not a re-tune.
+ * Ability-indexed geometry (`ABILITY_GEOMETRY`, ADR-0006) is one `AbilityGeometry`
+ * object per ability, replacing 5 parallel per-field tables (`ABILITY_HIT_RANGE_PX`,
+ * `ABILITY_HIT_RADIUS_PX`, `ABILITY_HIT_SHAPE`, `ABILITY_CONE_ANGLE_DEG`,
+ * `ABILITY_DELIVERY`) that grew one new top-level table per new spatial property
+ * (D-CC1). Values are byte-identical to the tables it replaces — this is a
+ * restructuring, not a re-tune.
  *
  * Pure balance the host never renders as geometry — damage, cooldown, heal,
  * status magnitude, displacement, lifesteal, self-cost — stays in `balance.ts`
  * and remains host-forbidden. See ADR-0003 for the boundary rule.
  */
 
-// ── Ability hit zones (alpha tuning values) ───────────────────────────────────
-// Directional abilities: hit circle at (player + direction * hitRange), radius = hitRadius
-// TAP abilities: hit circle at player position, radius = hitRadius (hitRange unused)
-export const ABILITY_HIT_RANGE_PX: Record<PlayerClass, readonly [number, number, number, number]> = {
-  stonehide:    [160, 0,   0, 75],
-  spiritcaller: [100,   0, 200,   0],
-  souldrinker:  [150, 180, 180,   0], // Dark Pact (slot 2) now aims a forward cone for its ally-target search (Story 3.19)
-  stormcaller:  [160, 200,   0, 160],
-};
-
-export const ABILITY_HIT_RADIUS_PX: Record<PlayerClass, readonly [number, number, number, number]> = {
-  stonehide:    [160, 300, 200,  50],
-  spiritcaller: [ 120, 90,  60,  90],
-  souldrinker:  [ 50, 65,  80,  80],  
-  stormcaller:  [ 60, 70, 110,  80],
-};
-
-// ── Ability hit shape (Story 3.25, ADR-0005) ─────────────────────────────────
-// Cone abilities reuse ABILITY_HIT_RANGE_PX for length (no second range value) —
-// only the shape and the cone's full angle are new. 'circle' abilities keep
-// resolving through isInHitZone exactly as before; ABILITY_HIT_RADIUS_PX becomes
-// inert (unread) for 'cone' entries but stays in the table for width symmetry
-// (ADR-0005's "addition, not restructuring" discipline).
+// ── Ability hit shape ─────────────────────────────────────────────────────────
 export type AbilityHitShape = 'circle' | 'cone';
 
-export const ABILITY_HIT_SHAPE: Record<PlayerClass, readonly [AbilityHitShape, AbilityHitShape, AbilityHitShape, AbilityHitShape]> = {
-  stonehide:    ['cone', 'circle', 'circle', 'cone'], // Stone Wall, Avalanche
-  spiritcaller: ['cone', 'circle', 'circle', 'circle'], // Ancestor's Voice
-  souldrinker:  ['circle', 'cone', 'circle', 'circle'], // Crimson Lash
-  stormcaller:  ['circle', 'circle', 'circle', 'circle'], // untouched — Story 3.26's scope
-};
-
-// Full cone angle in degrees (half-angle is applied on each side of the aim
-// direction by isInConeZone). Entries are 0 for every 'circle' ability — unread.
-export const ABILITY_CONE_ANGLE_DEG: Record<PlayerClass, readonly [number, number, number, number]> = {
-  stonehide:    [50, 0, 0, 40],
-  spiritcaller: [70, 0, 0, 0],
-  souldrinker:  [0, 45, 0, 0],
-  stormcaller:  [0, 0, 0, 0],
-};
-
-// ── Ability delivery type ────────────────────────────────────────────────────
+// ── Ability delivery type ─────────────────────────────────────────────────────
 // Story 3.19: the first abilities to resolve via a spawned ProjectileState
 // (Story 3.13) instead of the default same-tick hit-scan. Declarative so
 // GameRoom branches on this table instead of special-casing any one ability.
@@ -68,11 +30,47 @@ export const ABILITY_CONE_ANGLE_DEG: Record<PlayerClass, readonly [number, numbe
 // spawned ProjectileState like the 'projectile' abilities above.
 export type AbilityDeliveryType = 'hitscan' | 'projectile' | 'zone';
 
-export const ABILITY_DELIVERY: Record<PlayerClass, readonly [AbilityDeliveryType, AbilityDeliveryType, AbilityDeliveryType, AbilityDeliveryType]> = {
-  stonehide:    ['hitscan', 'hitscan', 'hitscan', 'hitscan'],
-  spiritcaller: ['hitscan', 'hitscan', 'hitscan', 'hitscan'],
-  souldrinker:  ['projectile', 'hitscan', 'hitscan', 'projectile'], // Blood Spike, Void Pulse
-  stormcaller:  ['hitscan', 'projectile', 'hitscan', 'zone'], // Tempest Hurl (Story 3.26), Storm Eye
+// ── Per-ability geometry (Story 3.27, ADR-0006) ──────────────────────────────
+// hitRangePx: directional abilities hit a circle at (player + direction *
+//   hitRangePx), radius hitRadiusPx; TAP abilities hit a circle at the player's
+//   position, radius hitRadiusPx (hitRangePx unused).
+// coneAngleDeg: only present when hitShape is 'cone' — the cone's full angle in
+//   degrees (half-angle applied on each side of the aim direction by
+//   isInConeZone). Cone abilities reuse hitRangePx for length; hitRadiusPx is
+//   unread for 'cone' entries.
+export interface AbilityGeometry {
+  readonly hitRangePx: number;
+  readonly hitRadiusPx: number;
+  readonly hitShape: AbilityHitShape;
+  readonly coneAngleDeg?: number;
+  readonly delivery: AbilityDeliveryType;
+}
+
+export const ABILITY_GEOMETRY: Record<PlayerClass, readonly [AbilityGeometry, AbilityGeometry, AbilityGeometry, AbilityGeometry]> = {
+  stonehide: [
+    { hitRangePx: 160, hitRadiusPx: 160, hitShape: 'cone', coneAngleDeg: 50, delivery: 'hitscan' }, // Stone Wall
+    { hitRangePx: 0, hitRadiusPx: 300, hitShape: 'circle', delivery: 'hitscan' }, // Tremor Stomp
+    { hitRangePx: 0, hitRadiusPx: 200, hitShape: 'circle', delivery: 'hitscan' }, // Iron Skin
+    { hitRangePx: 75, hitRadiusPx: 50, hitShape: 'cone', coneAngleDeg: 40, delivery: 'hitscan' }, // Avalanche
+  ],
+  spiritcaller: [
+    { hitRangePx: 100, hitRadiusPx: 120, hitShape: 'cone', coneAngleDeg: 70, delivery: 'hitscan' }, // Ancestor's Voice
+    { hitRangePx: 0, hitRadiusPx: 90, hitShape: 'circle', delivery: 'hitscan' }, // Spirit Nova
+    { hitRangePx: 200, hitRadiusPx: 60, hitShape: 'circle', delivery: 'hitscan' }, // Soul Mend
+    { hitRangePx: 0, hitRadiusPx: 90, hitShape: 'circle', delivery: 'hitscan' }, // Warding Cry
+  ],
+  souldrinker: [
+    { hitRangePx: 150, hitRadiusPx: 50, hitShape: 'circle', delivery: 'projectile' }, // Blood Spike
+    { hitRangePx: 180, hitRadiusPx: 65, hitShape: 'cone', coneAngleDeg: 45, delivery: 'hitscan' }, // Crimson Lash
+    { hitRangePx: 180, hitRadiusPx: 80, hitShape: 'circle', delivery: 'hitscan' }, // Dark Pact — directional single-ally search (Story 3.19); hitShape stays 'circle', not a real cone hit-test
+    { hitRangePx: 0, hitRadiusPx: 80, hitShape: 'circle', delivery: 'projectile' }, // Void Pulse
+  ],
+  stormcaller: [
+    { hitRangePx: 160, hitRadiusPx: 60, hitShape: 'circle', delivery: 'hitscan' }, // Lightning Arc
+    { hitRangePx: 200, hitRadiusPx: 70, hitShape: 'circle', delivery: 'projectile' }, // Tempest Hurl (Story 3.26)
+    { hitRangePx: 0, hitRadiusPx: 110, hitShape: 'circle', delivery: 'hitscan' }, // Thunder Clap
+    { hitRangePx: 160, hitRadiusPx: 80, hitShape: 'circle', delivery: 'zone' }, // Storm Eye
+  ],
 };
 
 // ── Projectiles ───────────────────────────────────────────────────────────────
@@ -113,4 +111,4 @@ export const STORM_EYE_ZONE_RADIUS_PX = 150;
 
 // Documents where to tune Storm Eye's placement distance (Story 3.26) — not a
 // second tunable value, just an alias onto the existing hit-range entry.
-export const STORM_EYE_PLACEMENT_RANGE_PX = ABILITY_HIT_RANGE_PX.stormcaller[3];
+export const STORM_EYE_PLACEMENT_RANGE_PX = ABILITY_GEOMETRY.stormcaller[3].hitRangePx;

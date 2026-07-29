@@ -4,7 +4,7 @@ import type { Room } from '@colyseus/sdk';
 import { EventNames } from 'net-protocol';
 import type { SnapshotMsg, DeltaEventMsg } from 'net-protocol';
 import { PURIFICATION_PULSE_DURATION_MS, REWARD_REVEAL_DURATION_MS, PlayerClass } from 'shared-types';
-import { ABILITY_HIT_RANGE_PX, ABILITY_HIT_RADIUS_PX } from 'game-rules';
+import { ABILITY_GEOMETRY } from 'game-rules';
 import { startTestServer, stopTestServer, TEST_URL } from '../helpers/server.js';
 import { waitForDelta } from '../helpers/messages.js';
 import { raceTimeout } from '../helpers/race-timeout.js';
@@ -365,8 +365,8 @@ describe('full run happy path', { timeout: 120_000 }, () => {
     positions.set(p1.sessionId, p1Start);
     positions.set(boss.id, boss.position);
 
-    const hitRange = ABILITY_HIT_RANGE_PX[PlayerClass.STORMCALLER][0]; // 160
-    const hitRadius = ABILITY_HIT_RADIUS_PX[PlayerClass.STORMCALLER][0]; // 60
+    const hitRange = ABILITY_GEOMETRY[PlayerClass.STORMCALLER][0].hitRangePx; // 160
+    const hitRadius = ABILITY_GEOMETRY[PlayerClass.STORMCALLER][0].hitRadiusPx; // 60
     const band = hitRadius - 10; // safety margin inside the true hit-radius tolerance
 
     await moveTowardPoint(p1, p1Start.x, p1Start.y, boss.position.x, boss.position.y, hitRange);
