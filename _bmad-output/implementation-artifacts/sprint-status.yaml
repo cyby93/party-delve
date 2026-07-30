@@ -42,7 +42,140 @@
 # Phase2 legacy stories (old Phase-based keys) are tracked below under PHASE 2 STORIES.
 
 generated: 2026-06-22
-last_updated: 2026-07-29 (code review: 3-28 → done)
+last_updated: 2026-07-31 (code review round 2: 7-13-cone-wedge-chain-lightning-and-tempest-hurl-vfx — 3 patches applied, full regression clean, → done)
+# 2026-07-31: code review round 2 of 7-13-cone-wedge-chain-lightning-and-tempest-
+# hurl-vfx — re-reviewed the full diff (including all 4 manual Client-UX pass
+# rounds, never previously reviewed) via Blind Hunter + Edge Case Hunter (the
+# Acceptance Auditor layer failed on the session's API usage limit). 3 patch
+# findings, all applied: createConeWedge's non-degenerate filled:false stroke
+# branch now floors lineWidth like its degenerate sibling; angleDeg is now
+# clamped to [0, 360] and the shoelace area test got an upper bound to catch a
+# reflex-arc regression; ability:chain-hit's chainIndex * 40 stagger math now
+# guards non-finite input. 9 dismissed as by-design/already-verified/cosmetic.
+# Typecheck clean (10/10), vfx/screens suites 116 passed / 1 pre-existing
+# unrelated failure. Status → done.
+# 2026-07-30: manual Client-UX pass round 4 of 7-13-cone-wedge-chain-lightning-
+# and-tempest-hurl-vfx — explicit user direction: cone wedges advance too
+# slowly for instant abilities, halve their fade duration. Halved every cone
+# layer's durationMs across all four cone abilities (Stone Wall/Avalanche in
+# ability-vfx.ts, Ancestor's Voice in spiritcaller-vfx.ts, Crimson Lash in
+# souldrinker-vfx.ts): fill 320->160ms, outline 280->140ms, no angle/radius/
+# color/alpha changes. Typecheck clean (10/10), vfx/screens suites 116
+# passed / 1 pre-existing failure. Status stays review.
+# 2026-07-30: manual Client-UX pass round 3 of 7-13-cone-wedge-chain-lightning-
+# and-tempest-hurl-vfx — explicit user direction: remove the pre-existing
+# (pre-7.13) VFX for Stone Wall, Avalanche, and Ancestor's Voice entirely,
+# keeping only the cone wedge, and make the cone shapes noticeably more
+# intense. AbilityVfxConfig.cone (single) -> cones (array), mirroring the
+# rings layering pattern, so each ability stacks a soft fill under a bright
+# outline. Stone Wall/Avalanche (ability-vfx.ts) lost their old rings/beam/
+# burst entirely. Ancestor's Voice (spiritcaller-vfx.ts) lost its beam/
+# implode-ring/burst; deleted the now-dead ANCESTORS_VOICE_RADIUS_PX export.
+# Crimson Lash (not named for removal) got the same fill+outline treatment
+# layered onto its existing beam fan. DungeonScreen.tsx's cone render loop
+# updated for the array. Typecheck clean (10/10), vfx/screens suites 116
+# passed / 1 pre-existing failure. Status stays review.
+# 2026-07-30: manual Client-UX pass round 2 of 7-13-cone-wedge-chain-lightning-
+# and-tempest-hurl-vfx — user confirmed Stone Wall/Lightning Arc now correct
+# after round 1's fix, but Crimson Lash and Avalanche still showed nothing.
+# Crimson Lash never had an actual wedge shape (Task 4 originally chose only
+# the re-derived beam-fan option) — added a 'cone' VfxSpec variant to
+# souldrinker-vfx.ts and wired a real wedge into planCrimsonLashCast. Avalanche's
+# wedge was verified drawing correctly (stress-tested 40deg/75px across 36
+# directions, no throws/degenerate output) but its ring, beam, and cone all
+# shared the identical STONEHIDE_OCHRE color, so it visually merged into the
+# old effects with zero contrast; recolored the cone to STONEHIDE_DUST
+# (mirroring Stone Wall's own contrast pattern) and bumped alpha/duration.
+# Typecheck clean (10/10), vfx/screens suites 115 passed / 1 pre-existing
+# failure. Status stays review.
+# 2026-07-30: manual Client-UX pass round 1 (Task 8/AC9) of 7-13-cone-wedge-chain-
+# lightning-and-tempest-hurl-vfx, performed by the user actually running the
+# game. Found and fixed a critical createConeWedge bug: the initial lineTo
+# targeted the wrong arc tip (PixiJS's Graphics.arc(), unlike Canvas2D, never
+# auto-connects from the current point), so every cone wedge filled only ~12%
+# of its intended area (a thin sliver near the rim, confirmed via the
+# shoelace formula) instead of the full pie slice — this is why cone shapes
+# for Stone Wall/Avalanche/Ancestor's Voice/Crimson Lash read as "not visible
+# at all". Fixed in primitives.ts; added a new area-based regression test
+# (reads the real filled polygon via Pixi's shapePath getter) since the prior
+# bounds-only tests could not have caught this. Removed Lightning Arc's
+# static "crack ring" per explicit user request. Investigated "chain doesn't
+# continue past the first hit" via a temporary live simulation-server test
+# (not committed): confirmed sim + host VFX are both correctly wired, but
+# real dungeon-run enemy spacing (887px, 302.6px sampled) far exceeds
+# LIGHTNING_ARC_CHAIN_RADIUS_PX (150px) — a game-rules balance/spawn-density
+# question, not a VFX defect; deferred as D-7.13-B. Typecheck clean (10/10),
+# vfx/screens suites 114 passed / 1 pre-existing failure. Status stays review.
+# 2026-07-30: code-review of 7-13-cone-wedge-chain-lightning-and-tempest-hurl-
+# vfx (review → review, unchanged) — 3 parallel layers (Blind Hunter, Edge
+# Case Hunter, Acceptance Auditor). 0 decision_needed, 5 patch (all applied:
+# createConeWedge's degenerate branch now floors its stroke width instead of
+# silently rendering nothing for a filled+lineWidth:0 caller; removed a
+# redundant second zero-aim guard on the cone render path that contradicted
+# this story's own Dev Notes; extracted a shared resolveEnemyOrBossPosition
+# helper for zone:strike/ability:chain-hit's duplicated target resolution;
+# corrected a misleading "slower" comment in ability-vfx-config.ts; replaced a
+# liveness-only cone-wedge geometry test with 3 real getLocalBounds()-based
+# assertions), 1 defer (D-7.13-A, projectile:expired not forwarded for any
+# projectile ability — pre-existing, appended to deferred-work.md), 9
+# dismissed after verification (a claimed chain-hit batch-collapse disproved
+# by the Story 7.11 transientDeltaQueue; a claimed future-startedAt overflow
+# disproved by progress()'s own clamp; a claimed zero-aim asymmetry disproved
+# by the enclosing if(place) guard; a claimed sprint-status.yaml Blocked-paths
+# violation disproved by that bullet's own text plus identical precedent in
+# every prior story; a claimed merge-gate violation for staying at review
+# with the manual Client-UX pass undone — matches established 7.5/7.6/dev-3/
+# 3.23/7.7b precedent exactly, not a new issue; 4 more, full detail in the
+# story's own Review Findings section). Re-ran typecheck (clean, 10/10) and
+# the vfx/screens suites (113 passed, 1 pre-existing unrelated failure) after
+# applying patches. Status stays review, not done — the Client-UX hook's
+# manual pass is still genuinely outstanding (no display in this sandbox).
+# 2026-07-29: dev-story — implemented 7-13-cone-wedge-chain-lightning-and-
+# tempest-hurl-vfx, closing all three gaps ADR-0005's Consequences section
+# named. New createConeWedge primitive (primitives.ts) wired into Stone Wall/
+# Avalanche/Ancestor's Voice/Crimson Lash, each reading its real coneAngleDeg
+# live from ABILITY_GEOMETRY. Whitelisted + consumed ability:chain-hit so
+# Lightning Arc's chain draws one beam per hop (new planChainHitBeam,
+# stormcaller-vfx.ts), staggered by chainIndex*40 for a travelling read.
+# Removed Tempest Hurl's stale pre-3.26 fake 170ms flight (HurlFlight/
+# advanceHurlFlights) and replaced it with a real STORMCALLER PROJECTILE_
+# APPEARANCE entry (generic state.projectiles path) plus a projectile:hit-
+# driven planTempestHurlImpact sized to TEMPEST_HURL_BLAST_RADIUS_PX. Judgment
+# calls documented in the story's Completion Notes: Avalanche's existing
+# impact ring kept as-is (no contradiction), Ancestor's Voice's old full-
+# circle expand ring removed (did contradict the real 70° cone). Typecheck
+# clean (10/10 tsconfigs); full suite 668/670 non-skipped tests passing — the
+# 2 failures + 2 e2e skips all match pre-documented issues (Stone Wall
+# centering, flaky Ancestor's Voice heal assertion, WSL2 e2e port timeouts),
+# confirmed by category rather than newly discovered. Appended a deferred-
+# work.md resolution note. Manual Client-UX pass (Task 8/AC9) NOT performed —
+# no display in this sandbox, disclosed per 7.5/7.6/dev-3/3.23/7.7b precedent.
+# Status → review.
+# 2026-07-29: create-story — wrote 7-13-cone-wedge-chain-lightning-and-tempest-
+# hurl-vfx, the Epic 7 VFX follow-up ADR-0005's own Consequences section named
+# as still-open ("a cone/wedge shape, chain-arc rendering, and a resized/
+# re-timed projectile + blast burst") and 3.25/3.26 both explicitly deferred
+# in their Non-goals. Not in epics.md — inserted directly per Epic 7's own
+# established precedent (7.7a/7.7b, 7.9-7.12 were all added the same way).
+# Ownership-scope check: single owner, 100% apps/host-client/** (Host
+# Experience Engineer) — ABILITY_GEOMETRY/TEMPEST_HURL_* (shared-types) and
+# AbilityChainHitDelta (net-protocol) are read-only imports of constants/types
+# already shipped by 3.25-3.27, no shared-types/net-protocol/game-rules/
+# simulation-server file is modified. No Ownership hook trigger, no split.
+# Exhaustive research: read ADR-0005, both source stories (3.25/3.26) in full,
+# and every touched file (primitives.ts, ability-vfx.ts, spiritcaller-vfx.ts,
+# souldrinker-vfx.ts, stormcaller-vfx.ts, ability-vfx-config.ts,
+# host-session.ts, DungeonScreen.tsx) to confirm 3 concrete, independently-
+# verified gaps: (1) no VFX file reads ABILITY_GEOMETRY's coneAngleDeg despite
+# 4 abilities having carried it since 3.27; (2) ability:chain-hit
+# (net-protocol, Story 3.26) has zero apps/host-client consumers — confirmed
+# via grep; (3) Tempest Hurl's VFX still runs a stale pre-3.26 fake 170ms
+# hitscan-flight flourish concurrently with the real streamed ProjectileState
+# it has had since 3.26, racing two visuals toward two different endpoints,
+# plus resolveProjectileAppearance has no STORMCALLER entry and
+# projectile:hit's DungeonScreen handler is SOULDRINKER-gated only, so
+# Tempest Hurl's real impact (including its boss-inclusive blast) has no
+# delta-driven VFX at all today. Set to ready-for-dev.
 # 2026-07-29: create-story — wrote 3-28-ability-balance-consolidation,
 # resolving D-CC1's remaining AbilityBalance half (3.27/ADR-0006 already
 # resolved the AbilityGeometry half and explicitly split this half out as
@@ -971,6 +1104,14 @@ development_status:
   # already prune/fade correctly by design).
   7-11-epic-7-post-710-deferred-hardening-host: done
   7-12-epic-7-post-710-deferred-hardening-simulation: done
+  # 7.13 (2026-07-29): the Epic 7 VFX follow-up ADR-0005's own Consequences
+  # section named as still-open work — cone/wedge shape for Stone Wall/
+  # Avalanche/Ancestor's Voice/Crimson Lash, chain-arc rendering for Lightning
+  # Arc, and a resized/re-timed projectile + blast burst for Tempest Hurl.
+  # Single-owner Host Experience Engineer (apps/host-client/** only, no
+  # shared-types/net-protocol/game-rules changes — all three gaps consume
+  # constants/deltas 3.25-3.27 already shipped).
+  7-13-cone-wedge-chain-lightning-and-tempest-hurl-vfx: done
   epic-7-retrospective: optional
 
   # ─── E8: Progression & Persistent Meta ──────────────────────────────────────

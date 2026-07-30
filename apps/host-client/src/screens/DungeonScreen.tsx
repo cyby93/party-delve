@@ -7,6 +7,7 @@ import type { DeltaEventMsg } from 'net-protocol';
 import {
   VfxEngine,
   createRingShockwave,
+  createConeWedge,
   createBeam,
   createParticleBurst,
   createTrail,
@@ -41,14 +42,15 @@ import {
   DARK_PACT_COST_CUE_WINDOW_MS,
   resolveStormcallerCast,
   spawnStormcallerCast,
-  advanceHurlFlights,
+  spawnStormcallerSpecs,
+  planChainHitBeam,
+  planTempestHurlImpact,
   spawnStormEyePulse,
   spawnStormEyeStrike,
   resolveZoneVisual,
   resolveProjectileAppearance,
   isStormEyeZone,
   stormEyeTickCadence,
-  type HurlFlight,
   statusAuraSpec,
   createStatusAura,
   slowOrbitPoint,
@@ -103,6 +105,24 @@ const BOND_TETHER_BREATH_PERIOD_MS = 1800;
 function parseCssHexColor(css: string, fallback: number): number {
   const parsed = parseInt(css.slice(1), 16);
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+/**
+ * Resolve a target id (from a delta that carries no x/y of its own, e.g.
+ * `zone:strike`'s `targetId` or `ability:chain-hit`'s `toEnemyId`) against the
+ * current snapshot: an enemy first, then the boss by id. `null` when neither
+ * matches — an already-dead/left target, stale by the time the delta renders
+ * — so the caller can silently skip rather than throw. Shared by both call
+ * sites (code review 2026-07-29: was duplicated inline in each).
+ */
+function resolveEnemyOrBossPosition(
+  targetId: string,
+  gameState: GameState | null,
+): { x: number; y: number } | null {
+  const enemy = gameState?.enemies.find(e => e.id === targetId);
+  if (enemy) return { x: enemy.x, y: enemy.y };
+  if (gameState?.boss?.id === targetId) return { x: gameState.boss.position.x, y: gameState.boss.position.y };
+  return null;
 }
 
 // Story 7.6: warn at most once (never per-frame at 60fps) when MAX_STATUS_AURAS
@@ -175,8 +195,6 @@ interface VfxContext {
   // effectId -1 = "seen but not yet pulsed" (first sighting). The remove-before-add
   // on each tick boundary is AC4's one-live-pulse-per-zone invariant.
   stormEyePulse: Map<string, { ticksRemaining: number; effectId: number }>;
-  // Story 7.5: in-flight Tempest Hurl records, advanced per ticker frame.
-  hurlFlights: HurlFlight[];
 }
 
 /**
@@ -654,11 +672,6 @@ function renderFrame(
         vfxRefs.stormEyePulse.delete(id);
       }
     }
-
-    // ── Stormcaller: Tempest Hurl thrown-flight flourish (Story 7.5) ─────────────
-    // Ticker-driven, so it uses the ticker's own `now` (the trail's moveTo clock
-    // must match VfxEngine.update's). Registered from the ability:fired handler.
-    advanceHurlFlights(vfxEngine, vfxRefs.hurlFlights, now);
   }
 
   // ── Projectiles ───────────────────────────────────────────────────────────────
@@ -812,7 +825,6 @@ export function DungeonScreen({ gameState, session, transientDeltaQueue }: Dunge
   const lastDarkPactCastAtRef = useRef(0);                             // Date.now() of the last Souldrinker Dark Pact ability:fired
   // Story 7.5 Stormcaller runtime state (not Graphics).
   const stormEyePulseRef = useRef<Map<string, { ticksRemaining: number; effectId: number }>>(new Map());
-  const hurlFlightsRef = useRef<HurlFlight[]>([]);
   const damageNumberIdCounterRef = useRef(0);
   const latestGameStateRef = useRef<GameState | null>(null);
   latestGameStateRef.current = gameState;
@@ -886,7 +898,6 @@ export function DungeonScreen({ gameState, session, transientDeltaQueue }: Dunge
             soulMendTerminal: soulMendTerminalRef.current,
             projectileMeta: projectileMetaRef.current,
             stormEyePulse: stormEyePulseRef.current,
-            hurlFlights: hurlFlightsRef.current,
           },
         );
 
@@ -987,7 +998,6 @@ export function DungeonScreen({ gameState, session, transientDeltaQueue }: Dunge
       prevPlayerHpRef.current.clear();
       lastDarkPactCastAtRef.current = 0;
       stormEyePulseRef.current.clear();
-      hurlFlightsRef.current = [];
     };
   }, []);
 
@@ -1068,8 +1078,10 @@ export function DungeonScreen({ gameState, session, transientDeltaQueue }: Dunge
         const plan = resolveStormcallerCast(d.abilityIndex, caster.x, caster.y, d.directionX, d.directionY);
         if (plan) {
           // Delta-triggered → stamp startedAt at trigger (BACKGROUNDED-TICKER rule).
-          const flight = spawnStormcallerCast(engine, plan, triggeredAt);
-          if (flight) hurlFlightsRef.current.push(flight);
+          // Story 7.13: Tempest Hurl's cast plan carries no more flight — its real
+          // body streams via the generic state.projectiles path and its impact is
+          // driven by the projectile:hit handler below.
+          spawnStormcallerCast(engine, plan, triggeredAt);
         }
       } else {
       const cfg = caster ? getAbilityVfxConfig(caster.class, d.abilityIndex) : null;
@@ -1111,6 +1123,29 @@ export function DungeonScreen({ gameState, session, transientDeltaQueue }: Dunge
               lineWidth: ring.lineWidth,
               filled: ring.filled,
             }));
+          }
+          if (cfg.cones) {
+            // No independent zero-aim check here (Dev Notes) — `place` is
+            // already null for a zero-aim cast of any ability with hitRangePx
+            // > 0, which is true of every cone ability today, so reaching this
+            // line already guarantees normX/normY are non-zero. Layered wedges
+            // (fill + bright outline, Story 7.13 manual pass round 3) draw in
+            // array order, outline last so it reads crisply on top.
+            for (const cone of cfg.cones) {
+              engine.add(createConeWedge({
+                x: place.casterX, y: place.casterY,
+                dirX: place.normX, dirY: place.normY,
+                angleDeg: cone.angleDeg,
+                startRadius: cone.startRadius,
+                maxRadius: cone.maxRadius,
+                lineWidth: cone.lineWidth,
+                filled: cone.filled,
+                color: cone.color,
+                alpha: cone.alpha,
+                durationMs: cone.durationMs,
+                startedAt: triggeredAt,
+              }));
+            }
           }
           if (cfg.beam) {
             const beam = cfg.beam;
@@ -1181,21 +1216,43 @@ export function DungeonScreen({ gameState, session, transientDeltaQueue }: Dunge
           // announcing the pull field about to appear.
           spawnSouldrinkerVfx(engine, planVoidPulseImpact({ hitX, hitY }), triggeredAt);
         }
+      } else if (meta && engine && meta.class === PlayerClass.STORMCALLER && meta.abilityIndex === 1) {
+        // Story 7.13: Tempest Hurl's real impact — the only impact visual for
+        // this ability now that the stale fake-flight ring is removed.
+        const triggeredAt = Date.now();
+        const { x: hitX, y: hitY } = latestTransientDelta;
+        spawnStormcallerSpecs(engine, planTempestHurlImpact({ hitX, hitY }), triggeredAt);
+      }
+    } else if (latestTransientDelta.type === 'ability:chain-hit') {
+      // Story 7.13: Lightning Arc's chain-lightning VFX — one beam per hop,
+      // from the delta's real fromX/fromY to the resolved toEnemyId (an enemy
+      // or the boss), via the same target-resolution helper zone:strike uses.
+      // A toEnemyId resolving to neither (already-dead/left, stale by render
+      // time) silently skips that hop's beam rather than throwing.
+      const engine = vfxEngineRef.current;
+      const { fromX, fromY, toEnemyId, chainIndex } = latestTransientDelta;
+      const target = resolveEnemyOrBossPosition(toEnemyId, gameState);
+      if (engine && target) {
+        // Chain visual pacing (judgment call, not an AC, Dev Notes): stagger
+        // same-tick hops' startedAt by chainIndex so each hop starts fading a
+        // little later than the last — every beam still appears at full alpha
+        // on the same frame (geometry/alpha are fixed at creation, and
+        // progress() clamps a not-yet-reached startedAt to t=0), so the read is
+        // a staggered fade-out across the chain, not a travelling appearance —
+        // still a deliberate directional cue, not the no-op it might look like.
+        // Guard: a non-finite chainIndex (code review 2026-07-30, round 2)
+        // would NaN startedAt and silently drop this hop's beam.
+        const startedAt = Date.now() + (Number.isFinite(chainIndex) ? chainIndex * 40 : 0);
+        spawnStormcallerSpecs(engine, [planChainHitBeam(fromX, fromY, target.x, target.y)], startedAt);
       }
     } else if (latestTransientDelta.type === 'zone:strike') {
       // Story 7.5 Task 6: Storm Eye's bonus-strike accent (decorative, NOT the AC3
       // tick path — that is the snapshot pulse in renderFrame). The delta carries no
-      // x/y, so resolve the target from the snapshot: an enemy first, then the boss
+      // x/y, so resolve the target from the snapshot via resolveEnemyOrBossPosition
       // (the sim can strike the boss, GameRoom.ts:1631-1641). Target-not-found →
       // silently skip. Delta-triggered → stamp Date.now() at trigger (clock contract).
       const engine = vfxEngineRef.current;
-      const { targetId } = latestTransientDelta;
-      const enemy = gameState?.enemies.find(e => e.id === targetId);
-      const target = enemy
-        ? { x: enemy.x, y: enemy.y }
-        : gameState?.boss?.id === targetId
-          ? { x: gameState.boss.position.x, y: gameState.boss.position.y }
-          : null;
+      const target = resolveEnemyOrBossPosition(latestTransientDelta.targetId, gameState);
       if (engine && target) spawnStormEyeStrike(engine, target.x, target.y, Date.now());
     } else if (latestTransientDelta.type === 'cast:cancelled') {
       // Story 7.3: record the terminal so renderFrame picks the fizzle effect.

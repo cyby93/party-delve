@@ -4,10 +4,12 @@ import { VfxEngine } from './engine';
 import { progress, type EffectHandle, type VfxStage } from './types';
 import {
   createBeam,
+  createConeWedge,
   createParticleBurst,
   createRingShockwave,
   createTintPulse,
   createTrail,
+  type ConeWedgeParams,
 } from './primitives';
 
 // `pixi.js` imports fine under a plain Node vitest run — only actual GPU
@@ -50,6 +52,7 @@ describe('primitive lifecycle contract', () => {
     ['particleBurst', d => createParticleBurst({ x: 0, y: 0, color: 0xff0000, durationMs: d })],
     ['trail', d => createTrail({ x: 0, y: 0, color: 0xff0000, durationMs: d })],
     ['ringShockwave', d => createRingShockwave({ x: 0, y: 0, color: 0xff0000, durationMs: d, maxRadius: 50 })],
+    ['coneWedge', d => createConeWedge({ x: 0, y: 0, dirX: 1, dirY: 0, angleDeg: 50, color: 0xff0000, durationMs: d, maxRadius: 50 })],
     ['beam', d => createBeam({ x: 0, y: 0, toX: 10, toY: 10, color: 0xff0000, durationMs: d })],
     ['tintPulse', d => createTintPulse({ target: new Container(), durationMs: d })],
   ];
@@ -150,6 +153,151 @@ describe('ring shockwave', () => {
       ring.update(100);
     }).not.toThrow();
     ring.dispose();
+  });
+});
+
+describe('cone wedge', () => {
+  it('never reaches a negative radius when imploding', () => {
+    const wedge = createConeWedge({
+      x: 0, y: 0, dirX: 1, dirY: 0, angleDeg: 40, color: 0xffffff, durationMs: 100, startRadius: 40, maxRadius: -100,
+    });
+    expect(() => {
+      wedge.update(0);
+      wedge.update(50);
+      wedge.update(100);
+    }).not.toThrow();
+    wedge.dispose();
+  });
+
+  it('degenerates to a line along the direction at a 0° angle instead of rendering nothing', () => {
+    const wedge = createConeWedge({
+      x: 5, y: 5, dirX: 0, dirY: 1, angleDeg: 0, color: 0xffffff, durationMs: 100, maxRadius: 50,
+    });
+    expect(() => wedge.update(0)).not.toThrow();
+    const view = wedge.view as Graphics;
+    expect(view.position.x).toBe(5);
+    expect(view.position.y).toBe(5);
+    wedge.dispose();
+  });
+
+  it('renders a very wide (~360°) angle without throwing', () => {
+    const wedge = createConeWedge({
+      x: 0, y: 0, dirX: 1, dirY: 0, angleDeg: 359, color: 0xffffff, durationMs: 100, maxRadius: 50,
+    });
+    expect(() => {
+      wedge.update(0);
+      wedge.update(50);
+      wedge.update(100);
+    }).not.toThrow();
+    wedge.dispose();
+  });
+
+  it('is static per-effect — direction cannot change mid-effect, unlike moveTo-driven primitives', () => {
+    // The primitive takes no per-frame direction input (no moveTo equivalent),
+    // matching beam/ring's "geometry fixed at creation" contract.
+    const wedge = createConeWedge({
+      x: 0, y: 0, dirX: 1, dirY: 0, angleDeg: 50, color: 0xffffff, durationMs: 100, maxRadius: 50,
+    });
+    expect((wedge as unknown as { moveTo?: unknown }).moveTo).toBeUndefined();
+    wedge.dispose();
+  });
+
+  it('is a pure function of dirX/dirY/angleDeg/maxRadius — identical inputs behave identically over time', () => {
+    const make = () => createConeWedge({
+      x: 0, y: 0, dirX: 0.6, dirY: 0.8, angleDeg: 50, color: 0xffffff, durationMs: 100, maxRadius: 50, alpha: 0.8,
+    });
+    const a = make();
+    const b = make();
+    for (const t of [0, 25, 50, 75, 99, 100]) {
+      expect(a.update(t)).toBe(b.update(t));
+    }
+    a.dispose();
+    b.dispose();
+  });
+
+  // The drawn sector's local bounds are a deterministic function of its
+  // inputs — code review 2026-07-29 (Acceptance Auditor): the prior version of
+  // this describe block only compared update()'s boolean liveness return
+  // across two instances, which says nothing about dirX/dirY/angleDeg/maxRadius
+  // actually reaching the drawn geometry. `getLocalBounds()` reads the real
+  // fill/stroke commands PixiJS recorded — it works headlessly (no renderer).
+  const boundsAt = (params: Omit<ConeWedgeParams, 'startedAt'>) => {
+    const wedge = createConeWedge({ ...params, startedAt: 0 });
+    wedge.update(params.durationMs); // t = 1 → radius = maxRadius, drawn before completion is reported
+    const bounds = (wedge.view as Graphics).getLocalBounds();
+    wedge.dispose();
+    return bounds;
+  };
+
+  it('flips its horizontal extent with the aim direction', () => {
+    const forward = boundsAt({ x: 0, y: 0, dirX: 1, dirY: 0, angleDeg: 50, color: 0xffffff, durationMs: 100, maxRadius: 50 });
+    const backward = boundsAt({ x: 0, y: 0, dirX: -1, dirY: 0, angleDeg: 50, color: 0xffffff, durationMs: 100, maxRadius: 50 });
+    // The stroked outline's lineWidth pads the exact apex/radius, so this
+    // checks the extent's centre of mass flips sign with the direction rather
+    // than asserting exact pixel bounds.
+    expect(forward.maxX + forward.minX).toBeGreaterThan(0); // extent mostly in +x
+    expect(backward.maxX + backward.minX).toBeLessThan(0); // extent mostly in -x
+  });
+
+  it('widens its perpendicular spread as angleDeg grows', () => {
+    const narrow = boundsAt({ x: 0, y: 0, dirX: 1, dirY: 0, angleDeg: 10, color: 0xffffff, durationMs: 100, maxRadius: 50 });
+    const wide = boundsAt({ x: 0, y: 0, dirX: 1, dirY: 0, angleDeg: 170, color: 0xffffff, durationMs: 100, maxRadius: 50 });
+    expect(wide.maxY - wide.minY).toBeGreaterThan(narrow.maxY - narrow.minY);
+  });
+
+  it('scales its extent with maxRadius', () => {
+    const small = boundsAt({ x: 0, y: 0, dirX: 1, dirY: 0, angleDeg: 50, color: 0xffffff, durationMs: 100, maxRadius: 50 });
+    const large = boundsAt({ x: 0, y: 0, dirX: 1, dirY: 0, angleDeg: 50, color: 0xffffff, durationMs: 100, maxRadius: 100 });
+    expect(large.maxX).toBeGreaterThan(small.maxX);
+  });
+
+  // The filled shape's actual AREA, not just its bounding box — code review
+  // 2026-07-30 (live manual test caught what bounds-only testing missed): an
+  // earlier version of this primitive built its path apex → far-tip → arc →
+  // apex instead of apex → near-tip → arc → apex. PixiJS's Graphics.arc()
+  // (unlike HTML5 Canvas2D) never inserts an implicit connecting segment from
+  // the current point to the arc's own start angle, so landing on the wrong
+  // tip first left an unwanted chord plus a canceling apex-to-tip edge pair —
+  // the fill area came out to ~12% of the intended sector (a thin sliver near
+  // the rim), while its bounding box looked identical either way, so the
+  // earlier bounds-only tests above passed on the broken version too. Reads
+  // the real filled polygon's vertices via the public `shapePath` getter
+  // (Pixi has no simpler "what area did this fill" API) and computes area
+  // with the shoelace formula, comparing against the closed-form pie-slice
+  // area `0.5 * r² * angleRad`.
+  function polygonArea(view: Graphics): number {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- reaching into
+    // Pixi's internal GraphicsContext instruction data; no public type covers it.
+    const instr = view.context.instructions[0] as any;
+    const points = instr.data.path.shapePath.shapePrimitives[0].shape.points as number[];
+    let area = 0;
+    for (let i = 0; i < points.length; i += 2) {
+      const [x1, y1] = [points[i]!, points[i + 1]!];
+      const j = (i + 2) % points.length;
+      const [x2, y2] = [points[j]!, points[j + 1]!];
+      area += x1 * y2 - x2 * y1;
+    }
+    return Math.abs(area) / 2;
+  }
+
+  it('fills the actual pie-slice area, not a thin sliver near the rim', () => {
+    for (const [dirX, dirY] of [[1, 0], [-1, 0], [0, 1], [0.6, 0.8], [-0.6, -0.8]] as const) {
+      for (const angleDeg of [10, 50, 90, 170]) {
+        const radius = 50;
+        const wedge = createConeWedge({
+          x: 0, y: 0, dirX, dirY, angleDeg, color: 0xffffff, durationMs: 100, maxRadius: radius, startedAt: 0, filled: true,
+        });
+        wedge.update(100); // t = 1 → radius = maxRadius
+        const area = polygonArea(wedge.view as Graphics);
+        const expectedArea = 0.5 * radius * radius * (angleDeg * Math.PI / 180);
+        // Upper bound too (code review 2026-07-30, round 2) — a lower-bound-only
+        // check wouldn't catch a regression that swept the arc's reflex (wrong,
+        // larger) side instead of the intended sector.
+        expect(area, `dir(${dirX},${dirY}) angle ${angleDeg}`).toBeGreaterThan(expectedArea * 0.9);
+        expect(area, `dir(${dirX},${dirY}) angle ${angleDeg}`).toBeLessThan(expectedArea * 1.1);
+        wedge.dispose();
+      }
+    }
   });
 });
 

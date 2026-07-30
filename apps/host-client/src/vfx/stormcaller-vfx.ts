@@ -2,11 +2,12 @@ import {
   ABILITY_GEOMETRY,
   PlayerClass,
   STORM_EYE_ZONE_RADIUS_PX,
+  TEMPEST_HURL_BLAST_RADIUS_PX,
 } from 'shared-types';
 import type { ZoneState } from 'shared-types';
 import { STORMCALLER_PALETTE } from './ability-vfx-config';
 import { VfxEngine } from './engine';
-import { createBeam, createParticleBurst, createRingShockwave, createTrail, type TrailHandle } from './primitives';
+import { createBeam, createParticleBurst, createRingShockwave } from './primitives';
 
 /**
  * Stormcaller ability VFX — pure planners that emit serializable specs plus thin
@@ -44,16 +45,10 @@ export const STORM_SLATE = STORMCALLER_PALETTE.slate;
 // ── Geometry, read live from the shared contract (Story 7.9 / ADR-0003, consolidated 3.27 / ADR-0006) ──
 const STORMCALLER_GEOMETRY = ABILITY_GEOMETRY[PlayerClass.STORMCALLER]; // hitRangePx: [160, 200, 0, 160], hitRadiusPx: [60, 70, 110, 80]
 
-// ── Cosmetic constants (no corresponding sim value — local to the visual) ────
-/** Tempest Hurl's host-side thrown-flight duration. Kept short: the hit already
- *  resolved server-side (hitscan, no ProjectileState), so a long flight would
- *  visibly desync the trail from its damage number. */
-export const TEMPEST_HURL_FLIGHT_MS = 170;
-
 // ── Spec model ───────────────────────────────────────────────────────────────
 // A serializable description of one instant primitive effect, in absolute
-// coordinates. `spawnSpecs` maps each to a `create*` factory, adding the
-// trigger-time `startedAt`. Data-only so the planner is pure and pairwise-comparable.
+// coordinates. `spawnStormcallerSpecs` maps each to a `create*` factory, adding
+// the trigger-time `startedAt`. Data-only so the planner is pure and pairwise-comparable.
 export type StormcallerVfxSpec =
   | {
       kind: 'ring';
@@ -78,23 +73,10 @@ const ring = (o: Omit<Extract<StormcallerVfxSpec, { kind: 'ring' }>, 'kind' | 'f
 const beam = (o: Omit<Extract<StormcallerVfxSpec, { kind: 'beam' }>, 'kind'>): StormcallerVfxSpec => ({ kind: 'beam', ...o });
 const burst = (o: Omit<Extract<StormcallerVfxSpec, { kind: 'burst' }>, 'kind'>): StormcallerVfxSpec => ({ kind: 'burst', ...o });
 
-/** Parameters for Tempest Hurl's per-frame thrown-flight trail (idx 1 only). */
-export interface StormcallerFlightPlan {
-  originX: number; originY: number;
-  /** Normalized aim direction. */
-  dirX: number; dirY: number;
-  rangePx: number;
-  trail: { color: number; width: number; pointCount: number; alpha: number; durationMs: number };
-  /** Ring + burst spawned at the endpoint when the flight completes. */
-  impact: StormcallerVfxSpec[];
-}
-
 export interface StormcallerCastPlan {
   abilityIndex: number;
   /** Instant fire-and-forget effects, in draw order (glow before core, etc.). */
   specs: StormcallerVfxSpec[];
-  /** Present only for Tempest Hurl (idx 1). */
-  flight?: StormcallerFlightPlan;
 }
 
 // ── Cast planner (delta-driven, `ability:fired`) ─────────────────────────────
@@ -129,7 +111,7 @@ export function resolveStormcallerCast(
 
   switch (abilityIndex) {
     case 0: return planLightningArc(x, y, nx, ny);
-    case 1: return planTempestHurl(x, y, nx, ny);
+    case 1: return planTempestHurl(x, y);
     case 2: return planThunderClap(x, y);
     case 3: return planStormEye(x, y, nx, ny);
     default: return null;
@@ -138,8 +120,13 @@ export function resolveStormcallerCast(
 
 // Index 0 — Lightning Arc (range 160, radius 60). Instant, thin, bright: a wide
 // dim glow beam UNDER a narrow bright core beam (the two-layer stack is the
-// "fork" read — there is no forked-bolt primitive and none is hand-rolled), then
-// an honest crack ring at the real hit circle.
+// "fork" read — there is no forked-bolt primitive and none is hand-rolled).
+// Story 7.13: the old crack ring at a fixed caster+aim×hitRangePx point is
+// removed (live manual test feedback, 2026-07-30) — it drew at a static
+// endpoint regardless of where the real chain actually landed, doubly
+// redundant now that ability:chain-hit's real per-hop beams (planChainHitBeam)
+// draw the true connections; the cast-moment beam pair alone is enough to read
+// "something fired in this direction."
 function planLightningArc(px: number, py: number, nx: number, ny: number): StormcallerCastPlan {
   const ex = px + nx * STORMCALLER_GEOMETRY[0].hitRangePx;
   const ey = py + ny * STORMCALLER_GEOMETRY[0].hitRangePx;
@@ -148,31 +135,25 @@ function planLightningArc(px: number, py: number, nx: number, ny: number): Storm
     specs: [
       beam({ x: px, y: py, toX: ex, toY: ey, color: STORM_BOLT, width: 9, alpha: 0.45, durationMs: 200 }),
       beam({ x: px, y: py, toX: ex, toY: ey, color: STORM_CORE, width: 3, alpha: 1, durationMs: 140 }),
-      ring({ x: ex, y: ey, color: STORM_BOLT, startRadius: 12, maxRadius: STORMCALLER_GEOMETRY[0].hitRadiusPx, lineWidth: 3, alpha: 0.9, durationMs: 220 }),
     ],
   };
 }
 
-// Index 1 — Tempest Hurl (range 200, radius 70). Reads as thrown even though the
-// sim resolves it hitscan in the same tick and no ProjectileState exists: a
-// launch puff at the caster, a moving trail flourish, then a fat violet impact
-// ring + burst at the real hit circle.
-function planTempestHurl(px: number, py: number, nx: number, ny: number): StormcallerCastPlan {
-  const ex = px + nx * STORMCALLER_GEOMETRY[1].hitRangePx;
-  const ey = py + ny * STORMCALLER_GEOMETRY[1].hitRangePx;
+// Index 1 — Tempest Hurl. Since Story 3.26 this is a real ProjectileState-backed
+// throw (`ABILITY_DELIVERY.stormcaller[1] === 'projectile'`): the ball itself is
+// the generic `state.projectiles`/`resolveProjectileAppearance` render path
+// (Story 7.8/7.10, `PROJECTILE_APPEARANCE[STORMCALLER][1]` below), and its
+// impact is `planTempestHurlImpact`, spawned from the real `projectile:hit`
+// delta. This cast-moment plan is only the launch puff — Story 7.13 removed
+// the stale pre-3.26 fake flight (`HurlFlight`/`advanceHurlFlights`/the
+// `flight` field) that raced a second, wrong-endpoint visual against the real
+// projectile.
+function planTempestHurl(px: number, py: number): StormcallerCastPlan {
   return {
     abilityIndex: 1,
     specs: [
       burst({ x: px, y: py, color: [STORM_CHARGE, STORM_BOLT], count: 7, speed: 0.10, spread: 0.9, particleRadius: 4, alpha: 1, durationMs: 200 }),
     ],
-    flight: {
-      originX: px, originY: py, dirX: nx, dirY: ny, rangePx: STORMCALLER_GEOMETRY[1].hitRangePx,
-      trail: { color: STORM_BOLT, width: 11, pointCount: 10, alpha: 0.9, durationMs: 160 },
-      impact: [
-        ring({ x: ex, y: ey, color: STORM_CHARGE, startRadius: 18, maxRadius: STORMCALLER_GEOMETRY[1].hitRadiusPx, lineWidth: 5, alpha: 0.95, durationMs: 300 }),
-        burst({ x: ex, y: ey, color: [STORM_CORE, STORM_CHARGE], count: 12, speed: 0.18, spread: 0.6, particleRadius: 6, alpha: 1, durationMs: 320 }),
-      ],
-    },
   };
 }
 
@@ -251,8 +232,11 @@ export function stormEyeTickCadence(
 
 /** Translate each instant spec into its `create*` primitive and add it to the
  *  engine, threading `startedAt` into every factory (CLOCK CONTRACT). Returns the
- *  ids in spec order. */
-function spawnSpecs(engine: VfxEngine, specs: readonly StormcallerVfxSpec[], startedAt: number): number[] {
+ *  ids in spec order. Exported (Story 7.13) so callers with a bespoke spec —
+ *  `planTempestHurlImpact`, `planChainHitBeam` — can spawn it without a
+ *  dedicated wrapper function, mirroring `spawnSouldrinkerVfx`'s role in
+ *  `souldrinker-vfx.ts`. */
+export function spawnStormcallerSpecs(engine: VfxEngine, specs: readonly StormcallerVfxSpec[], startedAt: number): number[] {
   const ids: number[] = [];
   for (const spec of specs) {
     switch (spec.kind) {
@@ -279,62 +263,19 @@ function spawnSpecs(engine: VfxEngine, specs: readonly StormcallerVfxSpec[], sta
   return ids;
 }
 
-/** One in-flight Tempest Hurl record, advanced per ticker frame by
- *  `advanceHurlFlights`. */
-export interface HurlFlight {
-  trail: TrailHandle;
-  originX: number; originY: number;
-  dirX: number; dirY: number;
-  rangePx: number;
-  startedAt: number;
-  impact: StormcallerVfxSpec[];
-}
-
 /**
- * Spawn a cast plan's instant specs and, for Tempest Hurl, create its flight
- * trail. Returns the `HurlFlight` record for the caller to register (advanced by
- * `advanceHurlFlights`), or `null` for the three abilities with no flight.
+ * Spawn a cast plan's instant specs. `now` is stamped into every effect's
+ * `startedAt` (BACKGROUNDED-TICKER rule — this is a delta-triggered call).
+ * Layer order is preserved: the plan lists the wide dim glow beam before the
+ * narrow bright core beam, and `add` appends to the stage in call order, so
+ * the core draws on top.
  *
- * `now` is stamped into every instant effect's `startedAt` (BACKGROUNDED-TICKER
- * rule — this is a delta-triggered call). Layer order is preserved: the plan
- * lists the wide dim glow beam before the narrow bright core beam, and `add`
- * appends to the stage in call order, so the core draws on top.
+ * Story 7.13: no longer returns a `HurlFlight` — Tempest Hurl's stale fake
+ * flight is gone, and its real body/impact are driven by the generic
+ * `state.projectiles` render path and the `projectile:hit` delta respectively.
  */
-export function spawnStormcallerCast(engine: VfxEngine, plan: StormcallerCastPlan, now: number): HurlFlight | null {
-  spawnSpecs(engine, plan.specs, now);
-  const f = plan.flight;
-  if (!f) return null;
-  const trail = createTrail({
-    x: f.originX, y: f.originY, color: f.trail.color, width: f.trail.width,
-    pointCount: f.trail.pointCount, alpha: f.trail.alpha, durationMs: f.trail.durationMs, startedAt: now,
-  });
-  engine.add(trail);
-  return {
-    trail,
-    originX: f.originX, originY: f.originY, dirX: f.dirX, dirY: f.dirY, rangePx: f.rangePx,
-    startedAt: now, impact: f.impact,
-  };
-}
-
-/**
- * Advance every in-flight Tempest Hurl by one ticker frame: push the trail's head
- * toward the endpoint (guarding `trail.disposed` — pushing into a reaped trail is
- * a silent write into a destroyed Graphics), and when the flight completes spawn
- * its impact ring + burst at the endpoint and drop the record. Ticker-driven, so
- * `now` is the ticker's own clock. Mutates `flights` in place.
- */
-export function advanceHurlFlights(engine: VfxEngine, flights: HurlFlight[], now: number): void {
-  for (let i = flights.length - 1; i >= 0; i--) {
-    const f = flights[i]!;
-    const t = Math.min(1, Math.max(0, (now - f.startedAt) / TEMPEST_HURL_FLIGHT_MS));
-    if (!f.trail.disposed) {
-      f.trail.moveTo(f.originX + f.dirX * f.rangePx * t, f.originY + f.dirY * f.rangePx * t, now);
-    }
-    if (t >= 1) {
-      spawnSpecs(engine, f.impact, now);
-      flights.splice(i, 1);
-    }
-  }
+export function spawnStormcallerCast(engine: VfxEngine, plan: StormcallerCastPlan, now: number): void {
+  spawnStormcallerSpecs(engine, plan.specs, now);
 }
 
 /**
@@ -359,8 +300,38 @@ export function spawnStormEyePulse(engine: VfxEngine, zone: ZoneState, now: numb
  * and NOT the AC3 tick path. Delta-triggered → `now` is stamped at trigger.
  */
 export function spawnStormEyeStrike(engine: VfxEngine, x: number, y: number, now: number): void {
-  spawnSpecs(engine, [
+  spawnStormcallerSpecs(engine, [
     beam({ x, y: y - 300, toX: x, toY: y, color: STORM_CORE, width: 5, alpha: 1, durationMs: 220 }),
     ring({ x, y, color: STORM_BOLT, startRadius: 8, maxRadius: 46, lineWidth: 4, alpha: 0.85, durationMs: 240 }),
   ], now);
+}
+
+/**
+ * One hop of Lightning Arc's chain (Story 7.13, `ability:chain-hit` —
+ * `{casterId, fromX, fromY, toEnemyId, chainIndex}`, Story 3.26): a single
+ * bright beam from the hop's real origin to its resolved target position. The
+ * caller resolves `toEnemyId` against `gameState` (an enemy, or the boss) —
+ * this planner takes only the two endpoints, never the corridor's own 30°
+ * angle (`LIGHTNING_ARC_CORRIDOR_ANGLE_DEG` lives in `game-rules/balance.ts`,
+ * host-forbidden — see Dev Notes). Deliberately its own beam, not
+ * `planLightningArc`'s glow+core pair: a 3-hop chain drawing 6 layered beams
+ * would be visually noisier than one clean arc per hop.
+ */
+export function planChainHitBeam(fromX: number, fromY: number, toX: number, toY: number): StormcallerVfxSpec {
+  return beam({ x: fromX, y: fromY, toX, toY, color: STORM_BOLT, width: 5, alpha: 0.85, durationMs: 200 });
+}
+
+/**
+ * Tempest Hurl's real impact (Story 7.13, `projectile:hit`): a violet ring +
+ * burst sized to `TEMPEST_HURL_BLAST_RADIUS_PX` (56px, Story 3.26) — mirrors
+ * `planBloodSpikeImpact`/`planVoidPulseImpact`'s pattern in
+ * `souldrinker-vfx.ts`. Replaces the removed fake flight's stale 70px
+ * (`STORMCALLER_GEOMETRY[1].hitRadiusPx`) impact ring, which sized itself off
+ * hitscan-era geometry the sim no longer resolves against.
+ */
+export function planTempestHurlImpact(input: { hitX: number; hitY: number }): StormcallerVfxSpec[] {
+  return [
+    ring({ x: input.hitX, y: input.hitY, color: STORM_CHARGE, startRadius: 18, maxRadius: TEMPEST_HURL_BLAST_RADIUS_PX, lineWidth: 5, alpha: 0.95, durationMs: 300 }),
+    burst({ x: input.hitX, y: input.hitY, color: [STORM_CORE, STORM_CHARGE], count: 12, speed: 0.18, spread: 0.6, particleRadius: 6, alpha: 1, durationMs: 320 }),
+  ];
 }

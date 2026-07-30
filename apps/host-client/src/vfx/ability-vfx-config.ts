@@ -1,4 +1,4 @@
-import { PlayerClass } from 'shared-types';
+import { PlayerClass, TEMPEST_HURL_PROJECTILE_RADIUS_PX } from 'shared-types';
 import type { ZoneState, PlayerState, ZoneEffectType } from 'shared-types';
 
 /**
@@ -98,13 +98,39 @@ const SOULDRINKER_PROJECTILES: readonly (ProjectileAppearance | null)[] = [
   },
 ];
 
+const SC = STORMCALLER_PALETTE;
+
+// Stormcaller's one projectile ability. Only slot 1 (Tempest Hurl, delivery
+// 'projectile' since Story 3.26) has a body; the other three are hitscan/zone
+// and spawn no `ProjectileState`. This table only controls *appearance*
+// (radius/color/trail) — sized bigger than Blood Spike/Void Pulse's defaults,
+// informed by `TEMPEST_HURL_PROJECTILE_RADIUS_PX` (28). The ability's real
+// "slower" behaviour is `TEMPEST_HURL_SPEED_PX_S` (300 vs the shared
+// `PROJECTILE_SPEED_PX_S` 600, `packages/shared-types/ability-geometry.ts`) —
+// a separate constant this table has no field for and does not read. Story
+// 7.13 — closes the gap where this real projectile fell through to
+// `DEFAULT_PROJECTILE_APPEARANCE`, an 8px white dot.
+const STORMCALLER_PROJECTILES: readonly (ProjectileAppearance | null)[] = [
+  null, // 0 — Lightning Arc (hitscan)
+  // 1 — Tempest Hurl
+  {
+    core: { radius: TEMPEST_HURL_PROJECTILE_RADIUS_PX, color: SC.charge, alpha: 1 },
+    halo: { radius: TEMPEST_HURL_PROJECTILE_RADIUS_PX + 14, color: SC.bolt, alpha: 0.35 },
+    trail: { color: SC.bolt, width: 10, alpha: 0.75, durationMs: 260, pointCount: 12 },
+  },
+  null, // 2 — Thunder Clap (hitscan, self-centred)
+  null, // 3 — Storm Eye (zone delivery)
+];
+
 /**
  * Per-class projectile appearance, keyed `class → [4 entries]`. A `null` entry
  * (or a class with no table) means "no bespoke projectile body — Story 7.8 keeps
- * the legacy white circle for it." Only Souldrinker is populated today.
+ * the legacy white circle for it." Souldrinker and Stormcaller (Story 7.13) are
+ * populated today.
  */
 export const PROJECTILE_APPEARANCE: Partial<Record<PlayerClass, readonly (ProjectileAppearance | null)[]>> = {
   [PlayerClass.SOULDRINKER]: SOULDRINKER_PROJECTILES,
+  [PlayerClass.STORMCALLER]: STORMCALLER_PROJECTILES,
 };
 
 /** Today's exact projectile body (`DungeonScreen.tsx` Projectiles block:

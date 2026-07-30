@@ -81,7 +81,13 @@ export async function createHostSession(
         // mirror state is unchanged; this only decides whether it reaches
         // React/DungeonScreen. zone:tick is deliberately NOT forwarded (2/s per
         // zone would displace other deltas in the single-value latestTransientDelta).
-        delta.type === 'zone:strike'
+        delta.type === 'zone:strike' ||
+        // Story 7.13: forward ability:chain-hit so the host can draw Lightning
+        // Arc's chain beams. Host-local delivery filtering only — applyDelta
+        // runs unconditionally below and already handles it as a no-op
+        // (apply-delta.ts:153-154), so mirror state is unchanged; this only
+        // decides whether it reaches React/DungeonScreen.
+        delta.type === 'ability:chain-hit'
       )) {
         onTransientDelta(delta);
       }

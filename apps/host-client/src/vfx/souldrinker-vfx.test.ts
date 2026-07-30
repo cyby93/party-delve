@@ -56,6 +56,30 @@ describe('planSouldrinkerCast', () => {
     expect(impactRing!.maxRadius).toBe(ABILITY_GEOMETRY.souldrinker[1].hitRadiusPx);
   });
 
+  it('Crimson Lash carries an actual cone wedge sized to the live coneAngleDeg/hitRangePx, not just a re-angled beam fan (AC4)', () => {
+    const specs = planSouldrinkerCast(cast({ abilityIndex: 1, casterX: 500, casterY: 400, dirX: 1, dirY: 0 }));
+    const wedge = specs.find((s): s is Extract<VfxSpec, { kind: 'cone' }> => s.kind === 'cone');
+    expect(wedge).toBeDefined();
+    expect(wedge!.angleDeg).toBe(ABILITY_GEOMETRY.souldrinker[1].coneAngleDeg);
+    expect(wedge!.maxRadius).toBe(ABILITY_GEOMETRY.souldrinker[1].hitRangePx);
+    expect(wedge!.dirX).toBeCloseTo(1, 6);
+    expect(wedge!.dirY).toBeCloseTo(0, 6);
+  });
+
+  it('Crimson Lash\'s side strokes fan at exactly half the real cone angle, not the old hardcoded 0.30 rad (AC4)', () => {
+    const specs = planSouldrinkerCast(cast({ abilityIndex: 1, casterX: 500, casterY: 400, dirX: 1, dirY: 0 }));
+    const beams = specs.filter((s): s is Extract<VfxSpec, { kind: 'beam' }> => s.kind === 'beam');
+    expect(beams.length).toBe(3);
+    const halfAngleRad = ((ABILITY_GEOMETRY.souldrinker[1].coneAngleDeg ?? 0) / 2) * (Math.PI / 180);
+    const angleOf = (b: Extract<VfxSpec, { kind: 'beam' }>) => Math.atan2(b.toY - 400, b.toX - 500);
+    const angles = beams.map(angleOf).sort((a, b) => a - b);
+    expect(angles[0]).toBeCloseTo(-halfAngleRad, 6);
+    expect(angles[1]).toBeCloseTo(0, 6); // centre stroke, unfanned
+    expect(angles[2]).toBeCloseTo(halfAngleRad, 6);
+    // Not the old fixed ~17.19° literal — 45°/2 = 22.5° is meaningfully wider.
+    expect(Math.abs(angles[2]!)).not.toBeCloseTo(0.30, 3);
+  });
+
   it('Crimson Lash beam width increases monotonically as hpFraction falls (HP-scaled read)', () => {
     const midWidthAt = (hpFraction: number): number => {
       const specs = planSouldrinkerCast(cast({ abilityIndex: 1, hpFraction }));

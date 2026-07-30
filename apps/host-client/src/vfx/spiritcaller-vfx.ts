@@ -5,7 +5,7 @@ import {
   SPIRIT_NOVA_DURATION_MS,
 } from 'shared-types';
 import { VfxEngine } from './engine';
-import { createBeam, createParticleBurst, createRingShockwave, createTintPulse, type TintTarget } from './primitives';
+import { createBeam, createConeWedge, createParticleBurst, createRingShockwave, createTintPulse, type TintTarget } from './primitives';
 
 /**
  * Spiritcaller ability VFX — pure planning/classification plus thin primitive
@@ -36,7 +36,9 @@ export const FIZZLE_ASH = 0xa89ec0;
 //    contract in shared-types, Story 7.9 / ADR-0003 — not transcribed) ─────────
 const SPIRITCALLER_GEOMETRY = ABILITY_GEOMETRY[PlayerClass.SPIRITCALLER];
 export const ANCESTORS_VOICE_RANGE_PX = SPIRITCALLER_GEOMETRY[0].hitRangePx;    // real hit range 100
-export const ANCESTORS_VOICE_RADIUS_PX = SPIRITCALLER_GEOMETRY[0].hitRadiusPx;  // real hit radius 120
+// ANCESTORS_VOICE_RADIUS_PX (hitRadiusPx) removed — unread for a cone-shaped
+// entry (ability-geometry.ts) and, since Story 7.13 manual pass round 3
+// removed the old full-circle-anchored ring that used it, no longer read here.
 export const SPIRIT_NOVA_MAX_RADIUS_VFX_PX = SPIRIT_NOVA_MAX_RADIUS_PX; // visible sweep == real swept radius 220
 export const SPIRIT_NOVA_DURATION_VFX_MS = SPIRIT_NOVA_DURATION_MS;     // sweep duration 600
 // Soul Mend (slot 2, AIM_CAST) needs no host range constant: its channel VFX draws
@@ -71,6 +73,11 @@ export interface SpiritcallerCastPlan {
   accentRadiusPx: number;
   /** Correlation window for best-effort per-target accents. */
   accentWindowMs: number;
+  /** Normalized aim direction — present only for `ancestors-voice`, which needs
+   *  it for the cone wedge (Story 7.13). The self-centred TAP abilities have no
+   *  direction to carry. */
+  dirX?: number;
+  dirY?: number;
 }
 
 const ABILITY_BY_INDEX: Record<0 | 1 | 3, SpiritcallerAbility> = {
@@ -122,6 +129,8 @@ export function planSpiritcallerCast(
       ...base,
       focusX: caster.x + nx * ANCESTORS_VOICE_RANGE_PX,
       focusY: caster.y + ny * ANCESTORS_VOICE_RANGE_PX,
+      dirX: nx,
+      dirY: ny,
     };
   }
 
@@ -153,24 +162,28 @@ export function triggerSpiritcallerCast(
   casterCircle: TintTarget | null,
 ): void {
   if (plan.ability === 'ancestors-voice') {
-    engine.add(createBeam({
-      x: plan.originX, y: plan.originY, toX: plan.focusX, toY: plan.focusY,
-      color: ANCESTOR_BONE, width: 3, alpha: 0.55, durationMs: 220, startedAt,
-    }));
-    engine.add(createRingShockwave({
-      x: plan.focusX, y: plan.focusY, color: SPIRIT_HEAL,
-      startRadius: ANCESTORS_VOICE_RADIUS_PX, maxRadius: 18, lineWidth: 3,
-      durationMs: 260, alpha: 0.9, startedAt,
-    })); // implode = gather/mend
-    engine.add(createRingShockwave({
-      x: plan.focusX, y: plan.focusY, color: SPIRIT_HARM,
-      startRadius: 0, maxRadius: ANCESTORS_VOICE_RADIUS_PX, lineWidth: 2,
-      durationMs: 260, alpha: 0.8, startedAt,
-    })); // expand = strike, ends ON the real hit radius
-    engine.add(createParticleBurst({
-      x: plan.focusX, y: plan.focusY, color: [SPIRIT_HEAL, ANCESTOR_BONE],
-      count: 6, speed: 0.09, spread: 0.9, particleRadius: 3, durationMs: 300, startedAt,
-    }));
+    // Story 7.13, manual pass round 3 (2026-07-30): the previous beam, implode
+    // ring, and particle burst are removed per explicit user request — the
+    // cone wedge is now the only cast visual. Two layered wedges (opaque fill
+    // + bright outline, mirroring Stone Wall/Avalanche's own treatment) since
+    // a single flat 0.3-alpha fill read as "hardly visible" in manual testing.
+    if (plan.dirX !== undefined && plan.dirY !== undefined) {
+      const angleDeg = SPIRITCALLER_GEOMETRY[0].coneAngleDeg ?? 0;
+      engine.add(createConeWedge({
+        x: plan.originX, y: plan.originY,
+        dirX: plan.dirX, dirY: plan.dirY,
+        angleDeg,
+        startRadius: 0, maxRadius: ANCESTORS_VOICE_RANGE_PX,
+        lineWidth: 0, filled: true, color: SPIRIT_HARM, alpha: 0.65, durationMs: 160, startedAt,
+      }));
+      engine.add(createConeWedge({
+        x: plan.originX, y: plan.originY,
+        dirX: plan.dirX, dirY: plan.dirY,
+        angleDeg,
+        startRadius: 0, maxRadius: ANCESTORS_VOICE_RANGE_PX,
+        lineWidth: 5, filled: false, color: ANCESTOR_BONE, alpha: 0.95, durationMs: 140, startedAt,
+      }));
+    }
     return;
   }
 

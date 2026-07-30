@@ -5,7 +5,7 @@ import {
 } from 'shared-types';
 import { SOULDRINKER_PALETTE } from './ability-vfx-config';
 import { VfxEngine } from './engine';
-import { createBeam, createParticleBurst, createRingShockwave } from './primitives';
+import { createBeam, createConeWedge, createParticleBurst, createRingShockwave } from './primitives';
 
 /**
  * Souldrinker ability VFX — pure planners that emit serializable `VfxSpec`s plus
@@ -50,8 +50,9 @@ const PLAYER_RADIUS = 24; // mirror of DungeonScreen's PLAYER_RADIUS (host-only)
 /** Blood Spike's launch streak reach — a short cosmetic flourish, NOT the
  *  projectile's real range (the projectile body itself is Story 7.8's). */
 const BLOOD_SPIKE_LAUNCH_LEN = 90;
-/** Crimson Lash's three strokes fan ±this many radians around the aim. */
-const CRIMSON_LASH_FAN_RAD = 0.30;
+/** Crimson Lash's three strokes fan ± half of the ability's real cone angle
+ *  (Story 7.13 — previously a fixed, disconnected `0.30` rad / ~17.19°). */
+const CRIMSON_LASH_FAN_RAD = (SOULDRINKER_GEOMETRY[1].coneAngleDeg ?? 0) / 2 * (Math.PI / 180);
 /** Cosmetic stroke lengths — the centre stroke reaches slightly past the two
  *  side strokes. The *impact ring* is what tells the truth about reach (range). */
 const CRIMSON_LASH_STROKE_LEN_MID = 205;
@@ -85,12 +86,19 @@ export type VfxSpec =
       x: number; y: number; color: number | readonly number[];
       count: number; speed: number; spread: number; particleRadius: number;
       alpha: number; durationMs: number;
+    }
+  | {
+      kind: 'cone';
+      x: number; y: number; dirX: number; dirY: number; angleDeg: number;
+      startRadius: number; maxRadius: number; lineWidth: number;
+      filled: boolean; color: number; alpha: number; durationMs: number;
     };
 
 const ring = (o: Omit<Extract<VfxSpec, { kind: 'ring' }>, 'kind' | 'filled'>): VfxSpec =>
   ({ kind: 'ring', filled: false, ...o });
 const beam = (o: Omit<Extract<VfxSpec, { kind: 'beam' }>, 'kind'>): VfxSpec => ({ kind: 'beam', ...o });
 const burst = (o: Omit<Extract<VfxSpec, { kind: 'burst' }>, 'kind'>): VfxSpec => ({ kind: 'burst', ...o });
+const cone = (o: Omit<Extract<VfxSpec, { kind: 'cone' }>, 'kind'>): VfxSpec => ({ kind: 'cone', ...o });
 
 const clamp01 = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
 
@@ -155,14 +163,34 @@ function planBloodSpikeCast(px: number, py: number, dx: number, dy: number): Vfx
   ];
 }
 
-// Crimson Lash (1) — three fanned claw strokes + a truthful impact ring at the
-// real hit circle. Intensity scales with missing HP, matching the HP-scaled
-// damage mechanic (a rendering read of broadcast state, not a damage calc).
+// Crimson Lash (1) — a cone wedge reading the real 45° hit shape, plus three
+// fanned claw strokes + a truthful impact ring at the real hit circle.
+// Intensity scales with missing HP, matching the HP-scaled damage mechanic
+// (a rendering read of broadcast state, not a damage calc). Story 7.13: the
+// wedge was added after the re-angled beam fan alone didn't read as "a cone"
+// in manual testing (live user feedback, 2026-07-30) — matches the treatment
+// Stone Wall/Avalanche/Ancestor's Voice already get. Two layered wedges (fill
+// + bright outline) since a single flat 0.3-alpha fill read as "hardly
+// visible" in the same manual pass, round 3.
 function planCrimsonLashCast(px: number, py: number, dx: number, dy: number, hpFraction: number): VfxSpec[] {
   const lowHp = 1 - (Number.isFinite(hpFraction) ? clamp01(hpFraction) : 1);
   const cx = px + dx * SOULDRINKER_GEOMETRY[1].hitRangePx;
   const cy = py + dy * SOULDRINKER_GEOMETRY[1].hitRangePx;
-  const specs: VfxSpec[] = [];
+  const coneAngleDeg = SOULDRINKER_GEOMETRY[1].coneAngleDeg ?? 0;
+  const specs: VfxSpec[] = [
+    cone({
+      x: px, y: py, dirX: dx, dirY: dy,
+      angleDeg: coneAngleDeg,
+      startRadius: 0, maxRadius: SOULDRINKER_GEOMETRY[1].hitRangePx,
+      lineWidth: 0, filled: true, color: BLOOD, alpha: 0.6 + 0.2 * lowHp, durationMs: 160,
+    }),
+    cone({
+      x: px, y: py, dirX: dx, dirY: dy,
+      angleDeg: coneAngleDeg,
+      startRadius: 0, maxRadius: SOULDRINKER_GEOMETRY[1].hitRangePx,
+      lineWidth: 4, filled: false, color: BLOOD_DARK, alpha: 0.95, durationMs: 140,
+    }),
+  ];
   for (const k of [-1, 0, 1] as const) {
     const theta = k * CRIMSON_LASH_FAN_RAD;
     const cos = Math.cos(theta);
@@ -337,6 +365,13 @@ export function spawnSouldrinkerVfx(engine: VfxEngine, specs: readonly VfxSpec[]
         ids.push(engine.add(createParticleBurst({
           x: spec.x, y: spec.y, color: spec.color, count: spec.count, speed: spec.speed, spread: spec.spread,
           particleRadius: spec.particleRadius, alpha: spec.alpha, durationMs: spec.durationMs, startedAt,
+        })));
+        break;
+      case 'cone':
+        ids.push(engine.add(createConeWedge({
+          x: spec.x, y: spec.y, dirX: spec.dirX, dirY: spec.dirY, angleDeg: spec.angleDeg,
+          startRadius: spec.startRadius, maxRadius: spec.maxRadius, lineWidth: spec.lineWidth,
+          filled: spec.filled, color: spec.color, alpha: spec.alpha, durationMs: spec.durationMs, startedAt,
         })));
         break;
     }

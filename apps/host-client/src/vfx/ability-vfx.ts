@@ -103,13 +103,34 @@ export interface BurstSpec {
   durationMs: number;
 }
 
+/** A directional cone/wedge, apex at the caster, oriented along the real aim
+ *  (`place.normX/normY`). Only present for abilities whose real hit shape is
+ *  `'cone'` (`ABILITY_GEOMETRY[...].hitShape`, Story 3.27/ADR-0006). `angleDeg`
+ *  and the wedge's reach (`AbilityVfxConfig.hitRangePx`) are read live from that
+ *  contract, never hand-copied (Story 7.13). */
+export interface ConeSpec {
+  angleDeg: number;
+  startRadius: number;
+  maxRadius: number;
+  lineWidth: number;
+  filled: boolean;
+  color: number;
+  alpha: number;
+  durationMs: number;
+}
+
 export interface AbilityVfxConfig {
   /** The ability's real reach: `ABILITY_GEOMETRY[class][slot].hitRangePx` when the
    *  sim treats the cast as directional, otherwise 0 — TAP abilities hit a circle
    *  on the caster and ignore `hitRange` entirely (`GameRoom.ts:2186`, `combat.ts:42-63`). */
   hitRangePx: number;
-  /** Composed in order ring -> beam -> burst. */
+  /** Composed in order ring -> cone -> beam -> burst. */
   rings: readonly RingSpec[];
+  /** Layered cone wedges (e.g. a soft fill under a bright outline) — same
+   *  layering idea as `rings`, letting a single hit shape read with more
+   *  visual weight than one flat fill alone (Story 7.13, manual pass round 3:
+   *  "the cone shape vfxs can be hardly seen"). */
+  cones?: readonly ConeSpec[];
   beam?: BeamSpec;
   burst?: BurstSpec;
 }
@@ -119,21 +140,29 @@ export interface AbilityVfxConfig {
 // at most one instance per ability per player can ever be live (AC5).
 
 const STONEHIDE_VFX: readonly AbilityVfxConfig[] = [
-  // 0 — Stone Wall (RELEASE, hitRange 0, hitRadius 100, pull 40 px inward).
-  // The only imploding effect in the kit: the ring starts at the real hit radius
-  // and collapses onto the caster along the same vector the displacement pulls.
+  // 0 — Stone Wall (RELEASE, directional cone reach 160, 50° cone since Story
+  // 3.25/3.27). Manual pass round 3 (2026-07-30): the old pull-toward-caster
+  // implode ring/beam/dust burst (a displacement visual predating the cone
+  // conversion) is removed per explicit user request — the cone wedge is now
+  // the only cast visual. Two layered wedges for punch: an opaque fill under a
+  // bright, thicker-stroked outline (same "soft body + bright edge" idea as
+  // Tremor Stomp's dual ring below), since a single flat 0.3-alpha fill read
+  // as "hardly visible" in manual testing.
   {
-    hitRangePx: STONEHIDE_GEOMETRY[0].hitRangePx, // directional RELEASE — reads the contract range (0 today → hits at caster)
-    rings: [
-      { at: 'caster', startRadius: STONEHIDE_GEOMETRY[0].hitRadiusPx, maxRadius: 26, lineWidth: 6, filled: false, color: STONEHIDE_DUST, alpha: 0.95, durationMs: 320 },
+    hitRangePx: STONEHIDE_GEOMETRY[0].hitRangePx, // directional RELEASE — reads the contract range live (160)
+    rings: [],
+    cones: [
+      {
+        angleDeg: STONEHIDE_GEOMETRY[0].coneAngleDeg ?? 0,
+        startRadius: 0, maxRadius: STONEHIDE_GEOMETRY[0].hitRangePx,
+        lineWidth: 0, filled: true, color: STONEHIDE_OCHRE, alpha: 0.65, durationMs: 160,
+      },
+      {
+        angleDeg: STONEHIDE_GEOMETRY[0].coneAngleDeg ?? 0,
+        startRadius: 0, maxRadius: STONEHIDE_GEOMETRY[0].hitRangePx,
+        lineWidth: 5, filled: false, color: STONEHIDE_DUST, alpha: 0.95, durationMs: 140,
+      },
     ],
-    beam: { originOffsetPx: STONEHIDE_GEOMETRY[0].hitRadiusPx, target: 'caster', width: 5, color: STONEHIDE_DUST, alpha: 0.8, durationMs: 260 },
-    burst: {
-      at: 'caster', colors: [STONEHIDE_DUST, STONEHIDE_OCHRE], count: 8,
-      // Near-static (~13 px of travel) so the dust reads as ground breaking
-      // underfoot rather than an outward blast contradicting the implode.
-      speed: 0.04, spread: 1.2, particleRadius: 5, alpha: 0.9, durationMs: 320,
-    },
   },
   // 1 — Tremor Stomp (TAP, hitRadius 60, slow 0.4). hitRangePx is a hard 0, not
   // STONEHIDE_GEOMETRY[1].hitRangePx (=160): a TAP ability hits a circle on the caster and the
@@ -160,15 +189,29 @@ const STONEHIDE_VFX: readonly AbilityVfxConfig[] = [
       { at: 'caster', startRadius: STONEHIDE_GEOMETRY[2].hitRadiusPx, maxRadius: 30, lineWidth: 5, filled: false, color: STONEHIDE_SLATE, alpha: 0.9, durationMs: 300 },
     ],
   },
-  // 3 — Avalanche (AUTO, 1000 ms CD, directional at range 200, hitRadius 50).
-  // Translational motion, and deliberately the only effect with no particle
-  // burst: it fires once a second for the whole run. Do not add sparks.
+  // 3 — Avalanche (AUTO, 1000 ms CD, directional cone reach 75, 40° cone since
+  // Story 3.25/3.27). Manual pass round 3 (2026-07-30): the old 'hit'-anchored
+  // impact ring/beam is removed per explicit user request — the cone wedge is
+  // now the only cast visual. Two layered wedges (fill + bright outline),
+  // mirroring Stone Wall's own treatment, at higher alpha than a single flat
+  // fill needs elsewhere: at 75px reach this wedge's area is ~6x smaller than
+  // Stone Wall's 160px one, so it needs more weight to read at the same couch
+  // distance. Kept the DUST-fill/OCHRE-outline contrast from the round-2 fix.
   {
-    hitRangePx: STONEHIDE_GEOMETRY[3].hitRangePx, // 200 — directional reach, read live
-    rings: [
-      { at: 'hit', startRadius: 0, maxRadius: STONEHIDE_GEOMETRY[3].hitRadiusPx, lineWidth: 4, filled: false, color: STONEHIDE_OCHRE, alpha: 0.85, durationMs: 180 },
+    hitRangePx: STONEHIDE_GEOMETRY[3].hitRangePx, // directional reach, read live (75)
+    rings: [],
+    cones: [
+      {
+        angleDeg: STONEHIDE_GEOMETRY[3].coneAngleDeg ?? 0,
+        startRadius: 0, maxRadius: STONEHIDE_GEOMETRY[3].hitRangePx,
+        lineWidth: 0, filled: true, color: STONEHIDE_DUST, alpha: 0.7, durationMs: 160,
+      },
+      {
+        angleDeg: STONEHIDE_GEOMETRY[3].coneAngleDeg ?? 0,
+        startRadius: 0, maxRadius: STONEHIDE_GEOMETRY[3].hitRangePx,
+        lineWidth: 5, filled: false, color: STONEHIDE_OCHRE, alpha: 1, durationMs: 140,
+      },
     ],
-    beam: { originOffsetPx: 0, target: 'hit', width: 6, color: STONEHIDE_OCHRE, alpha: 0.75, durationMs: 140 },
   },
 ];
 

@@ -1,13 +1,34 @@
 import { describe, expect, it } from 'vitest';
 import type { PlayerState, ZoneState } from 'shared-types';
-import { PlayerClass } from 'shared-types';
+import { PlayerClass, TEMPEST_HURL_BLAST_RADIUS_PX } from 'shared-types';
 import {
   resolveStormcallerCast,
   stormEyeTickCadence,
+  planChainHitBeam,
+  planTempestHurlImpact,
+  spawnStormcallerSpecs,
   type StormcallerCastPlan,
   type StormcallerVfxSpec,
 } from './stormcaller-vfx';
 import { resolveZoneVisual, STORM_EYE_ZONE_VISUAL, VOID_PULSE_ZONE_VISUAL } from './ability-vfx-config';
+import { VfxEngine } from './engine';
+import type { VfxStage } from './types';
+
+function fakeStage(): VfxStage & { children: unknown[] } {
+  const children: unknown[] = [];
+  return {
+    children,
+    addChild(child) {
+      children.push(child);
+      return child;
+    },
+    removeChild(child) {
+      const i = children.indexOf(child);
+      if (i >= 0) children.splice(i, 1);
+      return child;
+    },
+  };
+}
 
 // Pure planner + cadence + zone-seam only — no canvas. Rendering correctness is
 // the Client-UX manual pass (Story 7.5 §8.3). One runnable check per project
@@ -29,7 +50,7 @@ describe('resolveStormcallerCast', () => {
     }
   });
 
-  it('Lightning Arc (0): beam endpoint at caster + dir*160, crack ring at the real hit radius 60 (AC2)', () => {
+  it('Lightning Arc (0): beam endpoint at caster + dir*160 (AC2)', () => {
     const plan = resolveStormcallerCast(0, 100, 100, 1, 0)!;
     const beams = plan.specs.filter((s): s is Extract<StormcallerVfxSpec, { kind: 'beam' }> => s.kind === 'beam');
     expect(beams.length).toBe(2); // glow + core
@@ -37,18 +58,15 @@ describe('resolveStormcallerCast', () => {
       expect(b.toX).toBeCloseTo(260, 6); // 100 + 160
       expect(b.toY).toBeCloseTo(100, 6);
     }
-    const crack = rings(plan)[0]!;
-    expect(crack.x).toBeCloseTo(260, 6);
-    expect(crack.maxRadius).toBe(60);
+    // Story 7.13: the old fixed-endpoint "crack ring" is removed — the real
+    // per-hop connections now come from ability:chain-hit's planChainHitBeam.
+    expect(rings(plan).length).toBe(0);
   });
 
-  it('Tempest Hurl (1): flight range 200 and impact ring radius 70 (AC2)', () => {
+  it('Tempest Hurl (1): cast plan is only the launch puff — no flight field (Story 7.13)', () => {
     const plan = resolveStormcallerCast(1, 0, 0, 1, 0)!;
-    expect(plan.flight).toBeDefined();
-    expect(plan.flight!.rangePx).toBe(200);
-    const impactRing = plan.flight!.impact.find((s): s is Extract<StormcallerVfxSpec, { kind: 'ring' }> => s.kind === 'ring')!;
-    expect(impactRing.maxRadius).toBe(70);
-    expect(impactRing.x).toBeCloseTo(200, 6); // 0 + 200 along +x
+    expect(plan.specs.length).toBeGreaterThan(0);
+    expect((plan as unknown as { flight?: unknown }).flight).toBeUndefined();
   });
 
   it('Thunder Clap (2): tolerates a zero direction and its bright ring reaches exactly 110 (AC2)', () => {
@@ -120,6 +138,38 @@ describe('stormEyeTickCadence', () => {
     expect(stormEyeTickCadence(0, 5000, NaN)).toBeNull();
     expect(stormEyeTickCadence(5000, 5000, 500)).toBeNull(); // now === expiry
     expect(stormEyeTickCadence(6000, 5000, 500)).toBeNull(); // past expiry
+  });
+});
+
+describe('planChainHitBeam / spawnStormcallerSpecs (Story 7.13)', () => {
+  it('produces a beam spec from the hop\'s real fromX/fromY to the resolved target', () => {
+    const spec = planChainHitBeam(10, 20, 110, 40);
+    expect(spec.kind).toBe('beam');
+    const b = spec as Extract<StormcallerVfxSpec, { kind: 'beam' }>;
+    expect(b.x).toBe(10);
+    expect(b.y).toBe(20);
+    expect(b.toX).toBe(110);
+    expect(b.toY).toBe(40);
+  });
+
+  it('spawns one live beam per hop, even for N same-tick hits — no batch-collapse (7.11 contract)', () => {
+    const stage = fakeStage();
+    const engine = new VfxEngine(stage);
+    spawnStormcallerSpecs(engine, [planChainHitBeam(0, 0, 100, 0)], 1000);
+    spawnStormcallerSpecs(engine, [planChainHitBeam(100, 0, 200, 0)], 1000);
+    spawnStormcallerSpecs(engine, [planChainHitBeam(200, 0, 300, 0)], 1000);
+    expect(engine.size).toBe(3);
+  });
+});
+
+describe('planTempestHurlImpact (Story 7.13)', () => {
+  it('sizes its ring to TEMPEST_HURL_BLAST_RADIUS_PX, not the old hitscan-era 70px', () => {
+    const specs = planTempestHurlImpact({ hitX: 300, hitY: 200 });
+    const impactRing = specs.find((s): s is Extract<StormcallerVfxSpec, { kind: 'ring' }> => s.kind === 'ring');
+    expect(impactRing).toBeDefined();
+    expect(impactRing!.maxRadius).toBe(TEMPEST_HURL_BLAST_RADIUS_PX);
+    expect(impactRing!.x).toBe(300);
+    expect(impactRing!.y).toBe(200);
   });
 });
 

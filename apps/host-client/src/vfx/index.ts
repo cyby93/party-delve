@@ -7,6 +7,7 @@ export {
   createRingShockwave,
   createBeam,
   createTintPulse,
+  createConeWedge,
 } from './primitives';
 export {
   STONEHIDE_OCHRE,
@@ -84,15 +85,16 @@ export {
   STORM_BOLT,
   STORM_CHARGE,
   STORM_SLATE,
-  TEMPEST_HURL_FLIGHT_MS,
   resolveStormcallerCast,
   stormEyeTickCadence,
   spawnStormcallerCast,
-  advanceHurlFlights,
+  spawnStormcallerSpecs,
   spawnStormEyePulse,
   spawnStormEyeStrike,
+  planChainHitBeam,
+  planTempestHurlImpact,
 } from './stormcaller-vfx';
-export type { StormcallerCastPlan, StormcallerVfxSpec, StormcallerFlightPlan, HurlFlight } from './stormcaller-vfx';
+export type { StormcallerCastPlan, StormcallerVfxSpec } from './stormcaller-vfx';
 export type {
   ParticleBurstParams,
   TrailParams,
@@ -101,6 +103,7 @@ export type {
   BeamParams,
   TintPulseParams,
   TintTarget,
+  ConeWedgeParams,
 } from './primitives';
 export {
   AURA_COLORS,

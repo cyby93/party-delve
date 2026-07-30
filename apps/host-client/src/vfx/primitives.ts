@@ -232,6 +232,110 @@ export function createRingShockwave(params: RingShockwaveParams): EffectHandle {
   };
 }
 
+// ── Cone / wedge ─────────────────────────────────────────────────────────────
+// Sibling to createRingShockwave: same apex-anchored expand/implode + fade
+// lifecycle, but swept across only `angleDeg` (full angle) around a direction
+// instead of the full 360°. Story 7.13.
+
+export interface ConeWedgeParams extends VfxTriggerParams {
+  /** Normalized aim direction — must already be a unit vector (like `place.normX/normY`);
+   *  the wedge does not renormalize it. */
+  dirX: number;
+  dirY: number;
+  /** Full angular span of the wedge, in degrees. `0` degenerates to a line along
+   *  `(dirX, dirY)` rather than a zero-area shape. */
+  angleDeg: number;
+  /** Radius reached at completion. */
+  maxRadius: number;
+  /** Radius at trigger. Default 0. */
+  startRadius?: number;
+  /** Stroke width; ignored when `filled`. Default 3. */
+  lineWidth?: number;
+  /** Filled sector instead of an outline. Default false. */
+  filled?: boolean;
+}
+
+export function createConeWedge(params: ConeWedgeParams): EffectHandle {
+  const {
+    x, y, dirX, dirY, angleDeg, color, durationMs, maxRadius,
+    alpha = 1,
+    startRadius = 0,
+    lineWidth = 3,
+    filled = false,
+  } = params;
+  let startedAt = params.startedAt;
+
+  const view = new Graphics();
+  view.position.set(x, y);
+
+  // Half-angle rotation of the direction vector, both ways — the two edge rays
+  // of the sector (see Dev Notes: standard 2D rotation of (dirX, dirY)). Clamped
+  // to [0, 360] — code review 2026-07-30 (Edge Case Hunter): beyond 360 the
+  // half-angle exceeds 180°, flipping leftAngle/rightAngle's atan2 ordering and
+  // sweeping the arc's reflex side instead of the intended sector.
+  const halfAngleRad = (Math.min(360, Math.max(0, angleDeg)) / 2) * (Math.PI / 180);
+  const cosH = Math.cos(halfAngleRad);
+  const sinH = Math.sin(halfAngleRad);
+  const leftX = dirX * cosH - dirY * sinH;
+  const leftY = dirX * sinH + dirY * cosH;
+  const rightX = dirX * cosH + dirY * sinH;
+  const rightY = -dirX * sinH + dirY * cosH;
+  const leftAngle = Math.atan2(leftY, leftX);
+  const rightAngle = Math.atan2(rightY, rightX);
+  const degenerate = !(angleDeg > 0);
+
+  return {
+    view,
+    update(now) {
+      startedAt ??= now;
+      const t = progress(now, startedAt, durationMs);
+      // Clamped: an implode (maxRadius < startRadius) must not reach a negative radius.
+      const radius = Math.max(0, startRadius + t * (maxRadius - startRadius));
+      const a = alpha * (1 - t);
+      view.clear();
+      if (degenerate) {
+        // A 0° cone has no area to fill/stroke as a sector — draw the line the
+        // apex-point edge case reduces to instead of rendering nothing. A
+        // filled caller legitimately passes `lineWidth: 0` (it never intends to
+        // stroke); floor the degenerate line's width so it stays visible either
+        // way — code review 2026-07-29 (Blind Hunter): `lineWidth: 0` would
+        // otherwise stroke an invisible line, silently violating the "never
+        // renders nothing" contract for the one input this branch exists to handle.
+        view.moveTo(0, 0).lineTo(dirX * radius, dirY * radius).stroke({ color, width: Math.max(lineWidth, 2), alpha: a });
+      } else if (filled) {
+        // The initial lineTo must land on the arc's own start point (rightAngle),
+        // not the far edge — PixiJS's Graphics.arc() (unlike HTML5 Canvas2D) never
+        // inserts an implicit connecting segment from the current point to the
+        // arc's start; it only appends the arc's own points (`buildArc` in
+        // PixiJS's GraphicsPath). Landing on the wrong tip first left an
+        // unwanted chord across the circle plus a canceling apex-to-tip edge
+        // pair, which shoelace-area-tested at ~12% of the intended sector — a
+        // thin sliver near the rim, not a wedge (code review 2026-07-30, live
+        // manual test: cone shapes reported invisible).
+        view.moveTo(0, 0)
+          .lineTo(rightX * radius, rightY * radius)
+          .arc(0, 0, radius, rightAngle, leftAngle)
+          .lineTo(0, 0)
+          .fill({ color, alpha: a });
+      } else {
+        // Same floor as the degenerate branch above — a `filled: false,
+        // lineWidth: 0` caller would otherwise stroke an invisible sector,
+        // silently violating the "never renders nothing" contract on this
+        // sibling path (code review 2026-07-30, Blind Hunter + Edge Case Hunter).
+        view.moveTo(0, 0)
+          .lineTo(rightX * radius, rightY * radius)
+          .arc(0, 0, radius, rightAngle, leftAngle)
+          .lineTo(0, 0)
+          .stroke({ color, width: Math.max(lineWidth, 2), alpha: a });
+      }
+      return t < 1;
+    },
+    dispose() {
+      view.destroy();
+    },
+  };
+}
+
 // ── Beam ─────────────────────────────────────────────────────────────────────
 
 export interface BeamParams extends VfxTriggerParams {

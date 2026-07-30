@@ -36,6 +36,15 @@ describe('resolveProjectileAppearance', () => {
     expect(resolveProjectileAppearance(PlayerClass.STONEHIDE, 0)).toBe(DEFAULT_PROJECTILE_APPEARANCE);
   });
 
+  it('Stormcaller idx 1 (Tempest Hurl) resolves to its own entry; idx 0/2/3 fall through to the default (Story 7.13)', () => {
+    const tempestHurl = resolveProjectileAppearance(PlayerClass.STORMCALLER, 1);
+    expect(tempestHurl).not.toBe(DEFAULT_PROJECTILE_APPEARANCE);
+    expect(tempestHurl).toBe(PROJECTILE_APPEARANCE[PlayerClass.STORMCALLER]![1]);
+    for (const idx of [0, 2, 3]) {
+      expect(resolveProjectileAppearance(PlayerClass.STORMCALLER, idx), `idx ${idx}`).toBe(DEFAULT_PROJECTILE_APPEARANCE);
+    }
+  });
+
   it('undefined class and undefined/NaN/-1/99 index each return the default without throwing', () => {
     expect(() => resolveProjectileAppearance(undefined, undefined)).not.toThrow();
     expect(resolveProjectileAppearance(undefined, 0)).toBe(DEFAULT_PROJECTILE_APPEARANCE);

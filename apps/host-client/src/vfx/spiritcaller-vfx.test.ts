@@ -1,10 +1,29 @@
 import { describe, expect, it } from 'vitest';
 import { PlayerClass, ABILITY_GEOMETRY } from 'shared-types';
+import { VfxEngine } from './engine';
+import type { VfxStage } from './types';
 import {
   planSpiritcallerCast,
   factionAccentFor,
+  triggerSpiritcallerCast,
   ANCESTORS_VOICE_RANGE_PX,
 } from './spiritcaller-vfx';
+
+function fakeStage(): VfxStage & { children: unknown[] } {
+  const children: unknown[] = [];
+  return {
+    children,
+    addChild(child) {
+      children.push(child);
+      return child;
+    },
+    removeChild(child) {
+      const i = children.indexOf(child);
+      if (i >= 0) children.splice(i, 1);
+      return child;
+    },
+  };
+}
 
 // Pure planner + classifier only — no canvas. Rendering correctness is the
 // Client-UX manual pass (Story 7.3 §9).
@@ -61,6 +80,20 @@ describe('planSpiritcallerCast', () => {
     expect(planSpiritcallerCast(spiritcaller(), 0, 0, 0)).toBeNull();
   });
 
+  it('carries the normalized aim direction Ancestor\'s Voice needs for the cone wedge (Story 7.13)', () => {
+    const plan = planSpiritcallerCast(spiritcaller(500, 400), 0, 3, 4)!; // magnitude 5
+    expect(plan.dirX).toBeCloseTo(3 / 5, 6);
+    expect(plan.dirY).toBeCloseTo(4 / 5, 6);
+  });
+
+  it('does not carry a direction for the self-centred TAP abilities', () => {
+    for (const idx of [1, 3]) {
+      const plan = planSpiritcallerCast(spiritcaller(), idx, 1, 0)!;
+      expect(plan.dirX, `idx ${idx}`).toBeUndefined();
+      expect(plan.dirY, `idx ${idx}`).toBeUndefined();
+    }
+  });
+
   it('still plans the self-centred TAP abilities on zero aim, with focus === origin and no NaN', () => {
     for (const idx of [1, 3]) {
       const plan = planSpiritcallerCast(spiritcaller(500, 400), idx, 0, 0)!;
@@ -72,6 +105,27 @@ describe('planSpiritcallerCast', () => {
     }
     expect(planSpiritcallerCast(spiritcaller(), 1, 0, 0)!.ability).toBe('spirit-nova');
     expect(planSpiritcallerCast(spiritcaller(), 3, 0, 0)!.ability).toBe('warding-cry');
+  });
+});
+
+describe('triggerSpiritcallerCast', () => {
+  it('composes only the layered cone wedge for a directional Ancestor\'s Voice cast (Story 7.13 manual pass round 3)', () => {
+    const stage = fakeStage();
+    const engine = new VfxEngine(stage);
+    const plan = planSpiritcallerCast(spiritcaller(500, 400), 0, 1, 0)!;
+    triggerSpiritcallerCast(engine, plan, 0, null);
+    // Only the two layered cone wedges (fill + outline) — the old beam/implode
+    // ring/burst are removed per explicit user request (manual pass round 3).
+    expect(engine.size).toBe(2);
+  });
+
+  it('renders nothing when dirX/dirY are absent from the plan', () => {
+    const stage = fakeStage();
+    const engine = new VfxEngine(stage);
+    const plan = planSpiritcallerCast(spiritcaller(500, 400), 0, 1, 0)!;
+    const { dirX: _dirX, dirY: _dirY, ...planWithoutDir } = plan;
+    triggerSpiritcallerCast(engine, planWithoutDir, 0, null);
+    expect(engine.size).toBe(0);
   });
 });
 

@@ -21,9 +21,12 @@ function signatureOf(cfg: AbilityVfxConfig): string {
   const rings = cfg.rings
     .map(r => `ring(${r.at},${r.startRadius}->${r.maxRadius},${r.filled ? 'fill' : 'stroke'},${r.color})`)
     .join('|');
+  const cones = (cfg.cones ?? [])
+    .map(c => `cone(${c.angleDeg},${c.startRadius}->${c.maxRadius},${c.filled ? 'fill' : 'stroke'},${c.color})`)
+    .join('|');
   const beam = cfg.beam ? `beam(${cfg.beam.originOffsetPx}->${cfg.beam.target},${cfg.beam.color})` : '';
   const burst = cfg.burst ? `burst(${cfg.burst.count},${cfg.burst.speed},${cfg.burst.colors.join('/')})` : '';
-  return `${rings}#${beam}#${burst}`;
+  return `${rings}#${cones}#${beam}#${burst}`;
 }
 
 describe('getAbilityVfxConfig', () => {
@@ -56,6 +59,39 @@ describe('getAbilityVfxConfig', () => {
 
   it('gives Avalanche no particle burst — the AUTO-fire volume decision (AC5)', () => {
     expect(getAbilityVfxConfig(PlayerClass.STONEHIDE, 3)!.burst).toBeUndefined();
+  });
+
+  it('gives Stone Wall and Avalanche layered cone wedges sourced live from ABILITY_GEOMETRY, not hand-copied (Story 7.13 AC2)', () => {
+    const stoneWall = getAbilityVfxConfig(PlayerClass.STONEHIDE, 0)!;
+    const avalanche = getAbilityVfxConfig(PlayerClass.STONEHIDE, 3)!;
+    expect(stoneWall.cones).toBeDefined();
+    expect(stoneWall.cones!.length).toBeGreaterThanOrEqual(2); // fill + outline layers
+    for (const c of stoneWall.cones!) {
+      expect(c.angleDeg).toBe(ABILITY_GEOMETRY.stonehide[0].coneAngleDeg);
+      expect(c.maxRadius).toBe(ABILITY_GEOMETRY.stonehide[0].hitRangePx);
+    }
+    expect(avalanche.cones).toBeDefined();
+    expect(avalanche.cones!.length).toBeGreaterThanOrEqual(2);
+    for (const c of avalanche.cones!) {
+      expect(c.angleDeg).toBe(ABILITY_GEOMETRY.stonehide[3].coneAngleDeg);
+      expect(c.maxRadius).toBe(ABILITY_GEOMETRY.stonehide[3].hitRangePx);
+    }
+  });
+
+  it('Stone Wall and Avalanche carry only the cone wedge — no other cast VFX (Story 7.13 manual pass round 3)', () => {
+    const stoneWall = getAbilityVfxConfig(PlayerClass.STONEHIDE, 0)!;
+    const avalanche = getAbilityVfxConfig(PlayerClass.STONEHIDE, 3)!;
+    expect(stoneWall.rings).toEqual([]);
+    expect(stoneWall.beam).toBeUndefined();
+    expect(stoneWall.burst).toBeUndefined();
+    expect(avalanche.rings).toEqual([]);
+    expect(avalanche.beam).toBeUndefined();
+    expect(avalanche.burst).toBeUndefined();
+  });
+
+  it('gives Tremor Stomp and Iron Skin (circle hit shapes) no cone wedge', () => {
+    expect(getAbilityVfxConfig(PlayerClass.STONEHIDE, 1)!.cones).toBeUndefined();
+    expect(getAbilityVfxConfig(PlayerClass.STONEHIDE, 2)!.cones).toBeUndefined();
   });
 });
 
