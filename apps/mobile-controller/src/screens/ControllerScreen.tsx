@@ -490,6 +490,8 @@ export function ClassSelectionScreen({ onBack, onPickClass }: ClassSelectionScre
                     letterSpacing: '0.02em',
                     textAlign: 'center',
                     lineHeight: 1.3,
+                    whiteSpace: 'normal',
+                    wordBreak: 'break-word',
                   }}
                 >
                   Pick Selected Class

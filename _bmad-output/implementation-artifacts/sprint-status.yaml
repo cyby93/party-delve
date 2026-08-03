@@ -42,7 +42,22 @@
 # Phase2 legacy stories (old Phase-based keys) are tracked below under PHASE 2 STORIES.
 
 generated: 2026-06-22
-last_updated: 2026-08-03 (correct-course against TODO.md, sprint-change-proposal-2026-08-03.md — 8 new stories added: 2.10/2.11, 4.15a/b/c, 7.14, 7.15a/b/c/d)
+last_updated: 2026-08-03 (code review of 2-11-class-pick-button-fit — review → done)
+# 2026-08-03: code review of 2-11-class-pick-button-fit (Blind Hunter + Edge Case Hunter +
+# Acceptance Auditor). Acceptance Auditor: zero AC violations, clean. 0 decision_needed,
+# 0 patch, 5 defer (D-2.11-A..E in deferred-work.md — mostly latent/unreachable edge cases
+# given the current fixed label string, plus two pre-existing project-wide gaps: no
+# mobile-controller component-test precedent, inline typography styling), 9 dismissed
+# (several tried to contradict AC1's own explicit wordBreak/whiteSpace wording, or were
+# speculative with no measured overflow risk). Status → done.
+# 2026-08-03: dev-story implemented 2-11-class-pick-button-fit — added whiteSpace: 'normal',
+# wordBreak: 'break-word' to the confirm-button label span in ControllerScreen.tsx (2-line
+# CSS-only diff). typecheck clean; full suite green apart from two pre-existing, unrelated
+# failures (Stone Wall VFX geometry test, flaky Ancestor's Voice e2e heal assertion — neither
+# touches mobile-controller). No browser tooling available in-session to screenshot the
+# wrapped label; verified via CSS layout reasoning instead (generous headroom in every
+# surrounding dimension) and flagged for a human visual check before merge. Status → review.
+# 2026-08-03: code review of 2-10-remove-training-dummy-poi — stays review, Client-UX manual pass outstanding
 # 2026-08-03: correct-course ran against TODO.md (sprint-change-proposal-2026-08-03.md,
 # approved, incremental review). Reopened epic-2, epic-4 (both were 'done'); epic-7 was
 # already 'in-progress'. Five triaged items, none new PRD/GDD FRs:
@@ -948,8 +963,8 @@ development_status:
   # 2026-08-03, sprint-change-proposal-2026-08-03.md) — 2.10 closes 2.8's
   # deferred training-dummy-POI removal; 2.11 is an unrelated CSS-only fix
   # found in the same review. No dependency between them.
-  2-10-remove-training-dummy-poi: backlog
-  2-11-class-pick-button-fit: backlog
+  2-10-remove-training-dummy-poi: review
+  2-11-class-pick-button-fit: done
   epic-2-retrospective: optional
 
   # ─── E3: Core Combat — 4 Alpha Classes ──────────────────────────────────────

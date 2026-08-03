@@ -36,7 +36,6 @@ function renderFrame(
   state: GameState,
   app: Application,
   playerGraphics: Map<string, PlayerEntry>,
-  poiGraphics: Map<string, { body: Graphics; label: Text }>,
 ): void {
   // Scale stage so virtual coords map to actual canvas pixels.
   // Virtual center (960, 540) always lands at screen center regardless of display size.
@@ -100,18 +99,6 @@ function renderFrame(
     chatBubble.position.set(player.x, player.y - PLAYER_RADIUS - 8);
   }
 
-  // Training dummy targeting indicator
-  const anyNearDummy = state.players.some(p => p.nearPoiId === 'training-dummy');
-  const dummyEntry = poiGraphics.get('training-dummy');
-  if (dummyEntry) {
-    dummyEntry.body.clear();
-    dummyEntry.body.roundRect(-24, -24, 48, 48, 6).fill({ color: 0xc07d35 });
-    if (anyNearDummy) {
-      dummyEntry.body
-        .roundRect(-32, -32, 64, 64, 10)
-        .stroke({ color: 0xc07d35, width: 2, alpha: 0.7 });
-    }
-  }
 }
 
 export function HubWorldScreen({ gameState, session }: HubWorldScreenProps) {
@@ -144,9 +131,7 @@ export function HubWorldScreen({ gameState, session }: HubWorldScreenProps) {
       // Draw static POI icons into the stage once
       for (const poi of HUB_POIS) {
         const isDungeon = poi.type === PoiType.DUNGEON_ENTRANCE;
-        const color = poi.type === PoiType.CLASS_SELECT ? 0x6ea8d8
-          : poi.type === PoiType.TRAINING_DUMMY ? 0xc07d35
-          : 0x36334a;
+        const color = poi.type === PoiType.CLASS_SELECT ? 0x6ea8d8 : 0x36334a;
         const g = new Graphics();
         g.roundRect(-24, -24, 48, 48, 6).fill({ color });
         g.position.set(poi.x, poi.y);
@@ -154,9 +139,7 @@ export function HubWorldScreen({ gameState, session }: HubWorldScreenProps) {
         app.stage.addChild(g);
 
         const label = new Text({
-          text: poi.type === PoiType.CLASS_SELECT ? 'CLASS'
-            : poi.type === PoiType.TRAINING_DUMMY ? 'TRAIN'
-            : 'GATE',
+          text: poi.type === PoiType.CLASS_SELECT ? 'CLASS' : 'GATE',
           style: new TextStyle({
             fontFamily: 'Lora, serif',
             fontSize: 14,
@@ -173,7 +156,7 @@ export function HubWorldScreen({ gameState, session }: HubWorldScreenProps) {
 
       // Render any state that arrived while PixiJS was initializing
       if (latestGameStateRef.current) {
-        renderFrame(latestGameStateRef.current, app, playerGraphicsRef.current, poiGraphicsRef.current);
+        renderFrame(latestGameStateRef.current, app, playerGraphicsRef.current);
       }
     }
     void initPixi();
@@ -193,7 +176,7 @@ export function HubWorldScreen({ gameState, session }: HubWorldScreenProps) {
 
   useEffect(() => {
     if (!pixiAppRef.current || !gameState) return;
-    renderFrame(gameState, pixiAppRef.current, playerGraphicsRef.current, poiGraphicsRef.current);
+    renderFrame(gameState, pixiAppRef.current, playerGraphicsRef.current);
     // Start a short-lived rAF loop if a class-confirmation flash is active and none is already running
     if (rafRef.current === null) {
       const anyFlash = [...playerGraphicsRef.current.values()].some(e => e.flashUntil > Date.now());
@@ -203,7 +186,7 @@ export function HubWorldScreen({ gameState, session }: HubWorldScreenProps) {
           const state = latestGameStateRef.current;
           if (!app || !state) { rafRef.current = null; return; }
           try {
-            renderFrame(state, app, playerGraphicsRef.current, poiGraphicsRef.current);
+            renderFrame(state, app, playerGraphicsRef.current);
           } catch (err) {
             console.error('[HubWorldScreen] renderFrame threw during flash animation', err);
             rafRef.current = null;
