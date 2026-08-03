@@ -596,6 +596,56 @@ So that the trainer POI can be repurposed for something else without blocking no
 
 ---
 
+### Epic 2 Correction: Hub POI Cleanup & Class-Pick Button Fit
+
+Scoped from the 2026-08-03 correct-course review of the user's own `TODO.md` notes — not new PRD/GDD FRs. Story 2.8 already made the training-dummy POI redundant (abilities work everywhere in the hub) but explicitly deferred removing the POI itself; Story 2.10 closes that. Story 2.11 fixes a pre-existing overflow bug in Story 2.2's ability-briefing panel, found during the same review.
+
+### Story 2.10: Remove Training-Dummy POI
+
+As a player,
+I want the hub to no longer have a training-dummy POI with no purpose,
+So that the hub isn't cluttered with an interactive zone that does nothing Story 2.8 didn't already make possible everywhere.
+
+**Acceptance Criteria:**
+
+**Given** `HUB_POIS` (`packages/shared-types/src/poi.ts:19`) currently includes a `training-dummy` entry
+**When** this story ships
+**Then** the `training-dummy` entry and the now-unused `PoiType.TRAINING_DUMMY` value are removed
+**And** no sim-server code change is needed — `GameRoom.ts`'s POI sensor loop (`GameRoom.ts:379`) iterates `INTERACTIVE_HUB_POIS` generically, so removing the entry from the shared array removes the sensor with it
+
+**Given** `HubWorldScreen.tsx`'s POI rendering (dummy graphics fill at `:107-110`, the `TRAINING_DUMMY`-conditional color/label at `:148`/`:158`)
+**When** this story ships
+**Then** this dummy-specific render code is removed along with the POI
+
+**Given** the hub now has 2 POIs (class-select, dungeon-entrance)
+**When** a player walks the hub
+**Then** no interact prompt, chat bubble, or targetable visual ever appears for a training-dummy POI, and no other code path still references `PoiType.TRAINING_DUMMY` or the string `'training-dummy'`
+
+**Non-goals:** no replacement POI or repurposing of the freed hub space — out of scope for this story.
+
+---
+
+### Story 2.11: Class-Pick Button Fit
+
+As a player picking a class on my phone,
+I want the "Pick Selected Class" button's label to fully fit inside the button,
+So that I can read the full confirm action instead of it clipping at the wrapper's edge.
+
+**Acceptance Criteria:**
+
+**Given** the ability-briefing panel's confirm button (`ControllerScreen.tsx:456-497`), a fixed `flex: '0 0 20%'` column whose label `<span>` has no wrap styling
+**When** this story ships
+**Then** the label wraps per-word (`whiteSpace: 'normal'`, `wordBreak: 'break-word'`) instead of clipping, and the button/wrapper flexes to fit a two-line label without vertical overflow
+**And** the button's touch target remains at least 44×44px (already satisfied by the existing `minHeight: 48`)
+
+**Given** this is a CSS-only fix
+**When** this story ships
+**Then** no other class-selection behavior (card browse, selection state, `onPickClass` handler) changes
+
+**Non-goals:** no copy change (label stays "Pick Selected Class" — wrapping resolves the fit, not a shortened label).
+
+---
+
 ## Epic 3: Core Combat — 4 Alpha Classes
 
 Stonehide, Spiritcaller, Souldrinker, and Stormcaller are fully playable in a dungeon combat encounter with real enemies. Players use abilities, go down, get revived by teammates, and enter spirit form when the revive timer expires. The "Clear" objective type is operational.
@@ -1495,6 +1545,87 @@ So that I know my input was received while waiting for the rest of the party.
 
 ---
 
+### Epic 4 Correction: Abandon-Run Vote
+
+Scoped from the 2026-08-03 correct-course review of the user's own `TODO.md` notes — not new PRD/GDD FRs. No path exists today to voluntarily leave an in-progress run; `session.phase` only returns to `'hub'` via victory or full-party defeat. See ADR-0007. Reuses the existing unanimous-vote shape from this epic's run-start proposal (`run:propose`/`run:vote`), per the user's explicit choice over a single-tap unilateral exit; allowed at any point in the run including during a boss encounter, per the user's explicit choice against phase-gating it. Split by ownership per `CLAUDE.md`'s cross-context rule — 4.15a (contract) sequenced before 4.15b/4.15c, which have no dependency on each other.
+
+### Story 4.15a: Abandon-Run Vote Contract
+
+As a Protocol Architect,
+I want a typed contract for proposing and voting to abandon the current run,
+So that the sim and both clients agree on the shape of an abandon request before any implementation begins.
+
+**Acceptance Criteria:**
+
+**Given** `packages/net-protocol/src/event-names.ts` and `packages/net-protocol/src/messages/mobile-to-server.ts`
+**When** this story ships
+**Then** two new mobile→server message types exist: `run:abandon-propose` (no payload) and `run:abandon-vote` (`{ accept: boolean }`), following the existing `run:propose`/`run:vote` naming and shape convention
+**And** a new broadcast delta `run:abandoned` exists (`packages/net-protocol`), handled by `apply-delta.ts` to transition `session.phase` to `'hub'`
+
+**Given** `gameState` currently has one proposal slot (`runProposal`)
+**When** this story ships
+**Then** a second, independent slot (`abandonProposal`) is added to `GameState` (`packages/shared-types`) so an abandon vote in flight can never be confused with or clobber a run-start vote
+
+**Given** the Contract-change hook (`packages/shared-types` and `packages/net-protocol` are both touched)
+**Then** this story requires Protocol Architect review, ADR-0007, a compatibility note (additive only, no existing message shape changes), and at least one new contract round-trip test for `run:abandoned` before merge
+
+**Non-goals:** vote resolution logic (Story 4.15b) and UI (Story 4.15c) — this story is the contract only.
+
+---
+
+### Story 4.15b: Abandon-Run Resolution
+
+As a player,
+I want my party's unanimous decision to leave a run to actually return everyone to the hub,
+So that we aren't stuck in a run nobody wants to keep playing.
+
+**Acceptance Criteria:**
+
+**Given** any player in `session.phase === 'dungeon'` sends `run:abandon-propose`
+**When** `GameRoom.ts` receives it
+**Then** it sets `gameState.abandonProposal` (mirroring the existing `runProposal` set-on-receipt pattern at `GameRoom.ts:226`), with no phase or boss-state guard blocking the proposal
+
+**Given** an `abandonProposal` is pending
+**When** every connected player sends `run:abandon-vote` with `accept: true`
+**Then** the sim broadcasts `run:abandoned`, transitions `session.phase` to `'hub'` directly (no reward/post-run screen — this is a bail-out, not a completion), clears dungeon state, and resets player positions to hub spawn
+
+**Given** any player sends `run:abandon-vote` with `accept: false`, or disconnects while the vote is pending
+**When** this occurs
+**Then** `abandonProposal` clears immediately (mirroring the existing decline-clears-proposal pattern at `GameRoom.ts:239-248`) and no phase transition occurs
+
+**Given** `tests/unit`/`tests/contract`
+**When** this story ships
+**Then** unanimous-accept, single-decline-cancels, and disconnect-during-vote are each covered, plus the `run:abandoned` round-trip test named in Story 4.15a
+
+**Given** the Simulation-safety hook (`apps/simulation-server` touched)
+**Then** this story requires typecheck, unit tests, a deterministic-tick test, and a perf sanity check before merge
+
+---
+
+### Story 4.15c: Leave-Run Button & Vote UI
+
+As a player,
+I want a way to propose leaving the run from my phone, and to see and respond to a party member's proposal to leave,
+So that I can participate in the decision to bail out of a run.
+
+**Acceptance Criteria:**
+
+**Given** a player is in an active dungeon run
+**When** they look at the mobile controller UI
+**Then** a "Leave Run" button is reachable at any time during the run (not gated to a POI or menu screen)
+
+**Given** a player taps "Leave Run"
+**When** `run:abandon-propose` is sent
+**Then** every player (including the proposer) sees an accept/decline prompt, reusing the existing `VotePopup` visual pattern (`ControllerScreen.tsx:587`)
+
+**Given** the vote resolves (unanimous accept, a decline, or a disconnect)
+**When** `run:abandoned` broadcasts or `abandonProposal` clears
+**Then** the prompt dismisses on every phone accordingly, and on unanimous accept the controller transitions back to its hub layout
+
+**Non-goals:** no host-screen UI change — the phase transition to `'hub'` alone is sufficient signal on the host canvas; a dedicated host banner is not required for this story.
+
+---
+
 ## Epic 5: Spirit Bond System
 
 After each dungeon level, a Spirit Bond is assigned to a random player pair. Bond buffs and prices apply per-tick. Colored particle tethers connect bonded pairs on the host canvas. Three bonds are active simultaneously by the boss fight. Bonded players see a full-screen bond card on their phone; others see a Continue prompt.
@@ -2141,6 +2272,129 @@ So that the ability-specific work isn't silently overridden by a shared fallback
 **Then** both receive a light visual-consistency pass against the Story 7.1 primitive library (no mechanic or timing change — purification pulse still radiates from boss position per UX-DR16, tethers still persist for the run per FR16)
 
 **Non-goals for Epic 7:** no final pixel-art sprites (the separate PixelLab-driven art pass the GDD already scopes remains untouched); no new abilities or mechanics; no protocol/schema changes beyond the one-line `boss:charged` whitelist fix in Story 7.7.
+
+---
+
+### Epic 7 Correction: Hub VFX Wiring & Aim/Destination Preview
+
+Scoped from the 2026-08-03 correct-course review of the user's own `TODO.md` notes — not new PRD/GDD FRs. Two unrelated gaps found together: the entire VFX pipeline was never wired into the hub screen (Story 7.14), and the host has zero visibility into an in-progress aim before a `RELEASE`-type ability fires (Stories 7.15a-d). See ADR-0008 for the aim-preview contract. 7.14 has no dependency on 7.15a-d. Split by ownership per `CLAUDE.md`'s cross-context rule — 7.15a (contract) sequenced before 7.15b/7.15c/7.15d, which have no dependency on each other.
+
+### Story 7.14: Hub-Screen VFX Wiring
+
+As a player,
+I want to see ability VFX when I cast in the hub, the same as I do in a dungeon run,
+So that testing or just messing around with abilities in the hub isn't visually silent.
+
+**Acceptance Criteria:**
+
+**Given** `HubWorldScreen.tsx` currently has zero VFX wiring — `VfxEngine`, `getAbilityVfxConfig`, `resolveAbilityVfxPlacement`, and every per-class VFX module are instantiated only inside `DungeonScreen.tsx`
+**When** this story ships
+**Then** the reusable parts of `DungeonScreen.tsx`'s VFX wiring (engine lifecycle, delta→VFX dispatch, per-tick `VfxEngine` update/render call) are extracted into a shared hook/module (e.g. `useAbilityVfx(engine, gameState)`) that both `HubWorldScreen.tsx` and `DungeonScreen.tsx` call
+**And** casting any ability in the hub now shows the same VFX as the equivalent cast in a dungeon run — status auras, trails, and per-class cast VFX (Stonehide/Spiritcaller/Souldrinker/Stormcaller) all apply identically, since the delta contract is unchanged
+
+**Given** boss-specific VFX (`applyBossVfxPlan`, `planBossVfx`)
+**When** this story ships
+**Then** it remains Dungeon-only — there is no boss in the hub, so that branch is simply never exercised there; no guard is needed
+
+**Given** `DungeonScreen.tsx`'s existing VFX behavior
+**When** the extraction is complete
+**Then** no regression occurs — existing Epic 7 VFX acceptance criteria (7.1–7.8, 7.11–7.13) still pass unchanged
+
+**Non-goals:** no protocol/delta changes — this consumes the exact same ability deltas the hub already receives and ignores today.
+
+---
+
+### Story 7.15a: Aim-Preview Contract
+
+As a Protocol Architect,
+I want a typed contract for a player's in-progress aim before a `RELEASE`-type ability fires,
+So that the host can render an aiming indicator without guessing at un-broadcast client state.
+
+**Acceptance Criteria:**
+
+**Given** `InputEvent` (`packages/shared-types/src/input.ts:12-14`) currently has only `'joystick'` and `'ability'` variants
+**When** this story ships
+**Then** a new `'aim-preview'` variant is added (`{ type: 'aim-preview'; abilityIndex: number; directionX: number; directionY: number }`)
+**And** a new broadcast delta `ability:aim-preview` exists (`{ playerId, abilityIndex, directionX, directionY, targetX?, targetY? }`, `packages/net-protocol`) — presentation-only, never written to persistent `GameState`
+
+**Given** the Contract-change hook (`packages/shared-types` and `packages/net-protocol` are both touched)
+**Then** this story requires Protocol Architect review, ADR-0008, a compatibility note (additive only), and a contract round-trip test for `ability:aim-preview` before merge
+
+**Non-goals:** server-side computation of `targetX`/`targetY` (Story 7.15b), rendering (Story 7.15c), and mobile-side sending (Story 7.15d) — this story is the contract only.
+
+---
+
+### Story 7.15b: Aim-Preview Resolution
+
+As a Simulation Engineer,
+I want the sim to compute and broadcast each aiming player's live direction and, for zone-placement abilities, their would-be target point,
+So that the host can render an honest preview that can never drift from where the ability will actually land.
+
+**Acceptance Criteria:**
+
+**Given** a player sends `input:aim-preview` for a `RELEASE`-type ability
+**When** `GameRoom.ts` receives it
+**Then** it computes `targetX`/`targetY` (for zone-placement abilities — Storm Eye, Stone Wall, Dark Pact, Crimson Lash) using the exact same geometry/delivery math already used at real cast time (`ABILITY_GEOMETRY`, existing placement functions) — no duplicated formula — and broadcasts a throttled `ability:aim-preview` delta
+
+**Given** `AUTO`/`AIM_CAST` abilities already stream a live direction every ~33ms via their existing continuous-fire input
+**When** this story ships
+**Then** the sim broadcasts `ability:aim-preview` for those abilities too, sourced from their existing fire-direction input — no new client-side signal needed for these two input types
+
+**Given** this delta is presentation-only
+**When** it is computed and broadcast
+**Then** it never mutates `GameState`, never touches the PRNG, and is explicitly exempt from the deterministic-tick test's mutation assertions — a perf sanity check is still required (throttled per-aiming-player broadcast, bounded by current max player count)
+
+**Given** `tests/unit`
+**When** this story ships
+**Then** each of the four named zone-placement abilities' preview-target computation is covered, asserting it matches the real cast-time placement for the same inputs
+
+**Given** the Simulation-safety hook (`apps/simulation-server` touched)
+**Then** this story requires typecheck, unit tests, and the perf sanity check above before merge
+
+---
+
+### Story 7.15c: Render Aim Arrow & Destination Preview
+
+As a player,
+I want to see where my aimed ability is currently pointing, and where a zone-targeted ability will land if I release now,
+So that I can adjust my aim before committing to the cast.
+
+**Acceptance Criteria:**
+
+**Given** the `ability:aim-preview` delta (Story 7.15a/b)
+**When** any player is aiming an ability
+**Then** a translucent aim-direction arrow renders from that player's position along the current direction — for `AUTO`/`AIM_CAST` abilities this uses the live fire-direction stream, for `RELEASE`-type abilities this uses the new preview stream
+
+**Given** Storm Eye, Stone Wall, Dark Pact, and Crimson Lash specifically
+**When** their `targetX`/`targetY` preview is present in the delta
+**Then** a ghosted destination/zone preview renders at that point: a circle for Storm Eye, a cone for Stone Wall and Crimson Lash (reusing the 7.13 cone/wedge primitive), and Dark Pact's existing hit-shape
+
+**Given** an ability fires, or the player stops aiming (releases without firing, or the drag is cancelled)
+**When** either occurs
+**Then** the arrow and any destination/zone preview clear immediately
+
+**Non-goals:** no protocol/sim changes — this story only consumes Story 7.15a/b's delta.
+
+---
+
+### Story 7.15d: Mobile Drag-Preview Sending
+
+As a Mobile Controller Engineer,
+I want the phone to report the in-progress drag direction for `RELEASE`-type abilities before the player releases,
+So that the host has something to render an aim preview from.
+
+**Acceptance Criteria:**
+
+**Given** a player is mid-drag on a `RELEASE`-type ability's skill cell (Stone Wall, Crimson Lash, Dark Pact, Storm Eye, and any other current or future `RELEASE`-type ability)
+**When** the drag is in progress
+**Then** the phone sends a throttled `input:aim-preview` event (same ~33ms cadence as the existing joystick input) with the current drag direction
+**And** sending stops immediately on release/fire or on touch-cancel
+
+**Given** `AUTO`/`AIM_CAST` abilities
+**When** this story ships
+**Then** no mobile-side change is made for these — their existing continuous-fire input already carries live direction (Story 7.15b sources the broadcast from that existing stream)
+
+**Non-goals:** no change to the actual fire behavior or the existing `ability` input message — this adds a new, separate, lower-stakes input alongside it.
 
 ---
 

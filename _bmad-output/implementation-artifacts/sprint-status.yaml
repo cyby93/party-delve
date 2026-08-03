@@ -42,7 +42,40 @@
 # Phase2 legacy stories (old Phase-based keys) are tracked below under PHASE 2 STORIES.
 
 generated: 2026-06-22
-last_updated: 2026-07-31 (code review round 2: 7-13-cone-wedge-chain-lightning-and-tempest-hurl-vfx — 3 patches applied, full regression clean, → done)
+last_updated: 2026-08-03 (correct-course against TODO.md, sprint-change-proposal-2026-08-03.md — 8 new stories added: 2.10/2.11, 4.15a/b/c, 7.14, 7.15a/b/c/d)
+# 2026-08-03: correct-course ran against TODO.md (sprint-change-proposal-2026-08-03.md,
+# approved, incremental review). Reopened epic-2, epic-4 (both were 'done'); epic-7 was
+# already 'in-progress'. Five triaged items, none new PRD/GDD FRs:
+# (1) Exit-to-hub button — no voluntary mid-run exit existed (session.phase only reaches
+#     'hub' via run:complete or full-party defeat). Split into 4.15a (Protocol Architect:
+#     run:abandon-propose/run:abandon-vote/run:abandoned contract, ADR-0007) -> {4.15b
+#     (Simulation Engineer: GameRoom.ts vote resolution + phase transition), 4.15c (Mobile
+#     Controller Engineer: Leave-Run button + VotePopup-reuse UI)}. User chose unanimous
+#     vote (reusing the existing run:propose/run:vote shape) over a single-tap exit, and
+#     chose no boss-phase gate (allowed at any point in the run).
+# (2)+(3) 'train' POI removal (2.10) and class-pick button text-overflow fix (2.11) —
+#     both small, single-owner (Host / Mobile respectively), no dependency between them.
+#     2.10 closes what 2.8 explicitly deferred (POI itself unchanged, only its gate was
+#     removed); confirmed no other code references PoiType.TRAINING_DUMMY before scoping.
+#     2.11 confirmed root cause: fixed flex:'0 0 20%' column + unwrapped label span.
+# (4) Hub ability VFX invisible — confirmed HubWorldScreen.tsx never wires VfxEngine at
+#     all (DungeonScreen.tsx-only); 7.14, single-owner Host Experience Engineer, extracts
+#     the shared wiring into a hook both screens call. No protocol change — hub already
+#     receives the same ability deltas, it just never rendered them.
+# (5) Aim-direction arrow + destination/zone preview (originally excluded as unscoped in
+#     the 2026-07-14 proposal) — now scoped with named target abilities. Confirmed a real
+#     contract gap, not just a rendering gap: handleAbilityFire only sends direction at
+#     the moment of fire; all four named abilities (Storm Eye, Stone Wall, Dark Pact,
+#     Crimson Lash) are RELEASE-type with zero pre-fire signal today. AUTO/AIM_CAST
+#     abilities already stream live direction via their existing continuous-fire input,
+#     so no mobile-side change is needed for those. Split 7.15a (Protocol Architect:
+#     input:aim-preview + ability:aim-preview contract, ADR-0008, extends ADR-0003) ->
+#     {7.15b (Simulation Engineer: compute preview target reusing real cast-time
+#     placement math, never duplicated), 7.15c (Host Experience Engineer: render arrow +
+#     zone preview, reuses 7.13's cone/wedge primitive), 7.15d (Mobile Controller
+#     Engineer: send throttled drag-preview for RELEASE-type abilities only)}.
+# TODO.md trimmed to remove the now-actioned sections (extras/controller/VFX), same as
+# the 2026-07-28 precedent.
 # 2026-07-31: code review round 2 of 7-13-cone-wedge-chain-lightning-and-tempest-
 # hurl-vfx — re-reviewed the full diff (including all 4 manual Client-UX pass
 # rounds, never previously reviewed) via Blind Hunter + Edge Case Hunter (the
@@ -899,7 +932,7 @@ development_status:
   # Players explore the tribe village hub, interact with POIs (class selection,
   # training dummy), browse and select a class, and confirm their choice.
   # FRs: FR5, FR11 (4 alpha classes defined), FR12, FR13
-  epic-2: done
+  epic-2: in-progress
   2-1-hub-world-poi-layout-and-interact-button: done
   2-2-class-selection-flow-card-browse-and-selection: done
   2-3-class-confirmation-and-hub-controller-transition: done
@@ -911,6 +944,12 @@ development_status:
   # Closes D-2.6-A/B (rAF stale ref, spurious stopJoystick send) and D-2.8-A/C/D
   # (isInteractive inDungeon bypass, ability-guard regression test, raceTimeout dedup).
   2-9-epic-2-post-28-deferred-hardening: done
+  # Epic 2 Correction: Hub POI Cleanup & Class-Pick Button Fit (correct-course,
+  # 2026-08-03, sprint-change-proposal-2026-08-03.md) — 2.10 closes 2.8's
+  # deferred training-dummy-POI removal; 2.11 is an unrelated CSS-only fix
+  # found in the same review. No dependency between them.
+  2-10-remove-training-dummy-poi: backlog
+  2-11-class-pick-button-fit: backlog
   epic-2-retrospective: optional
 
   # ─── E3: Core Combat — 4 Alpha Classes ──────────────────────────────────────
@@ -993,7 +1032,7 @@ development_status:
   # Vote to start a run, 3 procedural levels, deterministic seed system,
   # Survive the Waves objective, post-run summary.
   # FRs: FR6, FR7, FR8, FR9 (Survive Waves), FR10, FR19, FR29, FR30, FR34
-  epic-4: done
+  epic-4: in-progress
   4-1-deterministic-seed-system-and-floor-layout-generator: done
   4-2-dungeon-entrance-vote-and-run-initialisation: done
   4-3-3-level-run-structure-and-level-transitions: done
@@ -1011,6 +1050,14 @@ development_status:
   # boss-body leak), D1-4.12 (isFrozen never cleared on level transition), D1-4.13
   # (VotePopup stuck-on-Waiting with no recovery timeout).
   4-14-epic-4-post-413-deferred-hardening: done
+  # Epic 4 Correction: Abandon-Run Vote (correct-course, 2026-08-03,
+  # sprint-change-proposal-2026-08-03.md, ADR-0007) — no voluntary mid-run
+  # exit existed before this. Reuses the run:propose/run:vote unanimous-vote
+  # shape by explicit user choice; allowed during a boss encounter by explicit
+  # user choice (no phase gate). Sequenced a(4.15a contract) -> {4.15b, 4.15c}.
+  4-15a-abandon-run-vote-contract: backlog
+  4-15b-abandon-run-resolution: backlog
+  4-15c-leave-run-button-and-vote-ui: backlog
   epic-4-retrospective: optional
 
   # ─── E5: Spirit Bond System ─────────────────────────────────────────────────
@@ -1112,6 +1159,19 @@ development_status:
   # shared-types/net-protocol/game-rules changes — all three gaps consume
   # constants/deltas 3.25-3.27 already shipped).
   7-13-cone-wedge-chain-lightning-and-tempest-hurl-vfx: done
+  # Epic 7 Correction: Hub VFX Wiring & Aim/Destination Preview (correct-course,
+  # 2026-08-03, sprint-change-proposal-2026-08-03.md, ADR-0008). 7.14 (hub VFX
+  # wiring, host-only) has no dependency on 7.15a-d. 7.15a-d: the host had zero
+  # visibility into an in-progress aim before a RELEASE-type ability fires —
+  # confirmed handleAbilityFire only sends direction at the moment of fire, and
+  # all four named zone-target abilities (Storm Eye, Stone Wall, Dark Pact,
+  # Crimson Lash) are RELEASE-type. Split by ownership per CLAUDE.md; sequenced
+  # a(contract) -> {b(sim), c(host render), d(mobile send)}.
+  7-14-hub-screen-vfx-wiring: backlog
+  7-15a-aim-preview-contract: backlog
+  7-15b-aim-preview-resolution: backlog
+  7-15c-render-aim-arrow-and-destination-preview: backlog
+  7-15d-mobile-drag-preview-sending: backlog
   epic-7-retrospective: optional
 
   # ─── E8: Progression & Persistent Meta ──────────────────────────────────────
