@@ -17,7 +17,7 @@ export function App() {
   const [session, setSession] = useState<HostSession | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
-  const [latestTransientDelta, setLatestTransientDelta] = useState<DeltaEventMsg | null>(null);
+  const [transientDeltaQueue, setTransientDeltaQueue] = useState<DeltaEventMsg[]>([]);
   const [runOutcome, setRunOutcome] = useState<'complete' | 'failed' | null>(null);
   const [runReward, setRunReward] = useState<RunReward | null>(null);
 
@@ -28,7 +28,7 @@ export function App() {
     try {
       const s = await createHostSession(setGameState, (code, msg) => {
         setError(`Connection error ${code}: ${msg}`);
-      }, setLatestTransientDelta);
+      }, (delta: DeltaEventMsg) => setTransientDeltaQueue(prev => [...prev, delta]));
       setSession(s);
       setScreen('lobby');
     } catch (err) {
@@ -39,13 +39,14 @@ export function App() {
   }, [isCreating]);
 
   useEffect(() => {
-    if (!latestTransientDelta) return;
-    if (latestTransientDelta.type === 'run:complete') setRunOutcome('complete');
-    else if (latestTransientDelta.type === 'run:failed') { setRunOutcome('failed'); setRunReward(null); }
-    else if (latestTransientDelta.type === 'boss:defeated') setRunReward(latestTransientDelta.reward);
-    const timer = setTimeout(() => setLatestTransientDelta(null), 400);
-    return () => clearTimeout(timer);
-  }, [latestTransientDelta]);
+    if (transientDeltaQueue.length === 0) return;
+    for (const delta of transientDeltaQueue) {
+      if (delta.type === 'run:complete') setRunOutcome('complete');
+      else if (delta.type === 'run:failed') { setRunOutcome('failed'); setRunReward(null); }
+      else if (delta.type === 'boss:defeated') setRunReward(delta.reward);
+    }
+    setTransientDeltaQueue([]);
+  }, [transientDeltaQueue]);
 
   useEffect(() => {
     if (gameState?.session.phase === 'hub') {
@@ -77,7 +78,7 @@ export function App() {
     );
   }
   if (gameState?.session.phase === 'dungeon') {
-    return <DungeonScreen gameState={gameState} session={session} latestTransientDelta={latestTransientDelta} />;
+    return <DungeonScreen gameState={gameState} session={session} transientDeltaQueue={transientDeltaQueue} />;
   }
   if (gameState?.session.phase === 'post-run') {
     return <PostRunSummaryScreen gameState={gameState} runOutcome={runOutcome ?? 'complete'} reward={runReward} />;

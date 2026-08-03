@@ -5,8 +5,7 @@ import { EventNames } from 'net-protocol';
 import type { SnapshotMsg } from 'net-protocol';
 import { PlayerClass } from 'shared-types';
 import {
-  ABILITY_HIT_RANGE_PX,
-  ABILITY_HIT_RADIUS_PX,
+  ABILITY_GEOMETRY,
   STORM_EYE_ZONE_RADIUS_PX,
   STORM_EYE_TICK_MS,
 } from 'game-rules';
@@ -190,8 +189,8 @@ describe('live-room ability dispatch', { timeout: 120_000 }, () => {
     positions.set(ally!.sessionId, allyStart);
     positions.set(enemy!.id, enemyStart);
 
-    const hitRange = ABILITY_HIT_RANGE_PX[PlayerClass.SPIRITCALLER][0]; // 180
-    const hitRadius = ABILITY_HIT_RADIUS_PX[PlayerClass.SPIRITCALLER][0]; // 50
+    const hitRange = ABILITY_GEOMETRY[PlayerClass.SPIRITCALLER][0].hitRangePx; // 180
+    const hitRadius = ABILITY_GEOMETRY[PlayerClass.SPIRITCALLER][0].hitRadiusPx; // 50
     const band = hitRadius - 10; // safety margin inside the true hit-radius tolerance
 
     // Ally: stop well inside the enemy's hit circle.
@@ -247,7 +246,7 @@ describe('live-room ability dispatch', { timeout: 120_000 }, () => {
     positions.set(caster!.sessionId, casterStart);
     positions.set(enemy!.id, enemyStart);
 
-    const hitRange = ABILITY_HIT_RANGE_PX[PlayerClass.STORMCALLER][3]; // 160
+    const hitRange = ABILITY_GEOMETRY[PlayerClass.STORMCALLER][3].hitRangePx; // 160
     // Zone radius is large (150px) relative to hitRange (160px), so the caster just
     // needs to be roughly hitRange away from the enemy — a wide, forgiving band.
     const band = STORM_EYE_ZONE_RADIUS_PX - 20;

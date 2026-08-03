@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { serialize, deserialize, applyDelta, EventNames } from 'net-protocol';
-import type { SnapshotMsg, DeltaEventMsg, InputEventMsg, PlayerPoiEnteredDelta, PlayerPoiExitedDelta, AbilityFiredDelta, EnemyDamagedDelta, PlayerDownedDelta, BondNotificationMsg, ContinueMsg, BossDamagedDelta, BossPhaseChangedDelta, BossDefeatedDelta, RunVictoryMsg, StatusAppliedDelta, StatusExpiredDelta, ProjectileHitDelta, ProjectileExpiredDelta, ZoneTickDelta, ZoneExpiredDelta, ZoneStrikeDelta } from 'net-protocol';
-import type { GameState, PlayerState, RunReward, ProjectileState, ZoneState } from 'shared-types';
-import { PlayerClass, SessionColor, EnemyType, DifficultyTier, EnemyFSMState, BondType, BossPhase, GrasslandAchievement } from 'shared-types';
+import type { SnapshotMsg, DeltaEventMsg, InputEventMsg, PlayerPoiEnteredDelta, PlayerPoiExitedDelta, AbilityFiredDelta, AbilityChainHitDelta, EnemyDamagedDelta, PlayerDownedDelta, BondNotificationMsg, ContinueMsg, BossDamagedDelta, BossPhaseChangedDelta, BossDefeatedDelta, BossChargedDelta, RunVictoryMsg, StatusAppliedDelta, StatusExpiredDelta, ProjectileMovedDelta, ProjectileHitDelta, ProjectileExpiredDelta, ZoneTickDelta, ZoneExpiredDelta, ZoneStrikeDelta } from 'net-protocol';
+import type { GameState, PlayerState, RunReward, ProjectileState, ZoneState, BossState } from 'shared-types';
+import { PlayerClass, SessionColor, EnemyType, DifficultyTier, EnemyFSMState, BondType, BossPhase, BossFSMState, GrasslandAchievement } from 'shared-types';
 
 function mockGameState(): GameState {
   return {
@@ -768,6 +768,38 @@ describe('net-protocol contract tests', () => {
       const decoded = deserialize(encoded) as RunVictoryMsg;
       expect(decoded).toEqual(msg);
     });
+
+    it('BossChargedDelta round-trip (Story 7.7a)', () => {
+      const delta: BossChargedDelta = { type: 'boss:charged', bossId: 'boss-1', x: 512.5, y: 384.25 };
+      const encoded = serialize(delta);
+      const decoded = deserialize(encoded) as BossChargedDelta;
+      expect(decoded).toEqual(delta);
+    });
+
+    it('boss:charged survives serialize → deserialize as a DeltaEventMsg (Story 7.7a)', () => {
+      const delta = { type: 'boss:charged' as const, bossId: 'boss-1', x: 512.5, y: 384.25 } satisfies DeltaEventMsg;
+      expect(deserialize<DeltaEventMsg>(serialize(delta))).toEqual(delta);
+    });
+
+    it('applyDelta boss:charged is a no-op and does not move the mirrored boss (Story 7.7a)', () => {
+      const boss: BossState = {
+        id: 'boss-1',
+        entityType: 'grassland-boss',
+        hp: 500,
+        maxHp: 1000,
+        phase: BossPhase.Phase2,
+        position: { x: 100, y: 100 },
+        isDefeated: false,
+        fsmState: BossFSMState.CHASE,
+        attackCooldownTicks: 0,
+        stompCooldownTicks: 0,
+        chargeCooldownTicks: 0,
+      };
+      const state: GameState = { ...mockGameState(), boss };
+      const next = applyDelta(state, { type: 'boss:charged', bossId: 'boss-1', x: 999, y: 999 });
+      expect(next).toBe(state);
+      expect(next.boss?.position).toEqual({ x: 100, y: 100 });
+    });
   });
 
   describe('Story 3.12 status-effect delta round-trips', () => {
@@ -901,6 +933,11 @@ describe('net-protocol contract tests', () => {
       };
     }
 
+    it('ProjectileMovedDelta survives serialize → deserialize (Story 7.10)', () => {
+      const delta: ProjectileMovedDelta = { type: 'projectile:moved', projectileId: 'proj-1', x: 120, y: 130 };
+      expect(deserialize<DeltaEventMsg>(serialize(delta))).toEqual(delta);
+    });
+
     it('ProjectileHitDelta survives serialize → deserialize', () => {
       const delta: ProjectileHitDelta = { type: 'projectile:hit', projectileId: 'proj-1', x: 120, y: 130 };
       expect(deserialize<DeltaEventMsg>(serialize(delta))).toEqual(delta);
@@ -919,6 +956,25 @@ describe('net-protocol contract tests', () => {
     it('ZoneExpiredDelta survives serialize → deserialize', () => {
       const delta: ZoneExpiredDelta = { type: 'zone:expired', zoneId: 'zone-1' };
       expect(deserialize<DeltaEventMsg>(serialize(delta))).toEqual(delta);
+    });
+
+    it('applyDelta projectile:moved updates x/y of the matching projectile only (Story 7.10)', () => {
+      const state: GameState = {
+        ...mockGameState(),
+        projectiles: [mockProjectile(), mockProjectile({ id: 'proj-2', x: 300, y: 300 })],
+      };
+      const delta: DeltaEventMsg = { type: 'projectile:moved', projectileId: 'proj-1', x: 120, y: 130 };
+      const next = applyDelta(state, delta);
+      expect(next.projectiles.find(p => p.id === 'proj-1')).toMatchObject({ x: 120, y: 130 });
+      expect(next.projectiles.find(p => p.id === 'proj-2')).toMatchObject({ x: 300, y: 300 });
+      expect(state.projectiles.find(p => p.id === 'proj-1')).toMatchObject({ x: 100, y: 100 }); // original not mutated
+    });
+
+    it('applyDelta projectile:moved returns same state reference for unknown projectileId (Story 7.10)', () => {
+      const state: GameState = { ...mockGameState(), projectiles: [mockProjectile()] };
+      const delta: DeltaEventMsg = { type: 'projectile:moved', projectileId: 'ghost', x: 120, y: 130 };
+      const next = applyDelta(state, delta);
+      expect(next).toBe(state);
     });
 
     it('applyDelta projectile:hit removes the projectile from state', () => {
@@ -957,6 +1013,43 @@ describe('net-protocol contract tests', () => {
     it('applyDelta zone:strike is a no-op on state (visual-only; HP change is a separate delta)', () => {
       const state: GameState = { ...mockGameState(), zones: [mockZone()] };
       const delta: DeltaEventMsg = { type: 'zone:strike', zoneId: 'zone-1', targetId: 'enemy-1', damage: 30 };
+      expect(applyDelta(state, delta)).toBe(state);
+    });
+
+    it('AbilityChainHitDelta survives serialize → deserialize', () => {
+      const delta: AbilityChainHitDelta = {
+        type: 'ability:chain-hit',
+        casterId: 'player-1',
+        fromX: 100,
+        fromY: 200,
+        toEnemyId: 'enemy-1',
+        chainIndex: 0,
+      };
+      expect(deserialize<DeltaEventMsg>(serialize(delta))).toEqual(delta);
+    });
+
+    it('AbilityChainHitDelta round-trips with the boss id in toEnemyId (Lightning Arc hitting the boss)', () => {
+      const delta: AbilityChainHitDelta = {
+        type: 'ability:chain-hit',
+        casterId: 'player-1',
+        fromX: 100,
+        fromY: 200,
+        toEnemyId: 'boss-grassland-42',
+        chainIndex: 2,
+      };
+      expect(deserialize<DeltaEventMsg>(serialize(delta))).toEqual(delta);
+    });
+
+    it('applyDelta ability:chain-hit is a no-op on state (visual-only; HP change comes via a separate enemy:damaged/boss:damaged delta)', () => {
+      const state = mockGameState();
+      const delta: DeltaEventMsg = {
+        type: 'ability:chain-hit',
+        casterId: 'player-1',
+        fromX: 100,
+        fromY: 200,
+        toEnemyId: 'enemy-1',
+        chainIndex: 0,
+      };
       expect(applyDelta(state, delta)).toBe(state);
     });
   });

@@ -5,8 +5,8 @@ export { GRASSLAND_ROOM_POOL, BOSS_FLOOR_LAYOUT } from './generation/room-pool.j
 export type { Result, GameError } from './state/result.js';
 export {
   JOYSTICK_DEADBAND,
-  ABILITY_COOLDOWNS_MS, ABILITY_DAMAGE,
-  ABILITY_HIT_RANGE_PX, ABILITY_HIT_RADIUS_PX,
+  ABILITY_BALANCE,
+  ABILITY_GEOMETRY,
   ESSENCE_DROP_AMOUNT, ESSENCE_COLLECT_RADIUS_PX,
   ENEMY_CHASE_RANGE, ENEMY_ATTACK_RANGE, ENEMY_CHASE_SPEED, ENEMY_ATTACK_COOLDOWN_TICKS,
   CHARGE_ACTIVATION_MIN, CHARGE_ACTIVATION_MAX, CHARGE_SPEED, CHARGE_COOLDOWN_TICKS,
@@ -23,16 +23,12 @@ export {
   BOSS_STOMP_DAMAGE,
   PROJECTILE_SPEED_PX_S,
   PROJECTILE_MAX_RANGE_PX,
-  ABILITY_CHAINED_ZONE,
-  ABILITY_SELF_COST_HP,
-  ABILITY_HP_SCALED_DAMAGE,
-  ABILITY_LIFESTEAL_PCT,
-  ABILITY_STATUS_EFFECT,
-  ABILITY_DISPLACEMENT_STRENGTH,
-  ABILITY_HEAL_AMOUNT,
-  ABILITY_DELIVERY,
   VOID_PULSE_PULL_STRENGTH_PX,
   DARK_PACT_DRAIN_PCT,
+  LIGHTNING_ARC_CORRIDOR_ANGLE_DEG,
+  LIGHTNING_ARC_CHAIN_RADIUS_PX,
+  LIGHTNING_ARC_MAX_BOUNCES,
+  LIGHTNING_ARC_CHAIN_DAMAGE_FALLOFF,
   SPIRIT_NOVA_DURATION_MS,
   SPIRIT_NOVA_MAX_RADIUS_PX,
   SOUL_MEND_CHANNEL_DURATION_MS,
@@ -43,13 +39,17 @@ export {
   STORM_EYE_DURATION_MS,
   STORM_EYE_STRIKE_INTERVAL_MS,
   STORM_EYE_STRIKE_DAMAGE,
+  STORM_EYE_PLACEMENT_RANGE_PX,
+  TEMPEST_HURL_PROJECTILE_RADIUS_PX,
+  TEMPEST_HURL_SPEED_PX_S,
+  TEMPEST_HURL_BLAST_RADIUS_PX,
 } from './balance.js';
-export type { ChainedZoneConfig, AbilityStatusEffectConfig, StatusEffectScope, AbilityDeliveryType } from './balance.js';
+export type { AbilityBalance, ChainedZoneConfig, AbilityStatusEffectConfig, StatusEffectScope, AbilityDeliveryType, AbilityHitShape, AbilityGeometry } from './balance.js';
 export { applyPlayerDamage, getReviveWindowMs, healPlayer, calculateLifesteal } from './systems/player-health.js';
 export type { PlayerDamageResult, HealthError } from './systems/player-health.js';
-export { resolveMixedFactionTargets, resolveExpandingRadius, pickRandomIndex } from './systems/targeting.js';
-export type { MixedFactionSplit } from './systems/targeting.js';
-export { applyDamage, isInHitZone } from './systems/combat.js';
+export { resolveMixedFactionTargets, resolveExpandingRadius, pickRandomIndex, findNearestCandidate, resolveLightningArcChain } from './systems/targeting.js';
+export type { MixedFactionSplit, LightningArcCandidate, LightningArcHit } from './systems/targeting.js';
+export { applyDamage, isInHitZone, isInConeZone } from './systems/combat.js';
 export type { DamageResult, CombatError } from './systems/combat.js';
 export { tickEnemy, tickBaseFSM, createEasyLayers, createNormalLayers, createHardLayers } from './systems/ai/fsm.js';
 export type { EnemyContext, BehaviorLayer, EnemyAIEvent } from './systems/ai/fsm.js';

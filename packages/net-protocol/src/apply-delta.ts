@@ -150,6 +150,8 @@ export function applyDelta(state: GameState, evt: DeltaEventMsg): GameState {
       return state; // ponytail: visual indicator only; HP changes come via separate player:hp-updated deltas
     case 'ability:fired':
       return state;  // ponytail: no-op on state — visual effect only; DungeonScreen reads raw delta
+    case 'ability:chain-hit':
+      return state;  // ponytail: visual only — no GameState mutation; DungeonScreen reads raw delta
     case 'spirit-ability:fired':
       return state;  // ponytail: visual only — no GameState mutation
     case 'run:failed':
@@ -184,6 +186,13 @@ export function applyDelta(state: GameState, evt: DeltaEventMsg): GameState {
     }
     case 'boss:stomped':
       return state;  // ponytail: visual only; DungeonScreen reads raw delta
+    case 'boss:charged':
+      return state;  // ponytail: visual only; DungeonScreen reads raw delta. Deliberately does NOT
+                     // write boss.position — case 'boss:moved' above is the single writer. tryCharge
+                     // returns early so no boss:moved fires on the charge tick, leaving the mirror
+                     // ≤11.7px stale (350px/s ÷ 30hz, vs a 48px boss) for ≤1 tick before the next
+                     // boss:moved or the periodic snapshot corrects it. Not a bug — do not "fix"
+                     // this into a second position writer.
     case 'add:spawned':
       return state;  // ponytail: GrasslandAdds arrive via snapshot broadcast
     case 'status:applied': {
@@ -243,6 +252,13 @@ export function applyDelta(state: GameState, evt: DeltaEventMsg): GameState {
         };
       }
       return state;
+    }
+    case 'projectile:moved': {
+      if (!state.projectiles.some(p => p.id === evt.projectileId)) return state;
+      const projectiles = state.projectiles.map(p =>
+        p.id === evt.projectileId ? { ...p, x: evt.x, y: evt.y } : p
+      );
+      return { ...state, projectiles };
     }
     case 'projectile:hit': {
       return { ...state, projectiles: state.projectiles.filter(p => p.id !== evt.projectileId) };

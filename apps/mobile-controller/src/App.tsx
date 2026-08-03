@@ -150,9 +150,15 @@ export function App() {
   const handleCooldownUpdate = useCallback((msg: CooldownUpdateMsg) => {
     setCooldowns(prev => {
       const next = [...prev] as (CooldownState | null)[];
-      if (msg.remainingMs > 0) {
-        const now = Date.now();
-        next[msg.abilityIndex] = { startAt: now, expiresAt: now + msg.remainingMs };
+      // ADR-0004: the message carries server epochs (startedAtMs/expiresAtMs) plus
+      // the server clock at send (serverNowMs). The controller runs on a separate
+      // device from the sim, so we anchor both epochs into the phone's clock via the
+      // send-time skew instead of trusting the raw epochs (which would break if the
+      // phone's wall clock differs from the host's). `expiresAtMs <= serverNowMs`
+      // is the "cleared / ready now" signal. Residual error is one-way LAN latency.
+      if (msg.expiresAtMs > msg.serverNowMs) {
+        const skew = Date.now() - msg.serverNowMs;
+        next[msg.abilityIndex] = { startAt: msg.startedAtMs + skew, expiresAt: msg.expiresAtMs + skew };
       } else {
         next[msg.abilityIndex] = null;
       }

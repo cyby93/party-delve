@@ -138,15 +138,15 @@ UX-DR20: All interactive touch targets on the phone must meet 44×44px minimum h
 |---|---|---|
 | FR1 | E1 | 3–8 player shared screen + phone controllers |
 | FR2 | E1 | QR join; ≤10s session join time |
-| FR3 | E1 (guest), E7 (complete) | Guest access without registration |
-| FR4 | E7 | Registered persistent progression |
+| FR3 | E1 (guest), E8 (complete) | Guest access without registration |
+| FR4 | E8 | Registered persistent progression |
 | FR5 | E2 | Hub village with all POIs |
 | FR6 | E4 | 3 dungeon levels + boss structure |
 | FR7 | E4 | Procedural floor layout + handcrafted room pool |
 | FR8 | E4 | Single shared deterministic seed |
 | FR9 | E3 (Clear), E4 (Survive Waves) | Level objective types |
 | FR10 | E4 | Group dungeon entrance vote |
-| FR11 | E3 (4 classes), E8 (all 10) | Class roster |
+| FR11 | E3 (4 classes), E9 (all 10) | Class roster |
 | FR12 | E3 | 4-ability fixed 2×2 grid |
 | FR13 | E3 | 3 input types (AutoFire / Release / Tap) |
 | FR14 | E5 | Spirit Bond accumulation |
@@ -158,19 +158,19 @@ UX-DR20: All interactive touch targets on the phone must meet 44×44px minimum h
 | FR20 | E3 | Teammate revive by proximity |
 | FR21 | E3 (layered FSM), E6 (boss tiers) | Behavior-tiered difficulty |
 | FR22 | E3 | Enemy count scales with player count |
-| FR23 | E3 (collection), E7 (persistence) | Spirit Essence currency |
-| FR24 | E6 (reward reveal), E7 (persistence) | Post-run rewards |
-| FR25 | E7 | Hub shop (registered players) |
-| FR26 | E7 | Mastery counters + ability variants |
+| FR23 | E3 (collection), E8 (persistence) | Spirit Essence currency |
+| FR24 | E6 (reward reveal), E8 (persistence) | Post-run rewards |
+| FR25 | E8 | Hub shop (registered players) |
+| FR26 | E8 | Mastery counters + ability variants |
 | FR27 | E1 | 30s disconnect grace period |
 | FR28 | E1 | Reconnect restores full slot/state |
-| FR29 | E4, E10 | Post-run summary display |
+| FR29 | E4, E11 | Post-run summary display |
 | FR30 | E4 | Summary persists until all Return to Camp |
 | FR31 | E1 | Lobby QR + session code + real-time slots |
 | FR32 | E1 | Host kick (hold-to-confirm) |
 | FR33 | E1 | Host starts the game |
-| FR34 | E4 (Grassland), E9 (+ Forest) | Biome count |
-| FR35 | E6 (Grassland), E9 (Forest) | Per-biome enemy/boss/achievements |
+| FR34 | E4 (Grassland), E10 (+ Forest) | Biome count |
+| FR35 | E6 (Grassland), E10 (Forest) | Per-biome enemy/boss/achievements |
 | FR36 | E6 | Handcrafted boss room synthesizes prior mechanics |
 | FR37 | E1 | Main menu with Create Session |
 | FR38 | E1 | Authoritative sim server; pure rendering clients |
@@ -203,19 +203,23 @@ After each dungeon level, a Spirit Bond is assigned to a random player pair. Bon
 The Grassland biome boss is fully playable with behavior-tiered AI (Easy/Normal/Hard difficulty layers), synthesizing mechanics from the preceding three levels. Boss defeat triggers the purification pulse, reward reveal animation, and transitions to the post-run summary.
 **FRs covered:** FR21 (boss tiers), FR24 (reward reveal), FR35 (Grassland boss + achievements), FR36
 
-### Epic 7: Progression & Persistent Meta
+### Epic 7: Ability & Environmental VFX Prototyping
+Every shipped ability (16 across the 4 alpha classes) and the Grassland boss's attacks get a distinct, shape/particle-based visual identity — replacing today's undifferentiated flat-color circles — before any final pixel art is integrated. Status effects, projectiles, zones, boss charge telegraphs, and existing environmental effects (purification pulse, bond tethers) are brought to a consistent prototype-quality bar.
+**FRs covered:** none new — visual-groundwork epic, scoped from direct user observation of the shipped combat systems (Epics 3, 3 Extension, 6). See `sprint-change-proposal-2026-07-21.md`. Precedes final art production per the GDD's Art Direction section (PixelLab MCP, no references yet).
+
+### Epic 8: Progression & Persistent Meta
 Registered player accounts work end-to-end: Spirit Essence accumulates across runs, mastery counters track per-ability usage, and the hub shop lets registered players spend on skins and enhancements. Guest and registered players compete in the same run without structural disadvantage.
 **FRs covered:** FR3 (fully complete with registration), FR4, FR23 (persistence), FR24 (Spirit Essence persists), FR25, FR26
 
-### Epic 8: Full Class Roster
+### Epic 9: Full Class Roster
 The remaining 6 classes (Sunwarden, Wildshaper, Songweaver, Trailhunter, Shadowstalker, Windwalker) are fully implemented and playable, completing the roster of 10 radically asymmetric classes.
 **FRs covered:** FR11 (all 10 classes complete)
 
-### Epic 9: Ancient Forest Biome
+### Epic 10: Ancient Forest Biome
 The second biome is fully playable — distinct corrupted enemy pool, unique boss, biome-specific achievement set, and a visual identity distinct from Grassland. Players can select the biome at the dungeon entrance.
 **FRs covered:** FR34 (2 biomes complete), FR35 (Ancient Forest complete)
 
-### Epic 10: Polish, Performance & Telemetry
+### Epic 11: Polish, Performance & Telemetry
 All performance targets are verified by measurement. Telemetry instruments key flows (session start/end, player down/revived, Spirit Bond assignments, run completion). Difficulty curve is playtested and tuned. All NFRs are verified against real metrics.
 **FRs covered:** FR29 (success metrics complete)
 **NFRs verified:** NFR1–NFR17 (all measured, not just targeted)
@@ -1199,6 +1203,88 @@ So that the revive objective (reach the body) is visually clear even after the s
 
 ---
 
+### Epic 3 Correction: Cone Hit-Geometry & Stormcaller Delivery Rework
+
+Scoped from the 2026-07-28 correct-course review of the user's own `TODO.md` notes — not new PRD/GDD FRs. Closes a spec/implementation drift: Stories 3.16, 3.17, and 3.19 each documented Stone Wall, Avalanche, Ancestor's Voice, and Crimson Lash as `Cone/Line` delivery, but `isInHitZone` has only ever implemented a circle. Also reopens Story 3.20's explicit "Lightning Arc, Tempest Hurl... already correct, no rework needed" scoping note, per the user's direct request. See ADR-0005. Sequenced 3.25 → 3.26 (3.26 reuses 3.25's `isInConeZone` primitive for Lightning Arc's targeting corridor).
+
+### Story 3.25: CONE Hit-Geometry Contract & Stonehide/Spiritcaller/Souldrinker Cone Conversion
+
+As a player,
+I want Stone Wall, Avalanche, Ancestor's Voice, and Crimson Lash to hit a true cone in front of me instead of a circle offset along my aim,
+So that these abilities match their long-documented "Cone/Line" spec instead of silently behaving as a circle, and reward aiming at a spread of enemies the way a cone reads visually.
+
+**Acceptance Criteria:**
+
+**Given** a new `AbilityHitShape` contract (`packages/shared-types/src/ability-geometry.ts`)
+**When** an ability's `ABILITY_HIT_SHAPE` entry is `'cone'`
+**Then** its hit-test uses a new pure `isInConeZone` function (`packages/game-rules/src/systems/combat.ts`) — apex at the caster, aimed along the cast direction, length = the ability's existing `ABILITY_HIT_RANGE_PX` entry (reused, not duplicated), half-angle = half of a new `ABILITY_CONE_ANGLE_DEG` entry — instead of `isInHitZone`'s circle-vs-circle test
+
+**Given** Stone Wall (stonehide[0], 50°) and Avalanche (stonehide[3], 40°)
+**When** either fires
+**Then** it hits every enemy in its cone instead of its old offset circle; Stone Wall's pull-toward-caster displacement is unaffected
+
+**Given** Ancestor's Voice (spiritcaller[0], 70°)
+**When** it fires
+**Then** its mixed-faction split (allies healed / enemies damaged, `resolveMixedFactionTargets`) resolves over a cone instead of a circle — `gatherPlayersInHitZone` gains an optional cone mode so this is the only caller needing it (Warding Cry's proximity-radius call is unaffected)
+
+**Given** Crimson Lash (souldrinker[1], 45°)
+**When** it fires
+**Then** its HP-scaled damage (`ABILITY_HP_SCALED_DAMAGE`, unchanged) applies over a cone instead of a circle
+
+**Given** `tests/unit/abilities.test.ts` and a new cone-geometry unit test
+**When** the reworked kit and `isInConeZone` are exercised
+**Then** cone-boundary edge cases (exactly at the angle edge, exactly at max length, caster's own position) and each ability's cone conversion are covered
+
+**Given** the Contract-change hook (`packages/shared-types` is touched)
+**Then** this story requires Protocol Architect review, ADR-0005, and the above contract test before merge
+
+**Non-goals:** VFX for the new cone shape — Stone Wall/Avalanche/Ancestor's Voice/Crimson Lash's VFX still draw their old circle/fan visuals until a follow-up Epic 7 VFX story adds a cone/wedge primitive to `primitives.ts` (tracked as new deferred work, not blocking this story). The per-ability config consolidation raised during this story's design discussion (`D-CC1`, `deferred-work.md`) is explicitly deferred — this story adds `ABILITY_HIT_SHAPE`/`ABILITY_CONE_ANGLE_DEG` as two more flat tables in the existing pattern.
+
+---
+
+### Story 3.26: Stormcaller Rework II — Lightning Arc Chain & Tempest Hurl Projectile
+
+As a Stormcaller,
+I want Lightning Arc to strike the first enemy in my aim and chain to nearby enemies, and Tempest Hurl to be a real slow projectile that explodes on impact,
+So that both abilities deliver on Pillar 1's reaction-time feel with real chain/AoE payoff, instead of Lightning Arc being a shape-identical sibling of Avalanche and Tempest Hurl faking a projectile look the sim never actually threw.
+
+**Acceptance Criteria:**
+
+**Given** Lightning Arc (stormcaller[0])
+**When** it fires
+**Then** the sim gathers living enemies (+boss) inside a narrow 30° targeting corridor (`isInConeZone`, reusing Story 3.25's primitive) out to its existing 160px range, and damages only the nearest one — no target in the corridor is a no-op, same rule as every other directional ability
+
+**Given** Lightning Arc's first target is hit
+**When** resolution continues
+**Then** the sim searches from that enemy's position (not re-aimed) for the nearest not-yet-hit living enemy within `LIGHTNING_ARC_CHAIN_RADIUS_PX` (150px) and damages it at `LIGHTNING_ARC_CHAIN_DAMAGE_FALLOFF` (70%) of the previous hit's damage, repeating up to `LIGHTNING_ARC_MAX_BOUNCES` (2) additional bounces, tracked via a `hitIds`-style set so no enemy is hit twice in the same cast
+
+**Given** a new `ability:chain-hit` delta (`{casterId, fromX, fromY, toEnemyId, chainIndex}`, `packages/net-protocol`)
+**When** each strike in the chain resolves (including the first)
+**Then** it is broadcast once per hit, in order, so the host can draw connected chain-lightning arcs without guessing which same-tick deltas belong to which cast
+
+**Given** Tempest Hurl (stormcaller[1])
+**When** it fires
+**Then** `ABILITY_DELIVERY.stormcaller[1]` is `'projectile'` (reusing the existing `ProjectileState`/planck-body infrastructure Blood Spike and Void Pulse already use) with a bigger, slower body (`TEMPEST_HURL_PROJECTILE_RADIUS_PX` 28px vs. the 12px default, `TEMPEST_HURL_SPEED_PX_S` 300px/s vs. the shared 600px/s default)
+
+**Given** Tempest Hurl's projectile contacts an enemy
+**When** impact resolves
+**Then** it deals its configured damage to every living enemy (and the boss) within `TEMPEST_HURL_BLAST_RADIUS_PX` (defined as `TEMPEST_HURL_PROJECTILE_RADIUS_PX * 2`, not a separately-tuned literal) of the impact point, instead of Blood Spike/Void Pulse's single-target resolution
+
+**Given** Storm Eye (stormcaller[3])
+**When** a developer looks for its placement-distance tuning value
+**Then** a new `STORM_EYE_PLACEMENT_RANGE_PX` alias (`= ABILITY_HIT_RANGE_PX.stormcaller[3]`, not a second value) documents where to tune it, next to the existing `STORM_EYE_ZONE_RADIUS_PX`
+
+**Given** `tests/unit/abilities.test.ts` / a new `tests/unit/lightning-arc.test.ts` and a contract round-trip test for `ability:chain-hit`
+**When** the reworked kit is exercised
+**Then** first-target selection, chain bounce/falloff/cap, no-double-hit, Tempest Hurl's projectile spawn+blast resolution, and the new delta's serialize/deserialize round-trip are each covered
+
+**Given** the Contract-change hook (`packages/net-protocol` gains `ability:chain-hit`) and Simulation-safety hook (`apps/simulation-server`, `packages/game-rules` both touched)
+**Then** this story requires Protocol Architect review, ADR-0005 (shared with 3.25), a compatibility note (additive delta, no existing message shape changes), and full simulation-safety verification (typecheck, unit tests, deterministic tick test, perf sanity) before merge
+
+**Non-goals:** VFX for chain-lightning arcs or the bigger/slower Tempest Hurl ball (follow-up Epic 7 VFX story). Reopens Story 3.20's "already correct, no rework needed" scoping note for Lightning Arc and Tempest Hurl only — Thunder Clap remains untouched and out of scope.
+
+---
+
 ## Epic 4: Procedural Dungeon & Full Run Structure
 
 Players vote to start a run at the dungeon entrance. Three procedurally generated dungeon levels (Clear + Survive the Waves) run sequentially with escalating difficulty. A placeholder victory state ends the run. Post-run summary displays on host. Procedural seed system is deterministic.
@@ -1894,6 +1980,167 @@ So that combat feedback is consistent across all enemy types.
 **When** this story ships
 **Then** the same pattern is extended to `enemy:damaged` deltas — a floating damage number appears above the hit enemy's sprite
 **And** the existing `enemy:killed` fade-out behavior is unchanged
+
+---
+
+## Epic 7: Ability & Environmental VFX Prototyping
+
+Every shipped ability (16 across the 4 alpha classes) and the Grassland boss's attacks get a distinct, shape/particle-based visual identity — replacing today's undifferentiated flat-color circles — before any final pixel art is integrated. Status effects, projectiles, zones, boss charge telegraphs, and existing environmental effects (purification pulse, bond tethers) are brought to a consistent prototype-quality bar.
+
+Scoped from direct user observation, not new PRD FRs — see `sprint-change-proposal-2026-07-21.md`. Confirmed against the shipped code: every projectile renders as the same hardcoded white circle (`DungeonScreen.tsx:308`), every zone as the same hardcoded purple circle (`:329`), status effects differ only by badge fill color (`:258-288`), and `boss:charged` isn't even in the host's transient-delta whitelist (`host-session.ts:50-63`) — the boss's charge attack has no visual telegraph at all. Sequenced so 7.1 (shared engine) lands first; 7.2–7.8 have no dependency on each other, same pattern as the Epic 3 Extension's engine-first sequencing.
+
+### Story 7.1: VFX Engine Foundations
+
+As a Host Experience Engineer,
+I want a small library of reusable, parameterized PixiJS effect primitives,
+So that every ability/status/boss-attack VFX story that follows composes from one shared toolkit instead of writing bespoke `Graphics` code per ability.
+
+**Acceptance Criteria:**
+
+**Given** `apps/host-client/src/screens/DungeonScreen.tsx` currently hand-rolls every effect as inline `Graphics` calls
+**When** the VFX engine lands (new module, e.g. `apps/host-client/src/vfx/`)
+**Then** it exposes at minimum: a particle burst, a trail, a ring/shockwave, a beam, and a tint-pulse primitive — each parameterized by color, size/scale, and duration, with no per-ability logic baked in
+**And** each primitive manages its own PixiJS `Graphics`/`ParticleContainer` lifecycle (create-on-trigger, destroy-on-complete), following the existing create-on-first-seen/cleanup-on-missing pattern already used for players/enemies/tethers in `DungeonScreen.tsx`
+
+**Given** the tick-driven render loop in `DungeonScreen.tsx`
+**When** a primitive is triggered
+**Then** it advances and cleans itself up frame-to-frame without allocating on every frame (reuses the existing per-entity Map-and-mutate pattern, not a new object per tick)
+
+**Given** this story ships
+**When** Stories 7.2–7.8 are implemented
+**Then** none of them add new bespoke `Graphics`-drawing code for basic shapes — they call into this library with per-ability parameters
+
+---
+
+### Story 7.2: Stonehide Ability VFX
+
+As a player,
+I want Stone Wall, Tremor Stomp, Iron Skin, and Avalanche to each look and feel distinct when I use them,
+So that I can tell my abilities apart at a glance instead of seeing the same flash/circle for all four.
+
+**Acceptance Criteria:**
+
+**Given** the Story 7.1 primitive library exists
+**When** Stone Wall (RELEASE, Cone/Line, pulls enemies), Tremor Stomp (TAP, self-centered AoE, damage+slow), Iron Skin (TAP, self-buff), and Avalanche (AUTO, Cone/Line basic attack) fire
+**Then** each renders a visually distinct effect (shape/color/motion combination not shared with any other Stonehide ability) reflecting its mechanical identity — e.g. a pull-oriented cone reads differently from a self-centered shockwave, which reads differently from a self-buff aura
+**And** none of the four fall back to the shared flat-circle/flat-flash treatment from `ABILITY_FLASH_MS`
+
+**Given** Iron Skin's `damageReduction` status effect is active on the caster
+**When** the caster is rendered
+**Then** the self-buff visual persists for the effect's duration, not just at cast moment
+
+---
+
+### Story 7.3: Spiritcaller Ability VFX
+
+As a player,
+I want Ancestor's Voice, Spirit Nova, Soul Mend, and Warding Cry to each look and feel distinct,
+So that Spiritcaller's sustain/burst/defend/revive kit reads clearly in combat.
+
+**Acceptance Criteria:**
+
+**Given** the Story 7.1 primitive library exists
+**When** Ancestor's Voice (AUTO, mixed-faction cone), Spirit Nova (TAP, expanding radius, mixed-faction), Soul Mend (AIM_CAST, ranged spirit-targeting revive), and Warding Cry (TAP, self-centered ally shield) fire
+**Then** each renders a visually distinct effect, and Ancestor's Voice/Spirit Nova visually differentiate their heal-vs-damage split per target (e.g. distinct color/particle treatment for allies healed vs enemies damaged in the same cast)
+**And** Soul Mend's channel/cast has a visible ranged-targeting indicator distinct from the other three, given its AIM_CAST channel behavior (Story 3.11/3.18)
+
+**Given** Warding Cry's `shield` status effect is active on an ally
+**When** that ally is rendered
+**Then** the shield visual persists for the effect's duration (reuses Story 7.6's status-effect visual work where applicable)
+
+---
+
+### Story 7.4: Souldrinker Ability VFX
+
+As a player,
+I want Blood Spike, Crimson Lash, Dark Pact, and Void Pulse to each look and feel distinct,
+So that Souldrinker's lifesteal/melee/self-cost kit reads clearly in combat.
+
+**Acceptance Criteria:**
+
+**Given** the Story 7.1 primitive library exists
+**When** Blood Spike (AUTO, projectile with lifesteal), Crimson Lash (RELEASE, melee), Dark Pact (RELEASE, self-cost buff), and Void Pulse (RELEASE, zone/field) fire
+**Then** each renders a visually distinct effect
+**And** Blood Spike's lifesteal is visually communicated on the caster (e.g. a brief health-return indicator distinct from a generic flash) in addition to the projectile itself
+
+**Given** Dark Pact's self-cost resource spend (Story 3.15)
+**When** the ability fires
+**Then** the caster's self-cost is visually acknowledged (distinct from the buff-gained visual), so the trade-off reads at a glance
+
+---
+
+### Story 7.5: Stormcaller Ability VFX
+
+As a player,
+I want Lightning Arc, Tempest Hurl, Thunder Clap, and Storm Eye to each look and feel distinct,
+So that Stormcaller's ranged/control kit reads clearly in combat.
+
+**Acceptance Criteria:**
+
+**Given** the Story 7.1 primitive library exists
+**When** Lightning Arc (AUTO, projectile), Tempest Hurl (RELEASE, thrown), Thunder Clap (TAP, self-centered AoE), and Storm Eye (RELEASE, persistent zone/field with per-tick effect) fire
+**Then** each renders a visually distinct effect
+**And** Storm Eye's persistent per-tick zone effect (Story 3.13) has a visible ongoing tick indicator (e.g. periodic pulse) distinct from a static zone circle, so its "still active, still ticking" state reads without a HUD element
+
+---
+
+### Story 7.6: Status Effect VFX
+
+As a player,
+I want to tell at a glance which status effect (damage reduction, slow, damage buff, shield) is active on a character, not just that "some" effect is active,
+So that buffs/debuffs are readable mid-combat without opening a menu.
+
+**Acceptance Criteria:**
+
+**Given** `DungeonScreen.tsx:258-288`'s current single generic badge, differentiated from other effects only by `STATUS_EFFECT_COLORS` fill color
+**When** this story ships
+**Then** each of the four effect types (`damageReduction`, `slow`, `damageBuff`, `shield`) gets a distinct aura/overlay treatment (not just a distinct color on the same badge shape), built from the Story 7.1 primitive library
+**And** the existing create-on-first-seen/cleanup-on-missing lifecycle for `statusBadgeGraphics` is preserved — this is a rendering-only change, no new delta events or state fields
+
+**Given** an entity has multiple simultaneous status effects
+**When** it is rendered
+**Then** each effect's distinct visual is layered/positioned so they remain individually readable (not just stacked badges as today)
+
+---
+
+### Story 7.7: Grassland Boss Attack VFX & Charge Telegraph
+
+As a player,
+I want to see the boss's charge attack coming, and want its existing attack reactions to feel visually consistent with the rest of combat,
+So that a currently-invisible attack becomes readable and the boss doesn't look visually disconnected from the new ability VFX.
+
+**Acceptance Criteria:**
+
+**Given** the sim already emits `boss:charged` (`GameRoom.ts:1926`) but `host-session.ts:50-63`'s transient-delta whitelist omits it
+**When** this story ships
+**Then** `boss:charged` is added to the whitelist and reaches the host
+**And** a dedicated charge telegraph visual (built from the Story 7.1 primitive library) plays on the host canvas — today there is zero visual signal for this attack, only silent movement
+
+**Given** the existing `boss:stomped`, `boss:phaseChanged`, and `boss:damaged` reactions (functional since `dev-5-boss-transient-delta-whitelist-fix`)
+**When** this story ships
+**Then** each is reskinned to use the Story 7.1 primitives, for visual consistency with the ability VFX shipped in 7.2–7.5
+**And** no behavior change occurs to boss FSM, phase transitions, or damage resolution — rendering only
+
+---
+
+### Story 7.8: Environmental & Bond VFX Polish
+
+As a player,
+I want projectiles and zones to actually show the per-ability visuals built in 7.2–7.5, and want the existing purification pulse and bond tethers to feel consistent with the new visual language,
+So that the ability-specific work isn't silently overridden by a shared fallback shape.
+
+**Acceptance Criteria:**
+
+**Given** `DungeonScreen.tsx:308`'s hardcoded `g.circle(0, 0, 8).fill({ color: 0xffffff })` for every projectile, and `:329`'s hardcoded `g.circle(0, 0, zone.radius).fill({ color: 0x9b59b6, alpha: 0.25 })` for every zone
+**When** this story ships
+**Then** projectile and zone rendering is driven by each `ProjectileState`/`ZoneState` entity's existing `class`/`abilityIndex` fields (added in Story 3.13) to select the correct per-ability visual from Stories 7.2–7.5, instead of falling back to one shared shape for every ability
+**And** no new state fields or delta events are introduced — this consumes data that already exists
+
+**Given** the existing purification pulse (Story 6.4) and bond particle tethers (Story 5.5)
+**When** this story ships
+**Then** both receive a light visual-consistency pass against the Story 7.1 primitive library (no mechanic or timing change — purification pulse still radiates from boss position per UX-DR16, tethers still persist for the run per FR16)
+
+**Non-goals for Epic 7:** no final pixel-art sprites (the separate PixelLab-driven art pass the GDD already scopes remains untouched); no new abilities or mechanics; no protocol/schema changes beyond the one-line `boss:charged` whitelist fix in Story 7.7.
 
 ---
 

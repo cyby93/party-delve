@@ -53,14 +53,41 @@ export async function createHostSession(
         delta.type === 'player:revived' ||
         delta.type === 'player:spirit' ||
         delta.type === 'player:hp-updated' ||
+        // Story 7.4: forward projectile:hit so the host can drive Souldrinker's
+        // Blood Spike lifesteal-return and Void Pulse impact visuals. Host-local
+        // delivery filtering only — applyDelta runs unconditionally below (:74)
+        // and already handles it (apply-delta.ts:247-249), so mirror state is
+        // unchanged; this only decides whether it reaches React/DungeonScreen.
+        delta.type === 'projectile:hit' ||
         delta.type === 'run:failed' ||
         delta.type === 'level:complete' ||
         delta.type === 'run:complete' ||
         delta.type === 'bond:assigned' ||
+        // Story 7.3: forward the three cast deltas so the host can drive Soul
+        // Mend's channel/terminal visuals. This is host-local delivery filtering
+        // only — applyDelta runs unconditionally below (:67) and already handles
+        // all three (apply-delta.ts:260,271,280), so mirror state is unchanged.
+        delta.type === 'cast:started' ||
+        delta.type === 'cast:cancelled' ||
+        delta.type === 'cast:completed' ||
         delta.type === 'boss:phaseChanged' ||
         delta.type === 'boss:damaged' ||
         delta.type === 'boss:stomped' ||
-        delta.type === 'boss:defeated'
+        delta.type === 'boss:charged' ||
+        delta.type === 'boss:defeated' ||
+        // Story 7.5: forward zone:strike so the host can draw Storm Eye's bonus-
+        // strike accent. Host-local delivery filtering only — applyDelta runs
+        // unconditionally below and already handles it (apply-delta.ts:258), so
+        // mirror state is unchanged; this only decides whether it reaches
+        // React/DungeonScreen. zone:tick is deliberately NOT forwarded (2/s per
+        // zone would displace other deltas in the single-value latestTransientDelta).
+        delta.type === 'zone:strike' ||
+        // Story 7.13: forward ability:chain-hit so the host can draw Lightning
+        // Arc's chain beams. Host-local delivery filtering only — applyDelta
+        // runs unconditionally below and already handles it as a no-op
+        // (apply-delta.ts:153-154), so mirror state is unchanged; this only
+        // decides whether it reaches React/DungeonScreen.
+        delta.type === 'ability:chain-hit'
       )) {
         onTransientDelta(delta);
       }

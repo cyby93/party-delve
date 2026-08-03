@@ -12,8 +12,8 @@ import {
   CAT_BOSS, createZoneBody, createProjectileBody,
 } from '../physics/world.js';
 import type { PoiBeginContactEvent, PoiEndContactEvent, EssenceBeginContactEvent, PhysicsBodyData } from '../physics/world.js';
-import { createRng, tickEnemy, dispatchAbility, getEnemyCount, applyDamage, isInHitZone, ABILITY_HIT_RANGE_PX, ABILITY_HIT_RADIUS_PX, ABILITY_DAMAGE, applyPlayerDamage, getReviveWindowMs, ENEMY_MELEE_DAMAGE, ENEMY_MELEE_RANGE_PX, ENEMY_ATTACK_COOLDOWN_MS, REVIVE_RADIUS_PX, REVIVE_HP, SPIRIT_ABILITY_COOLDOWN_MS, generateFloorLayout, GRASSLAND_ROOM_POOL, WAVE_COUNTS, WAVE_PAUSE_MS, WAVE_ENEMY_SCALE, bondKey, getProximityBuffedPlayers, getFateBuffedPlayers, getFateBondWipeTargets, getProximityDrainTargets, BOND_PROXIMITY_RANGE_PX, BOND_DRAIN_THRESHOLD_S, BOND_DRAIN_HP_PER_TICK, BOND_SPEED_MULT, assignBond, BOND_DESCRIPTIONS, BOND_MECHANICS, createBossState, tickBoss, BOSS_ADD_HP, BOSS_STOMP_DAMAGE, evaluateGrasslandAchievements, JOYSTICK_DEADBAND, createEasyLayers, createNormalLayers, createHardLayers, tickStatusEffects, getStatusEffectMagnitude, applyStatusEffect, resolveProjectileHit, isProjectileExpired, shouldZoneTick, isZoneExpired, PROJECTILE_MAX_RANGE_PX, PROJECTILE_SPEED_PX_S, ABILITY_CHAINED_ZONE, ABILITY_STATUS_EFFECT, ABILITY_DISPLACEMENT_STRENGTH, applyDisplacement, resolveMixedFactionTargets, healPlayer, calculateLifesteal, resolveExpandingRadius, ABILITY_HEAL_AMOUNT, SPIRIT_NOVA_DURATION_MS, SPIRIT_NOVA_MAX_RADIUS_PX, findSoulMendTarget, shouldCancelSoulMendChannel, reviveBySoulMend, SOUL_MEND_CHANNEL_DURATION_MS, SOUL_MEND_LIVENESS_MS, ABILITY_COOLDOWNS_MS, ABILITY_DELIVERY, ABILITY_LIFESTEAL_PCT, VOID_PULSE_PULL_STRENGTH_PX, DARK_PACT_DRAIN_PCT, STORM_EYE_ZONE_RADIUS_PX, STORM_EYE_TICK_MS, STORM_EYE_TICK_DAMAGE, STORM_EYE_DURATION_MS, STORM_EYE_STRIKE_INTERVAL_MS, STORM_EYE_STRIKE_DAMAGE, pickRandomIndex, resolveOutgoingDamage } from 'game-rules';
-import type { BehaviorLayer, EnemyContext, EnemyAIEvent, BossEvent, BossStompedEvent, ChainedZoneConfig } from 'game-rules';
+import { createRng, tickEnemy, dispatchAbility, getEnemyCount, applyDamage, isInHitZone, isInConeZone, ABILITY_GEOMETRY, ABILITY_BALANCE, applyPlayerDamage, getReviveWindowMs, ENEMY_MELEE_DAMAGE, ENEMY_MELEE_RANGE_PX, ENEMY_ATTACK_COOLDOWN_MS, REVIVE_RADIUS_PX, REVIVE_HP, SPIRIT_ABILITY_COOLDOWN_MS, generateFloorLayout, GRASSLAND_ROOM_POOL, WAVE_COUNTS, WAVE_PAUSE_MS, WAVE_ENEMY_SCALE, bondKey, getProximityBuffedPlayers, getFateBuffedPlayers, getFateBondWipeTargets, getProximityDrainTargets, BOND_PROXIMITY_RANGE_PX, BOND_DRAIN_THRESHOLD_S, BOND_DRAIN_HP_PER_TICK, BOND_SPEED_MULT, assignBond, BOND_DESCRIPTIONS, BOND_MECHANICS, createBossState, tickBoss, BOSS_ADD_HP, BOSS_STOMP_DAMAGE, evaluateGrasslandAchievements, JOYSTICK_DEADBAND, createEasyLayers, createNormalLayers, createHardLayers, tickStatusEffects, getStatusEffectMagnitude, applyStatusEffect, resolveProjectileHit, isProjectileExpired, shouldZoneTick, isZoneExpired, PROJECTILE_MAX_RANGE_PX, PROJECTILE_SPEED_PX_S, applyDisplacement, resolveMixedFactionTargets, healPlayer, calculateLifesteal, resolveExpandingRadius, SPIRIT_NOVA_DURATION_MS, SPIRIT_NOVA_MAX_RADIUS_PX, findSoulMendTarget, shouldCancelSoulMendChannel, reviveBySoulMend, SOUL_MEND_CHANNEL_DURATION_MS, SOUL_MEND_LIVENESS_MS, VOID_PULSE_PULL_STRENGTH_PX, DARK_PACT_DRAIN_PCT, STORM_EYE_ZONE_RADIUS_PX, STORM_EYE_TICK_MS, STORM_EYE_TICK_DAMAGE, STORM_EYE_DURATION_MS, STORM_EYE_STRIKE_INTERVAL_MS, STORM_EYE_STRIKE_DAMAGE, pickRandomIndex, resolveOutgoingDamage, LIGHTNING_ARC_CORRIDOR_ANGLE_DEG, LIGHTNING_ARC_CHAIN_RADIUS_PX, LIGHTNING_ARC_MAX_BOUNCES, LIGHTNING_ARC_CHAIN_DAMAGE_FALLOFF, findNearestCandidate, resolveLightningArcChain, TEMPEST_HURL_PROJECTILE_RADIUS_PX, TEMPEST_HURL_SPEED_PX_S, TEMPEST_HURL_BLAST_RADIUS_PX } from 'game-rules';
+import type { BehaviorLayer, EnemyContext, EnemyAIEvent, BossEvent, BossStompedEvent, ChainedZoneConfig, AbilityGeometry, LightningArcCandidate } from 'game-rules';
 import { BOSS_ARENA_SPAWN_POINTS, loadBossArena } from '../levels/boss-arena.js';
 import { CLASS_DEFINITIONS } from 'shared-types';
 import type { EnemyState, StatusEffect, ZoneState, ProjectileState } from 'shared-types';
@@ -518,11 +518,14 @@ export class GameRoom extends Room {
         for (let i = 0; i < playerCooldownsOnReconnect.length; i++) {
           const expiresAt = playerCooldownsOnReconnect[i];
           if (expiresAt !== undefined && expiresAt > nowReconnect) {
-            reconnectedClient.send(EventNames.COOLDOWN_UPDATE, {
-              type: 'cooldown:update',
-              abilityIndex: i,
-              remainingMs: expiresAt - nowReconnect,
-            } satisfies CooldownUpdateMsg);
+            // Reconstruct the original start epoch from the full cooldown so the
+            // client's arc sweep is correct on reconnect (the old code sent only
+            // the *remaining* time, which made the arc animate as if the whole
+            // cooldown were that short — the RELEASE "overlay reset" symptom).
+            const fullCooldownMs = player.class !== null
+              ? ABILITY_BALANCE[player.class][i as 0 | 1 | 2 | 3].cooldownMs
+              : expiresAt - nowReconnect;
+            this.sendCooldownUpdate(reconnectedClient, i, expiresAt - fullCooldownMs, expiresAt);
           }
         }
       }
@@ -1143,8 +1146,7 @@ export class GameRoom extends Room {
     originY: number,
     dirX: number,
     dirY: number,
-    hitRadiusPx: number,
-    hitRangePx: number,
+    geometry: AbilityGeometry,
     isDirectional: boolean,
     casterId: string,
   ): PlayerState[] {
@@ -1152,10 +1154,33 @@ export class GameRoom extends Room {
     for (const p of this.gameState.players) {
       if (p.id === casterId) continue;
       if (p.isDown || p.isSpirit || p.isFrozen) continue;
-      if (!isInHitZone(originX, originY, dirX, dirY, p.x, p.y, hitRadiusPx, hitRangePx, isDirectional)) continue;
+      const inZone = geometry.coneAngleDeg !== undefined
+        ? isInConeZone(originX, originY, dirX, dirY, p.x, p.y, geometry.hitRangePx, geometry.coneAngleDeg)
+        : isInHitZone(originX, originY, dirX, dirY, p.x, p.y, geometry.hitRadiusPx, geometry.hitRangePx, isDirectional);
+      if (!inZone) continue;
       found.push(p);
     }
     return found;
+  }
+
+  // Story 3.25 (ADR-0005): shared shape dispatch for the generic hit-scan loop and
+  // Ancestor's Voice's mixed-faction branch — 'cone' delegates to isInConeZone
+  // (length = hitRangePx, half-angle = half of coneAngleDeg), 'circle' keeps calling
+  // isInHitZone exactly as before every ability in this codebase already does.
+  private isInAbilityHitZone(
+    geometry: AbilityGeometry,
+    casterX: number,
+    casterY: number,
+    dirX: number,
+    dirY: number,
+    targetX: number,
+    targetY: number,
+    isDirectional: boolean,
+  ): boolean {
+    if (geometry.hitShape === 'cone') {
+      return isInConeZone(casterX, casterY, dirX, dirY, targetX, targetY, geometry.hitRangePx, geometry.coneAngleDeg ?? 0);
+    }
+    return isInHitZone(casterX, casterY, dirX, dirY, targetX, targetY, geometry.hitRadiusPx, geometry.hitRangePx, isDirectional);
   }
 
   // Ready-to-use for 3.16-3.20's kit-rework stories — no ability calls this yet in 3.12,
@@ -1181,7 +1206,7 @@ export class GameRoom extends Room {
   }
 
   // Called from the projectile-hit-resolution phase when the hitting ability's
-  // ABILITY_CHAINED_ZONE entry is non-null (Story 3.19's Void Pulse). Declarative —
+  // AbilityBalance.chainedZone entry is non-null (Story 3.19's Void Pulse). Declarative —
   // this method has no knowledge of which ability triggered it.
   private spawnChainedZone(
     ownerId: string,
@@ -1262,14 +1287,13 @@ export class GameRoom extends Room {
   // drain means no buff, per the ability's single linked drain-transfer effect.
   private handleDarkPact(casterId: string, caster: PlayerState, dirX: number, dirY: number, nowMs: number): void {
     const abilityIndex = 2;
-    const hitRange = ABILITY_HIT_RANGE_PX[PlayerClass.SOULDRINKER][abilityIndex];
-    const hitRadius = ABILITY_HIT_RADIUS_PX[PlayerClass.SOULDRINKER][abilityIndex];
+    const geometry = ABILITY_GEOMETRY[PlayerClass.SOULDRINKER][abilityIndex];
     const mag = Math.hypot(dirX, dirY);
     if (mag === 0) return; // no direction = no target, same rule as every other directional ability
     const normDirX = dirX / mag;
     const normDirY = dirY / mag;
 
-    const candidates = this.gatherPlayersInHitZone(caster.x, caster.y, normDirX, normDirY, hitRadius, hitRange, true, casterId);
+    const candidates = this.gatherPlayersInHitZone(caster.x, caster.y, normDirX, normDirY, geometry, true, casterId);
     if (candidates.length === 0) return; // aimed at nothing — cooldown still applies (handled by the caller), no drain/buff
 
     let nearest = candidates[0]!;
@@ -1322,13 +1346,188 @@ export class GameRoom extends Room {
       hp: this.gameState.players[casterIdx]!.hp,
     } satisfies DeltaEventMsg);
 
-    const buffConfig = ABILITY_STATUS_EFFECT[PlayerClass.SOULDRINKER][abilityIndex];
+    const buffConfig = ABILITY_BALANCE[PlayerClass.SOULDRINKER][abilityIndex].statusEffect;
     if (buffConfig) {
       this.gameState.players[casterIdx] = this.applyStatusEffectToTarget(
         this.gameState.players[casterIdx]!,
         { type: buffConfig.effectType, magnitude: buffConfig.magnitude, expiresAtMs: nowMs + buffConfig.durationMs },
         nowMs,
       );
+    }
+  }
+
+  // Every currently-living damageable candidate (enemies + boss, if alive) as
+  // plain {id,x,y} points — the shape Lightning Arc's pure chain math needs.
+  // Re-queried at each chain hop (not a frozen snapshot) so a same-cast kill
+  // earlier in the chain can't leave a stale, already-dead candidate behind.
+  private gatherLightningArcCandidates(): LightningArcCandidate[] {
+    const candidates: LightningArcCandidate[] = this.gameState.enemies
+      .filter(e => e.isAlive)
+      .map(e => ({ id: e.id, x: e.x, y: e.y }));
+    if (this.gameState.boss && !this.gameState.boss.isDefeated) {
+      candidates.push({ id: this.gameState.boss.id, x: this.gameState.boss.position.x, y: this.gameState.boss.position.y });
+    }
+    return candidates;
+  }
+
+  // Applies a single Lightning Arc hit's damage to whichever candidate id it
+  // resolved to (enemy or boss) and broadcasts the matching delta(s) — mirrors
+  // the generic hit-scan loop's own enemy/boss application exactly (applyDamage
+  // for enemies, the same direct Math.max(0, boss.hp - damage) pattern for the
+  // boss), just addressed by id instead of iterating a hit-zone query.
+  // Returns whether the hit actually applied — the caller uses this to gate the
+  // ability:chain-hit visual broadcast, so the host never draws an arc landing
+  // on a target that received no damage and no accompanying enemy:damaged/
+  // boss:damaged delta (a target can only fail to resolve here if it was
+  // concurrently invalidated, e.g. killed by another source in the same tick
+  // before this chain hop was reached).
+  private resolveLightningArcHit(casterId: string, targetId: string, damage: number, nowMs: number): boolean {
+    const ei = this.gameState.enemies.findIndex(e => e.id === targetId);
+    if (ei !== -1) {
+      const enemy = this.gameState.enemies[ei]!;
+      const dropId = `drop-${this.tickCount}-${enemy.id}`;
+      const dmgResult = applyDamage(enemy, damage, dropId, nowMs);
+      if (!dmgResult.ok) return false;
+      this.gameState.enemies[ei] = dmgResult.value.enemy;
+      this.broadcast(EventNames.DELTA, {
+        type: 'enemy:damaged' as const,
+        enemyId: enemy.id,
+        damage,
+        remainingHp: dmgResult.value.enemy.hp,
+      } satisfies DeltaEventMsg);
+
+      if (dmgResult.value.killed) {
+        this.broadcast(EventNames.DELTA, {
+          type: 'enemy:killed' as const,
+          enemyId: enemy.id,
+          byPlayerId: casterId,
+        } satisfies DeltaEventMsg);
+        const enemyBody = this.enemyBodies.get(enemy.id);
+        if (enemyBody) {
+          this.physicsWorld.destroyBody(enemyBody);
+          this.enemyBodies.delete(enemy.id);
+        }
+        this.enemyAttackCooldowns.delete(enemy.id);
+
+        const drop = dmgResult.value.essenceDrop!;
+        this.gameState.essenceDrops.push(drop);
+        this.broadcast(EventNames.DELTA, { type: 'essence:dropped' as const, drop } satisfies DeltaEventMsg);
+        const sensor = createEssenceSensorBody(this.physicsWorld, drop.id, drop.x, drop.y);
+        this.essenceSensorBodies.set(drop.id, sensor);
+      }
+      return true;
+    }
+
+    if (this.gameState.boss && this.gameState.boss.id === targetId) {
+      this.gameState.boss.hp = Math.max(0, this.gameState.boss.hp - damage);
+      this.broadcast(EventNames.DELTA, {
+        type: 'boss:damaged' as const,
+        bossId: this.gameState.boss.id,
+        newHp: this.gameState.boss.hp,
+      } satisfies DeltaEventMsg);
+      return true;
+    }
+
+    return false; // target id resolved to neither a living enemy nor the boss
+  }
+
+  // Lightning Arc (Stormcaller slot 0, Story 3.26): first target in a narrow
+  // directional corridor (isInConeZone, Story 3.25's primitive), then chains up
+  // to LIGHTNING_ARC_MAX_BOUNCES additional bounces at
+  // LIGHTNING_ARC_CHAIN_DAMAGE_FALLOFF per bounce, searching from the PREVIOUS
+  // hit's position (not re-aimed) — resolveLightningArcChain (game-rules) does
+  // the pure nearest/falloff math; this method only gathers live candidates and
+  // applies the resolved hits. Its own dispatch branch, structurally mirroring
+  // handleDarkPact — not the generic hit-scan loop, since chain targeting isn't
+  // a single hit-zone query. `rawDamage` here is already bond/god-mode adjusted
+  // by the caller (see the dispatch loop), same convention as the generic loop's
+  // pre-adjusted `damage` local.
+  //
+  // The epics AC text says the first-target gather includes "(+boss)" but the
+  // chain-hop re-search line says only "living enemy" — an ambiguity flagged
+  // (not silently resolved) in this story's Dev Notes. Implemented reading:
+  // the boss DOES participate in chain hops, for consistency with every other
+  // multi-hit ability in this codebase (generic hit-scan loop, Ancestor's Voice,
+  // Spirit Nova) which never excludes the boss from AoE/sweep continuations.
+  private handleLightningArc(casterId: string, caster: PlayerState, dirX: number, dirY: number, rawDamage: number, nowMs: number): void {
+    const mag = Math.hypot(dirX, dirY);
+    if (mag === 0) return; // no direction = no target — belt-and-suspenders; dispatchAbility already rejects zero-aim before this is ever called
+    const normDirX = dirX / mag;
+    const normDirY = dirY / mag;
+
+    const hitRange = ABILITY_GEOMETRY[PlayerClass.STORMCALLER][0].hitRangePx;
+    const allCandidates = this.gatherLightningArcCandidates();
+    const inCorridor = allCandidates.filter(c =>
+      isInConeZone(caster.x, caster.y, normDirX, normDirY, c.x, c.y, hitRange, LIGHTNING_ARC_CORRIDOR_ANGLE_DEG));
+    const firstTarget = findNearestCandidate(caster.x, caster.y, inCorridor);
+    if (!firstTarget) return; // no target in corridor — no-op, cooldown still applies (handled by the caller)
+
+    const remaining = allCandidates.filter(c => c.id !== firstTarget.id);
+    const hits = resolveLightningArcChain(
+      caster.x, caster.y, firstTarget, rawDamage, remaining,
+      LIGHTNING_ARC_CHAIN_RADIUS_PX, LIGHTNING_ARC_MAX_BOUNCES, LIGHTNING_ARC_CHAIN_DAMAGE_FALLOFF,
+    );
+
+    for (const hit of hits) {
+      const applied = this.resolveLightningArcHit(casterId, hit.id, hit.damage, nowMs);
+      if (!applied) continue; // target invalidated (e.g. concurrently killed) — no damage applied, no visual for a hit that didn't land
+      this.broadcast(EventNames.DELTA, {
+        type: 'ability:chain-hit' as const,
+        casterId,
+        fromX: hit.fromX,
+        fromY: hit.fromY,
+        toEnemyId: hit.id,
+        chainIndex: hit.chainIndex,
+      } satisfies DeltaEventMsg);
+    }
+  }
+
+  // Tempest Hurl's blast AoE (Story 3.26): reused by both its primary-contact
+  // resolution (a regular projectile-enemy contact) and its boss-proximity
+  // detonation (the boss's fixture never generates a planck contact event, so
+  // it needs its own per-tick manual check) — same enemy sweep, two triggers.
+  // Boss damage is NOT applied here — each call site handles the boss hit
+  // itself (the boss can never be `excludeEnemyId`'s contact target, but it CAN
+  // be the detonation trigger itself in the proximity-check call site, which
+  // would double-hit it if this helper also checked the boss).
+  private resolveTempestHurlEnemyBlast(x: number, y: number, damage: number, ownerId: string, excludeEnemyId: string | undefined, nowMs: number): void {
+    for (const enemy of this.gameState.enemies) {
+      if (!enemy.isAlive || enemy.id === excludeEnemyId) continue;
+      if (!isInHitZone(x, y, 0, 0, enemy.x, enemy.y, TEMPEST_HURL_BLAST_RADIUS_PX, 0, false)) continue;
+
+      const ei = this.gameState.enemies.findIndex(e => e.id === enemy.id);
+      const dropId = `drop-${this.tickCount}-${enemy.id}`;
+      const blastResult = applyDamage(this.gameState.enemies[ei]!, damage, dropId, nowMs);
+      if (!blastResult.ok) continue;
+      this.gameState.enemies[ei] = blastResult.value.enemy;
+      this.broadcast(EventNames.DELTA, {
+        type: 'enemy:damaged' as const,
+        enemyId: enemy.id,
+        damage,
+        remainingHp: blastResult.value.enemy.hp,
+      } satisfies DeltaEventMsg);
+
+      if (blastResult.value.killed) {
+        this.broadcast(EventNames.DELTA, {
+          type: 'enemy:killed' as const,
+          enemyId: enemy.id,
+          byPlayerId: ownerId,
+        } satisfies DeltaEventMsg);
+        const enemyBody = this.enemyBodies.get(enemy.id);
+        if (enemyBody) {
+          this.physicsWorld.destroyBody(enemyBody);
+          this.enemyBodies.delete(enemy.id);
+        }
+        this.enemyAttackCooldowns.delete(enemy.id);
+
+        if (blastResult.value.essenceDrop) {
+          const drop = blastResult.value.essenceDrop;
+          this.gameState.essenceDrops.push(drop);
+          this.broadcast(EventNames.DELTA, { type: 'essence:dropped' as const, drop } satisfies DeltaEventMsg);
+          const sensor = createEssenceSensorBody(this.physicsWorld, drop.id, drop.x, drop.y);
+          this.essenceSensorBodies.set(drop.id, sensor);
+        }
+      }
     }
   }
 
@@ -1396,6 +1595,11 @@ export class GameRoom extends Room {
       const newX = toPixels(pos.x);
       const newY = toPixels(pos.y);
 
+      if (!Number.isFinite(newX) || !Number.isFinite(newY)) {
+        logger.debug({ roomId: this.roomId, playerId: player.id, newX, newY }, 'skipped non-finite player position read-back');
+        continue;
+      }
+
       if (Math.abs(newX - player.x) > 0.5 || Math.abs(newY - player.y) > 0.5) {
         player.x = newX;
         player.y = newY;
@@ -1409,13 +1613,77 @@ export class GameRoom extends Room {
       }
     }
 
-    // ── Planck phase 3b: read back projectile positions ──────────────────────────
+    // ── Planck phase 3b: read back projectile positions, broadcast projectile:moved ─
     for (const projectile of this.gameState.projectiles) {
       const body = this.projectileBodies.get(projectile.id);
       if (!body) continue;
+
       const pos = body.getPosition();
-      projectile.x = toPixels(pos.x);
-      projectile.y = toPixels(pos.y);
+      const newX = toPixels(pos.x);
+      const newY = toPixels(pos.y);
+
+      if (!Number.isFinite(newX) || !Number.isFinite(newY)) {
+        logger.debug({ roomId: this.roomId, projectileId: projectile.id, newX, newY }, 'skipped non-finite projectile position read-back');
+        continue;
+      }
+
+      if (Math.abs(newX - projectile.x) > 0.5 || Math.abs(newY - projectile.y) > 0.5) {
+        projectile.x = newX;
+        projectile.y = newY;
+        const delta = {
+          type: 'projectile:moved' as const,
+          projectileId: projectile.id,
+          x: projectile.x,
+          y: projectile.y,
+        } satisfies DeltaEventMsg;
+        this.broadcast(EventNames.DELTA, delta);
+      }
+    }
+
+    // ── Tempest Hurl boss-proximity detonation (Story 3.26) ──────────────────────
+    // The boss body's fixture has filterMaskBits: 0 (GameRoom.ts boss setup) — it
+    // structurally cannot generate a planck contact event, so a Tempest Hurl
+    // projectile thrown straight at the boss (missing every regular enemy) would
+    // otherwise never detonate. Scoped to Tempest Hurl's own projectiles only —
+    // does NOT touch the boss's general physics posture or any other projectile
+    // ability (Blood Spike/Void Pulse still cannot hit the boss, unchanged).
+    if (this.gameState.boss && !this.gameState.boss.isDefeated) {
+      for (let pi = this.gameState.projectiles.length - 1; pi >= 0; pi--) {
+        const projectile = this.gameState.projectiles[pi]!;
+        if (projectile.class !== PlayerClass.STORMCALLER || projectile.abilityIndex !== 1) continue;
+
+        const dx = projectile.x - this.gameState.boss.position.x;
+        const dy = projectile.y - this.gameState.boss.position.y;
+        const triggerRadius = TEMPEST_HURL_PROJECTILE_RADIUS_PX + 48;
+        if (dx * dx + dy * dy > triggerRadius * triggerRadius) continue;
+
+        const rawDamage = ABILITY_BALANCE[projectile.class][projectile.abilityIndex as 0 | 1 | 2 | 3]?.damage ?? 0;
+        const damage = resolveOutgoingDamage(rawDamage, proximityBuffed.has(projectile.ownerId), this.godModePlayerIds.has(projectile.ownerId));
+
+        this.gameState.boss.hp = Math.max(0, this.gameState.boss.hp - damage);
+        this.broadcast(EventNames.DELTA, {
+          type: 'boss:damaged' as const,
+          bossId: this.gameState.boss.id,
+          newHp: this.gameState.boss.hp,
+        } satisfies DeltaEventMsg);
+
+        this.resolveTempestHurlEnemyBlast(projectile.x, projectile.y, damage, projectile.ownerId, undefined, tickNowMs);
+
+        this.broadcast(EventNames.DELTA, {
+          type: 'projectile:hit' as const,
+          projectileId: projectile.id,
+          x: projectile.x,
+          y: projectile.y,
+        } satisfies DeltaEventMsg);
+
+        this.gameState.projectiles.splice(pi, 1);
+        const projectileBody = this.projectileBodies.get(projectile.id);
+        if (projectileBody) {
+          this.physicsWorld.destroyBody(projectileBody);
+          this.projectileBodies.delete(projectile.id);
+        }
+        this.projectileSpawnPositions.delete(projectile.id);
+      }
     }
 
     // ── Planck phase 4: process POI contact events from this tick's world.step() ─
@@ -1719,7 +1987,8 @@ export class GameRoom extends Room {
       if (!enemy.isAlive) continue;
 
       const projectile = this.gameState.projectiles[pi]!;
-      const rawDamage = ABILITY_DAMAGE[projectile.class][projectile.abilityIndex as 0 | 1 | 2 | 3] ?? 0;
+      const projectileBalance = ABILITY_BALANCE[projectile.class][projectile.abilityIndex as 0 | 1 | 2 | 3];
+      const rawDamage = projectileBalance?.damage ?? 0;
       const damage = resolveOutgoingDamage(rawDamage, proximityBuffed.has(projectile.ownerId), this.godModePlayerIds.has(projectile.ownerId));
       const hitResult = resolveProjectileHit(projectile, enemy, damage, tickNowMs);
       if (!hitResult.ok) continue;
@@ -1762,14 +2031,31 @@ export class GameRoom extends Room {
         }
       }
 
+      // Tempest Hurl blast (Stormcaller slot 1, Story 3.26): the primary contacted
+      // enemy above is resolved exactly as any other projectile hit; this additionally
+      // sweeps every OTHER living enemy (and the boss, which never generates its own
+      // contact event) within TEMPEST_HURL_BLAST_RADIUS_PX of the impact point.
+      if (projectile.class === PlayerClass.STORMCALLER && projectile.abilityIndex === 1) {
+        this.resolveTempestHurlEnemyBlast(projectile.x, projectile.y, damage, projectile.ownerId, enemyId, tickNowMs);
+        if (this.gameState.boss && !this.gameState.boss.isDefeated &&
+            isInHitZone(projectile.x, projectile.y, 0, 0, this.gameState.boss.position.x, this.gameState.boss.position.y, TEMPEST_HURL_BLAST_RADIUS_PX, 0, false)) {
+          this.gameState.boss.hp = Math.max(0, this.gameState.boss.hp - damage);
+          this.broadcast(EventNames.DELTA, {
+            type: 'boss:damaged' as const,
+            bossId: this.gameState.boss.id,
+            newHp: this.gameState.boss.hp,
+          } satisfies DeltaEventMsg);
+        }
+      }
+
       // Lifesteal (Blood Spike, Story 3.19): declarative, fires for any projectile
-      // ability with a nonzero ABILITY_LIFESTEAL_PCT entry. Only on a hit — a miss
-      // (projectile expiry, handled elsewhere) already paid the self-cost with no
+      // ability with a nonzero AbilityBalance.lifestealPct entry. Only on a hit — a
+      // miss (projectile expiry, handled elsewhere) already paid the self-cost with no
       // compensating heal. Resolves D-3.15-A's still-open caster-only case: skips
       // the heal if the caster went down/entered spirit form mid-flight (projectile
       // travel time can outlast the caster's own survival), same isDown/isSpirit
       // exclusion gatherPlayersInHitZone already applies to ally heal targets.
-      const lifestealPct = ABILITY_LIFESTEAL_PCT[projectile.class][projectile.abilityIndex as 0 | 1 | 2 | 3];
+      const lifestealPct = projectileBalance?.lifestealPct ?? 0;
       if (lifestealPct > 0) {
         const casterIdx = this.gameState.players.findIndex(p => p.id === projectile.ownerId);
         if (casterIdx !== -1 && !this.gameState.players[casterIdx]!.isDown && !this.gameState.players[casterIdx]!.isSpirit) {
@@ -1789,8 +2075,8 @@ export class GameRoom extends Room {
         y: projectile.y,
       } satisfies DeltaEventMsg);
 
-      // Declarative chain: only fires once 3.19/3.20 populate ABILITY_CHAINED_ZONE for their ability.
-      const chainConfig = ABILITY_CHAINED_ZONE[projectile.class][projectile.abilityIndex as 0 | 1 | 2 | 3];
+      // Declarative chain: only fires once 3.19/3.20 populate AbilityBalance.chainedZone for their ability.
+      const chainConfig = projectileBalance?.chainedZone ?? null;
       if (chainConfig) {
         this.spawnChainedZone(projectile.ownerId, projectile.x, projectile.y, chainConfig, damage, tickNowMs);
       }
@@ -1875,6 +2161,10 @@ export class GameRoom extends Room {
         const delta: DeltaEventMsg = aiEvt;
 
         if (aiEvt.type === 'enemy:moved') {
+          if (!Number.isFinite(enemy.x) || !Number.isFinite(enemy.y)) {
+            logger.debug({ roomId: this.roomId, enemyId: enemy.id }, 'skipped non-finite enemy position broadcast');
+            continue;
+          }
           const body = this.enemyBodies.get(enemy.id);
           if (body) {
             body.setPosition(Vec2(toMeters(enemy.x), toMeters(enemy.y)));
@@ -1902,6 +2192,10 @@ export class GameRoom extends Room {
         for (const evt of bossResult.value) {
           switch (evt.type) {
             case 'boss:moved':
+              if (!Number.isFinite(evt.x) || !Number.isFinite(evt.y)) {
+                logger.debug({ roomId: this.roomId, bossId: evt.bossId }, 'skipped non-finite boss position broadcast');
+                break;
+              }
               this.gameState.boss.position.x = evt.x;
               this.gameState.boss.position.y = evt.y;
               if (this.bossBody) this.bossBody.setPosition(Vec2(toMeters(evt.x), toMeters(evt.y)));
@@ -1924,7 +2218,12 @@ export class GameRoom extends Room {
               break;
 
             case 'boss:charged':
-              // ponytail: charge is a movement event handled by tickBoss — no client delta needed
+              // Story 7.7a: post-hoc charge notification for host VFX. tickBoss has already
+              // applied the movement to this.gameState.boss.position (same object reference),
+              // so this broadcast is purely additive — no state write here.
+              this.broadcast(EventNames.DELTA, {
+                type: 'boss:charged', bossId: evt.bossId, x: evt.x, y: evt.y,
+              } satisfies DeltaEventMsg);
               break;
 
             case 'add:spawned': {
@@ -1973,6 +2272,13 @@ export class GameRoom extends Room {
                 if (this.gameState.session.phase !== 'post-run') return;
                 this.broadcast(EventNames.DELTA, { type: 'run:complete', totalEssence } satisfies DeltaEventMsg);
               }, PURIFICATION_PULSE_DURATION_MS + REWARD_REVEAL_DURATION_MS);
+              break;
+            }
+
+            default: {
+              // Exhaustiveness guard: adding a new BossEvent variant without a case here causes a TS error.
+              const _exhaustive: never = evt;
+              void _exhaustive;
               break;
             }
           }
@@ -2030,15 +2336,13 @@ export class GameRoom extends Room {
 
       const targetClient = this.clients.find(c => c.sessionId === clientId);
       if (targetClient) {
-        targetClient.send(EventNames.COOLDOWN_UPDATE, {
-          type: 'cooldown:update',
-          abilityIndex,
-          remainingMs: cooldownMs,
-        } satisfies CooldownUpdateMsg);
+        // expiresAt === nowAbility + cooldownMs (dispatchAbility), so nowAbility is
+        // the true cooldown start — send both epochs, not a duration.
+        this.sendCooldownUpdate(targetClient, abilityIndex, nowAbility, expiresAt);
       }
 
       // Self-cost (Blood Spike, Story 3.19): generic for any ability with a nonzero
-      // ABILITY_SELF_COST_HP entry — dispatchAbility already computed the 1-HP-floored
+      // AbilityBalance.selfCostHp entry — dispatchAbility already computed the 1-HP-floored
       // amount, this just applies it. Runs regardless of dungeon/training-dummy phase,
       // same as the cooldown update above, since it's a caster-resource cost, not a
       // combat hit effect.
@@ -2069,7 +2373,7 @@ export class GameRoom extends Room {
         // ProjectileState instead of resolving via the same-tick hit-scan below.
         // Branches BEFORE any hit-scan/status-effect logic — the projectile's own
         // hit resolution (Story 3.13's contact-listener path) handles damage later.
-        if (ABILITY_DELIVERY[player.class][abilityIndex as 0 | 1 | 2 | 3] === 'projectile') {
+        if (ABILITY_GEOMETRY[player.class][abilityIndex as 0 | 1 | 2 | 3].delivery === 'projectile') {
           const mag = Math.hypot(dirX, dirY);
           if (mag === 0) continue; // no direction = no shot, same rule as every other directional ability
           const projDirX = dirX / mag;
@@ -2084,7 +2388,16 @@ export class GameRoom extends Room {
             abilityIndex,
           };
           this.gameState.projectiles.push(projectile);
-          const projectileBody = createProjectileBody(this.physicsWorld, projectileId, player.x, player.y, projDirX, projDirY, PROJECTILE_SPEED_PX_S);
+          // Tempest Hurl (Stormcaller slot 1, Story 3.26): bigger/slower body than
+          // the shared projectile defaults — class/index-gated, same style as every
+          // other per-ability special-case in this dispatch block.
+          const isTempestHurl = player.class === PlayerClass.STORMCALLER && abilityIndex === 1;
+          const projectileSpeed = isTempestHurl ? TEMPEST_HURL_SPEED_PX_S : PROJECTILE_SPEED_PX_S;
+          // No radiusPx arg for non-Tempest-Hurl casts — createProjectileBody's own
+          // default (12) applies, rather than re-stating that literal here too.
+          const projectileBody = isTempestHurl
+            ? createProjectileBody(this.physicsWorld, projectileId, player.x, player.y, projDirX, projDirY, projectileSpeed, TEMPEST_HURL_PROJECTILE_RADIUS_PX)
+            : createProjectileBody(this.physicsWorld, projectileId, player.x, player.y, projDirX, projDirY, projectileSpeed);
           this.projectileBodies.set(projectileId, projectileBody);
           this.projectileSpawnPositions.set(projectileId, { x: player.x, y: player.y });
           // No dedicated "projectile:spawned" delta type exists (net-protocol is a
@@ -2100,12 +2413,13 @@ export class GameRoom extends Room {
         // creates (Void Pulse). Branches before any hit-scan/status-effect logic, same
         // as the projectile branch above — the zone's own tick phase (below) resolves
         // damage later, not this dispatch.
-        if (ABILITY_DELIVERY[player.class][abilityIndex as 0 | 1 | 2 | 3] === 'zone') {
+        const zoneGeometry = ABILITY_GEOMETRY[player.class][abilityIndex as 0 | 1 | 2 | 3];
+        if (zoneGeometry.delivery === 'zone') {
           const mag = Math.hypot(dirX, dirY);
           if (mag === 0) continue; // no direction = no placement, same rule as every other directional ability
           const normDirX = dirX / mag;
           const normDirY = dirY / mag;
-          const hitRange = ABILITY_HIT_RANGE_PX[player.class][abilityIndex] ?? 0;
+          const hitRange = zoneGeometry.hitRangePx;
           const zoneX = player.x + normDirX * hitRange;
           const zoneY = player.y + normDirY * hitRange;
           const zoneId = `zone-${this.tickCount}-${clientId}-${this.nextZoneSeq++}`;
@@ -2138,10 +2452,25 @@ export class GameRoom extends Room {
           continue;
         }
 
+        // Lightning Arc (Stormcaller slot 0, Story 3.26): corridor-gather + chain,
+        // not a single hit-zone query — its own dispatch branch, before the generic
+        // hit-scan's hitRange/hitRadius computation. Never falls through to the
+        // generic loop below.
+        if (player.class === PlayerClass.STORMCALLER && abilityIndex === 0) {
+          const chainDamage = resolveOutgoingDamage(result.value.damage, proximityBuffed.has(clientId), this.godModePlayerIds.has(clientId));
+          this.handleLightningArc(clientId, player, dirX, dirY, chainDamage, nowAbility);
+          continue;
+        }
+
+        // Hoisted once, reused by the status-effect branch below and the
+        // displacement/heal reads further down (same slot, no reassignment
+        // of player.class/abilityIndex in between).
+        const abilityBalance = ABILITY_BALANCE[player.class][abilityIndex];
+
         // Self-scope status effect (e.g. Iron Skin) applies independently of
         // the damage hit-scan below — must run before the damage=0 guard,
         // since buff abilities carry no damage.
-        const statusConfig = ABILITY_STATUS_EFFECT[player.class][abilityIndex];
+        const statusConfig = abilityBalance?.statusEffect;
         if (statusConfig?.scope === 'self') {
           const casterIdx = this.gameState.players.findIndex(p => p.id === clientId);
           if (casterIdx !== -1) {
@@ -2155,8 +2484,9 @@ export class GameRoom extends Room {
           // Warding Cry (Story 3.17): proximity radius, no direction/cone — uses Task 1's
           // players-gathering query instead of the enemy loop. Same "runs independent of
           // the damage hit-scan" rationale as the self-scope branch above.
-          const allyHitRadius = ABILITY_HIT_RADIUS_PX[player.class][abilityIndex] ?? 60;
-          for (const ally of this.gatherPlayersInHitZone(player.x, player.y, 0, 0, allyHitRadius, 0, false, clientId)) {
+          const allyHitRadius = ABILITY_GEOMETRY[player.class][abilityIndex]?.hitRadiusPx ?? 60;
+          const wardingCryGeometry: AbilityGeometry = { hitRangePx: 0, hitRadiusPx: allyHitRadius, hitShape: 'circle', delivery: 'hitscan' };
+          for (const ally of this.gatherPlayersInHitZone(player.x, player.y, 0, 0, wardingCryGeometry, false, clientId)) {
             const allyIdx = this.gameState.players.findIndex(p => p.id === ally.id);
             if (allyIdx === -1) continue;
             this.gameState.players[allyIdx] = this.applyStatusEffectToTarget(
@@ -2184,10 +2514,11 @@ export class GameRoom extends Room {
         }
 
         const isDirectional = abilityDef.inputType !== 'TAP';
-        const hitRange  = ABILITY_HIT_RANGE_PX[player.class][abilityIndex] ?? 0;
-        const hitRadius = ABILITY_HIT_RADIUS_PX[player.class][abilityIndex] ?? 60;
-        const displacementStrength = ABILITY_DISPLACEMENT_STRENGTH[player.class][abilityIndex] ?? 0;
-        const healAmount = ABILITY_HEAL_AMOUNT[player.class][abilityIndex] ?? 0;
+        const geometry = ABILITY_GEOMETRY[player.class][abilityIndex] ?? { hitRangePx: 0, hitRadiusPx: 60, hitShape: 'circle' as const, delivery: 'hitscan' as const };
+        const hitRange = geometry.hitRangePx;
+        const hitRadius = geometry.hitRadiusPx;
+        const displacementStrength = abilityBalance?.displacementStrength ?? 0;
+        const healAmount = abilityBalance?.healAmount ?? 0;
         const casterX = player.x;
         const casterY = player.y;
         const rawDamage = result.value.damage;
@@ -2209,8 +2540,10 @@ export class GameRoom extends Room {
         // damage enemies / heal allies (Story 3.17, Task 2).
         if (player.class === PlayerClass.SPIRITCALLER && abilityIndex === 0) {
           const enemiesInZone = this.gameState.enemies.filter(e =>
-            e.isAlive && isInHitZone(casterX, casterY, normDirX, normDirY, e.x, e.y, hitRadius, hitRange, isDirectional));
-          const alliesInZone = this.gatherPlayersInHitZone(casterX, casterY, normDirX, normDirY, hitRadius, hitRange, isDirectional, clientId);
+            e.isAlive && this.isInAbilityHitZone(geometry, casterX, casterY, normDirX, normDirY, e.x, e.y, isDirectional));
+          const alliesInZone = this.gatherPlayersInHitZone(
+            casterX, casterY, normDirX, normDirY, geometry, isDirectional, clientId,
+          );
           const { allies, enemies } = resolveMixedFactionTargets(clientId, [...enemiesInZone, ...alliesInZone]);
 
           for (const target of enemies) {
@@ -2256,9 +2589,9 @@ export class GameRoom extends Room {
 
           // Story 6.7: boss hit-scan for the mixed-faction cone — same pattern as Task 1.
           if (this.gameState.boss && !this.gameState.boss.isDefeated &&
-              isInHitZone(casterX, casterY, normDirX, normDirY,
+              this.isInAbilityHitZone(geometry, casterX, casterY, normDirX, normDirY,
                 this.gameState.boss.position.x, this.gameState.boss.position.y,
-                hitRadius, hitRange, isDirectional)) {
+                isDirectional)) {
             this.gameState.boss.hp = Math.max(0, this.gameState.boss.hp - damage);
             this.broadcast(EventNames.DELTA, {
               type: 'boss:damaged' as const,
@@ -2283,7 +2616,7 @@ export class GameRoom extends Room {
         for (let ei = 0; ei < this.gameState.enemies.length; ei++) {
           const enemy = this.gameState.enemies[ei]!;
           if (!enemy.isAlive) continue;
-          if (!isInHitZone(player.x, player.y, normDirX, normDirY, enemy.x, enemy.y, hitRadius, hitRange, isDirectional)) continue;
+          if (!this.isInAbilityHitZone(geometry, player.x, player.y, normDirX, normDirY, enemy.x, enemy.y, isDirectional)) continue;
 
           const dropId = `drop-${this.tickCount}-${enemy.id}`;
           const dmgResult = applyDamage(enemy, damage, dropId, nowAbility);
@@ -2343,9 +2676,9 @@ export class GameRoom extends Room {
         // status-effect/displacement application — boss defeat/phase transitions are
         // handled entirely by tickBoss reading boss.hp on its own next tick.
         if (this.gameState.boss && !this.gameState.boss.isDefeated &&
-            isInHitZone(player.x, player.y, normDirX, normDirY,
+            this.isInAbilityHitZone(geometry, player.x, player.y, normDirX, normDirY,
               this.gameState.boss.position.x, this.gameState.boss.position.y,
-              hitRadius, hitRange, isDirectional)) {
+              isDirectional)) {
           this.gameState.boss.hp = Math.max(0, this.gameState.boss.hp - damage);
           this.broadcast(EventNames.DELTA, {
             type: 'boss:damaged' as const,
@@ -2374,8 +2707,11 @@ export class GameRoom extends Room {
         const enemiesInRing = this.gameState.enemies.filter(e =>
           e.isAlive && !nova.hitIds.has(e.id) &&
           isInHitZone(nova.x, nova.y, 0, 0, e.x, e.y, currentRadius, 0, false));
-        const alliesInRing = this.gatherPlayersInHitZone(nova.x, nova.y, 0, 0, currentRadius, 0, false, nova.casterId)
-          .filter(p => !nova.hitIds.has(p.id));
+        const alliesInRing = this.gatherPlayersInHitZone(
+          nova.x, nova.y, 0, 0,
+          { hitRangePx: 0, hitRadiusPx: currentRadius, hitShape: 'circle', delivery: 'hitscan' },
+          false, nova.casterId,
+        ).filter(p => !nova.hitIds.has(p.id));
         // Story 6.7: boss participates in this sweep's once-per-activation hit tracking too.
         // Computed here (not inside the `if` below) so a boss-only ring — zero enemies,
         // zero allies — still enters the block and computes novaDamage.
@@ -2386,12 +2722,13 @@ export class GameRoom extends Room {
 
         if (enemiesInRing.length > 0 || alliesInRing.length > 0 || bossInRing) {
           const { allies, enemies } = resolveMixedFactionTargets(nova.casterId, [...enemiesInRing, ...alliesInRing]);
-          const rawNovaDamage = ABILITY_DAMAGE[PlayerClass.SPIRITCALLER][1];
+          const novaBalance = ABILITY_BALANCE[PlayerClass.SPIRITCALLER][1];
+          const rawNovaDamage = novaBalance.damage;
           // Same Bond proximity-damage-buff treatment as every other damaging ability
           // (see Ancestor's Voice a few lines above) — heal is intentionally unbuffed,
           // matching Ancestor's Voice's heal side (BOND_DAMAGE_MULT is a damage-only buff).
           const novaDamage = resolveOutgoingDamage(rawNovaDamage, proximityBuffed.has(nova.casterId), this.godModePlayerIds.has(nova.casterId));
-          const novaHeal = ABILITY_HEAL_AMOUNT[PlayerClass.SPIRITCALLER][1];
+          const novaHeal = novaBalance.healAmount;
 
           for (const target of enemies) {
             nova.hitIds.add(target.id);
@@ -2488,11 +2825,8 @@ export class GameRoom extends Room {
 
         const targetClient = this.clients.find(c => c.sessionId === clientId);
         if (targetClient) {
-          targetClient.send(EventNames.COOLDOWN_UPDATE, {
-            type: 'cooldown:update',
-            abilityIndex: 3,
-            remainingMs: SPIRIT_ABILITY_COOLDOWN_MS,
-          } satisfies CooldownUpdateMsg);
+          // spiritCooldownMap was just set to nowSpirit + SPIRIT_ABILITY_COOLDOWN_MS.
+          this.sendCooldownUpdate(targetClient, 3, nowSpirit, nowSpirit + SPIRIT_ABILITY_COOLDOWN_MS);
         }
 
         logger.debug({ roomId: this.roomId, clientId, class: player.class }, 'spirit ability fired');
@@ -2755,8 +3089,9 @@ export class GameRoom extends Room {
         if (channel === null) continue;
 
         const target = this.gameState.players.find(p => p.id === channel.targetPlayerId);
-        const hitRange = ABILITY_HIT_RANGE_PX[caster.class as PlayerClass][channel.abilityIndex as 0 | 1 | 2 | 3] ?? 0;
-        const hitRadius = ABILITY_HIT_RADIUS_PX[caster.class as PlayerClass][channel.abilityIndex as 0 | 1 | 2 | 3] ?? 0;
+        const channelGeometry = ABILITY_GEOMETRY[caster.class as PlayerClass][channel.abilityIndex as 0 | 1 | 2 | 3];
+        const hitRange = channelGeometry.hitRangePx;
+        const hitRadius = channelGeometry.hitRadiusPx;
         const lastInput = this.lastSoulMendInputAt.get(caster.id) ?? 0;
         const casterIncapacitated = caster.isDown || caster.isFrozen || caster.isSpirit;
 
@@ -2842,11 +3177,7 @@ export class GameRoom extends Room {
           if (player?.isSpirit && i < 3) continue;
           const targetClient = this.clients.find(c => c.sessionId === clientId);
           if (targetClient) {
-            targetClient.send(EventNames.COOLDOWN_UPDATE, {
-              type: 'cooldown:update',
-              abilityIndex: i,
-              remainingMs: 0,
-            } satisfies CooldownUpdateMsg);
+            this.sendCooldownUpdate(targetClient, i, 0, 0); // cleared
           }
         }
       }
@@ -2859,11 +3190,7 @@ export class GameRoom extends Room {
         this.spiritCooldownMap.set(clientId, 0);
         const targetClient = this.clients.find(c => c.sessionId === clientId);
         if (targetClient) {
-          targetClient.send(EventNames.COOLDOWN_UPDATE, {
-            type: 'cooldown:update',
-            abilityIndex: 3,
-            remainingMs: 0,
-          } satisfies CooldownUpdateMsg);
+          this.sendCooldownUpdate(targetClient, 3, 0, 0); // cleared
         }
       }
     }
@@ -2907,7 +3234,26 @@ export class GameRoom extends Room {
     }
   }
 
-  // Send COOLDOWN_UPDATE(remainingMs=0) for class slots 0-2 that expired while the player
+  // Emit a cooldown:update carrying server epochs (cooldown-sync fix 2026-07-25,
+  // ADR-0004) rather than a duration. The client corrects for host↔phone wall-clock
+  // skew via serverNowMs. Pass startedAtMs===expiresAtMs (e.g. both 0) to signal
+  // "cleared / ready now" — the client then clears the slot.
+  private sendCooldownUpdate(
+    target: { send(type: string, message: CooldownUpdateMsg): void },
+    abilityIndex: number,
+    startedAtMs: number,
+    expiresAtMs: number,
+  ): void {
+    target.send(EventNames.COOLDOWN_UPDATE, {
+      type: 'cooldown:update',
+      abilityIndex,
+      startedAtMs,
+      expiresAtMs,
+      serverNowMs: Date.now(),
+    } satisfies CooldownUpdateMsg);
+  }
+
+  // Send a "cleared" cooldown:update for class slots 0-2 that expired while the player
   // was in spirit form (server cleared cooldowns[i] to 0 but skipped the message per AC7).
   private flushExpiredClassCooldowns(playerId: string): void {
     const cooldowns = this.cooldownMap.get(playerId);
@@ -2916,11 +3262,7 @@ export class GameRoom extends Room {
     if (!targetClient) return;
     for (let i = 0; i < 3; i++) {
       if (cooldowns[i] === 0) {
-        targetClient.send(EventNames.COOLDOWN_UPDATE, {
-          type: 'cooldown:update',
-          abilityIndex: i,
-          remainingMs: 0,
-        } satisfies CooldownUpdateMsg);
+        this.sendCooldownUpdate(targetClient, i, 0, 0); // cleared
       }
     }
   }
@@ -2946,8 +3288,9 @@ export class GameRoom extends Room {
 
     if ((playerCooldowns[abilityIndex] ?? 0) > nowMs) return;
 
-    const hitRange = ABILITY_HIT_RANGE_PX[caster.class as PlayerClass][abilityIndex as 0 | 1 | 2 | 3] ?? 0;
-    const hitRadius = ABILITY_HIT_RADIUS_PX[caster.class as PlayerClass][abilityIndex as 0 | 1 | 2 | 3] ?? 0;
+    const soulMendGeometry = ABILITY_GEOMETRY[caster.class as PlayerClass][abilityIndex as 0 | 1 | 2 | 3];
+    const hitRange = soulMendGeometry.hitRangePx;
+    const hitRadius = soulMendGeometry.hitRadiusPx;
     const mag = Math.hypot(dirX, dirY);
     if (mag === 0 && hitRange > 0) return; // no aim direction = no target, same rule as every other directional ability
     const normDirX = mag > 0 ? dirX / mag : dirX;
@@ -3016,15 +3359,12 @@ export class GameRoom extends Room {
     if (caster?.class) {
       const cooldowns = this.cooldownMap.get(casterId);
       if (cooldowns) {
-        const cooldownMs = ABILITY_COOLDOWNS_MS[caster.class][abilityIndex as 0 | 1 | 2 | 3];
-        cooldowns[abilityIndex] = Date.now() + cooldownMs;
+        const cooldownMs = ABILITY_BALANCE[caster.class][abilityIndex as 0 | 1 | 2 | 3].cooldownMs;
+        const nowCd = Date.now();
+        cooldowns[abilityIndex] = nowCd + cooldownMs;
         const casterClient = this.clients.find(c => c.sessionId === casterId);
         if (casterClient) {
-          casterClient.send(EventNames.COOLDOWN_UPDATE, {
-            type: 'cooldown:update',
-            abilityIndex,
-            remainingMs: cooldownMs,
-          } satisfies CooldownUpdateMsg);
+          this.sendCooldownUpdate(casterClient, abilityIndex, nowCd, nowCd + cooldownMs);
         }
       }
     }

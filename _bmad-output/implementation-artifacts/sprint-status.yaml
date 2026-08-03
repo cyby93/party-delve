@@ -1,5 +1,5 @@
 # generated: 2026-06-22
-# last_updated: 2026-07-21 (epic-1-retrospective done)
+# last_updated: 2026-07-26 (7-7a-boss-charged-delta-contract-and-broadcast → done)
 # project: party-delve
 # project_key: NOKEY
 # tracking_system: file-system
@@ -42,18 +42,469 @@
 # Phase2 legacy stories (old Phase-based keys) are tracked below under PHASE 2 STORIES.
 
 generated: 2026-06-22
-last_updated: 2026-07-21 (epic-1-retrospective done)
+last_updated: 2026-07-31 (code review round 2: 7-13-cone-wedge-chain-lightning-and-tempest-hurl-vfx — 3 patches applied, full regression clean, → done)
+# 2026-07-31: code review round 2 of 7-13-cone-wedge-chain-lightning-and-tempest-
+# hurl-vfx — re-reviewed the full diff (including all 4 manual Client-UX pass
+# rounds, never previously reviewed) via Blind Hunter + Edge Case Hunter (the
+# Acceptance Auditor layer failed on the session's API usage limit). 3 patch
+# findings, all applied: createConeWedge's non-degenerate filled:false stroke
+# branch now floors lineWidth like its degenerate sibling; angleDeg is now
+# clamped to [0, 360] and the shoelace area test got an upper bound to catch a
+# reflex-arc regression; ability:chain-hit's chainIndex * 40 stagger math now
+# guards non-finite input. 9 dismissed as by-design/already-verified/cosmetic.
+# Typecheck clean (10/10), vfx/screens suites 116 passed / 1 pre-existing
+# unrelated failure. Status → done.
+# 2026-07-30: manual Client-UX pass round 4 of 7-13-cone-wedge-chain-lightning-
+# and-tempest-hurl-vfx — explicit user direction: cone wedges advance too
+# slowly for instant abilities, halve their fade duration. Halved every cone
+# layer's durationMs across all four cone abilities (Stone Wall/Avalanche in
+# ability-vfx.ts, Ancestor's Voice in spiritcaller-vfx.ts, Crimson Lash in
+# souldrinker-vfx.ts): fill 320->160ms, outline 280->140ms, no angle/radius/
+# color/alpha changes. Typecheck clean (10/10), vfx/screens suites 116
+# passed / 1 pre-existing failure. Status stays review.
+# 2026-07-30: manual Client-UX pass round 3 of 7-13-cone-wedge-chain-lightning-
+# and-tempest-hurl-vfx — explicit user direction: remove the pre-existing
+# (pre-7.13) VFX for Stone Wall, Avalanche, and Ancestor's Voice entirely,
+# keeping only the cone wedge, and make the cone shapes noticeably more
+# intense. AbilityVfxConfig.cone (single) -> cones (array), mirroring the
+# rings layering pattern, so each ability stacks a soft fill under a bright
+# outline. Stone Wall/Avalanche (ability-vfx.ts) lost their old rings/beam/
+# burst entirely. Ancestor's Voice (spiritcaller-vfx.ts) lost its beam/
+# implode-ring/burst; deleted the now-dead ANCESTORS_VOICE_RADIUS_PX export.
+# Crimson Lash (not named for removal) got the same fill+outline treatment
+# layered onto its existing beam fan. DungeonScreen.tsx's cone render loop
+# updated for the array. Typecheck clean (10/10), vfx/screens suites 116
+# passed / 1 pre-existing failure. Status stays review.
+# 2026-07-30: manual Client-UX pass round 2 of 7-13-cone-wedge-chain-lightning-
+# and-tempest-hurl-vfx — user confirmed Stone Wall/Lightning Arc now correct
+# after round 1's fix, but Crimson Lash and Avalanche still showed nothing.
+# Crimson Lash never had an actual wedge shape (Task 4 originally chose only
+# the re-derived beam-fan option) — added a 'cone' VfxSpec variant to
+# souldrinker-vfx.ts and wired a real wedge into planCrimsonLashCast. Avalanche's
+# wedge was verified drawing correctly (stress-tested 40deg/75px across 36
+# directions, no throws/degenerate output) but its ring, beam, and cone all
+# shared the identical STONEHIDE_OCHRE color, so it visually merged into the
+# old effects with zero contrast; recolored the cone to STONEHIDE_DUST
+# (mirroring Stone Wall's own contrast pattern) and bumped alpha/duration.
+# Typecheck clean (10/10), vfx/screens suites 115 passed / 1 pre-existing
+# failure. Status stays review.
+# 2026-07-30: manual Client-UX pass round 1 (Task 8/AC9) of 7-13-cone-wedge-chain-
+# lightning-and-tempest-hurl-vfx, performed by the user actually running the
+# game. Found and fixed a critical createConeWedge bug: the initial lineTo
+# targeted the wrong arc tip (PixiJS's Graphics.arc(), unlike Canvas2D, never
+# auto-connects from the current point), so every cone wedge filled only ~12%
+# of its intended area (a thin sliver near the rim, confirmed via the
+# shoelace formula) instead of the full pie slice — this is why cone shapes
+# for Stone Wall/Avalanche/Ancestor's Voice/Crimson Lash read as "not visible
+# at all". Fixed in primitives.ts; added a new area-based regression test
+# (reads the real filled polygon via Pixi's shapePath getter) since the prior
+# bounds-only tests could not have caught this. Removed Lightning Arc's
+# static "crack ring" per explicit user request. Investigated "chain doesn't
+# continue past the first hit" via a temporary live simulation-server test
+# (not committed): confirmed sim + host VFX are both correctly wired, but
+# real dungeon-run enemy spacing (887px, 302.6px sampled) far exceeds
+# LIGHTNING_ARC_CHAIN_RADIUS_PX (150px) — a game-rules balance/spawn-density
+# question, not a VFX defect; deferred as D-7.13-B. Typecheck clean (10/10),
+# vfx/screens suites 114 passed / 1 pre-existing failure. Status stays review.
+# 2026-07-30: code-review of 7-13-cone-wedge-chain-lightning-and-tempest-hurl-
+# vfx (review → review, unchanged) — 3 parallel layers (Blind Hunter, Edge
+# Case Hunter, Acceptance Auditor). 0 decision_needed, 5 patch (all applied:
+# createConeWedge's degenerate branch now floors its stroke width instead of
+# silently rendering nothing for a filled+lineWidth:0 caller; removed a
+# redundant second zero-aim guard on the cone render path that contradicted
+# this story's own Dev Notes; extracted a shared resolveEnemyOrBossPosition
+# helper for zone:strike/ability:chain-hit's duplicated target resolution;
+# corrected a misleading "slower" comment in ability-vfx-config.ts; replaced a
+# liveness-only cone-wedge geometry test with 3 real getLocalBounds()-based
+# assertions), 1 defer (D-7.13-A, projectile:expired not forwarded for any
+# projectile ability — pre-existing, appended to deferred-work.md), 9
+# dismissed after verification (a claimed chain-hit batch-collapse disproved
+# by the Story 7.11 transientDeltaQueue; a claimed future-startedAt overflow
+# disproved by progress()'s own clamp; a claimed zero-aim asymmetry disproved
+# by the enclosing if(place) guard; a claimed sprint-status.yaml Blocked-paths
+# violation disproved by that bullet's own text plus identical precedent in
+# every prior story; a claimed merge-gate violation for staying at review
+# with the manual Client-UX pass undone — matches established 7.5/7.6/dev-3/
+# 3.23/7.7b precedent exactly, not a new issue; 4 more, full detail in the
+# story's own Review Findings section). Re-ran typecheck (clean, 10/10) and
+# the vfx/screens suites (113 passed, 1 pre-existing unrelated failure) after
+# applying patches. Status stays review, not done — the Client-UX hook's
+# manual pass is still genuinely outstanding (no display in this sandbox).
+# 2026-07-29: dev-story — implemented 7-13-cone-wedge-chain-lightning-and-
+# tempest-hurl-vfx, closing all three gaps ADR-0005's Consequences section
+# named. New createConeWedge primitive (primitives.ts) wired into Stone Wall/
+# Avalanche/Ancestor's Voice/Crimson Lash, each reading its real coneAngleDeg
+# live from ABILITY_GEOMETRY. Whitelisted + consumed ability:chain-hit so
+# Lightning Arc's chain draws one beam per hop (new planChainHitBeam,
+# stormcaller-vfx.ts), staggered by chainIndex*40 for a travelling read.
+# Removed Tempest Hurl's stale pre-3.26 fake 170ms flight (HurlFlight/
+# advanceHurlFlights) and replaced it with a real STORMCALLER PROJECTILE_
+# APPEARANCE entry (generic state.projectiles path) plus a projectile:hit-
+# driven planTempestHurlImpact sized to TEMPEST_HURL_BLAST_RADIUS_PX. Judgment
+# calls documented in the story's Completion Notes: Avalanche's existing
+# impact ring kept as-is (no contradiction), Ancestor's Voice's old full-
+# circle expand ring removed (did contradict the real 70° cone). Typecheck
+# clean (10/10 tsconfigs); full suite 668/670 non-skipped tests passing — the
+# 2 failures + 2 e2e skips all match pre-documented issues (Stone Wall
+# centering, flaky Ancestor's Voice heal assertion, WSL2 e2e port timeouts),
+# confirmed by category rather than newly discovered. Appended a deferred-
+# work.md resolution note. Manual Client-UX pass (Task 8/AC9) NOT performed —
+# no display in this sandbox, disclosed per 7.5/7.6/dev-3/3.23/7.7b precedent.
+# Status → review.
+# 2026-07-29: create-story — wrote 7-13-cone-wedge-chain-lightning-and-tempest-
+# hurl-vfx, the Epic 7 VFX follow-up ADR-0005's own Consequences section named
+# as still-open ("a cone/wedge shape, chain-arc rendering, and a resized/
+# re-timed projectile + blast burst") and 3.25/3.26 both explicitly deferred
+# in their Non-goals. Not in epics.md — inserted directly per Epic 7's own
+# established precedent (7.7a/7.7b, 7.9-7.12 were all added the same way).
+# Ownership-scope check: single owner, 100% apps/host-client/** (Host
+# Experience Engineer) — ABILITY_GEOMETRY/TEMPEST_HURL_* (shared-types) and
+# AbilityChainHitDelta (net-protocol) are read-only imports of constants/types
+# already shipped by 3.25-3.27, no shared-types/net-protocol/game-rules/
+# simulation-server file is modified. No Ownership hook trigger, no split.
+# Exhaustive research: read ADR-0005, both source stories (3.25/3.26) in full,
+# and every touched file (primitives.ts, ability-vfx.ts, spiritcaller-vfx.ts,
+# souldrinker-vfx.ts, stormcaller-vfx.ts, ability-vfx-config.ts,
+# host-session.ts, DungeonScreen.tsx) to confirm 3 concrete, independently-
+# verified gaps: (1) no VFX file reads ABILITY_GEOMETRY's coneAngleDeg despite
+# 4 abilities having carried it since 3.27; (2) ability:chain-hit
+# (net-protocol, Story 3.26) has zero apps/host-client consumers — confirmed
+# via grep; (3) Tempest Hurl's VFX still runs a stale pre-3.26 fake 170ms
+# hitscan-flight flourish concurrently with the real streamed ProjectileState
+# it has had since 3.26, racing two visuals toward two different endpoints,
+# plus resolveProjectileAppearance has no STORMCALLER entry and
+# projectile:hit's DungeonScreen handler is SOULDRINKER-gated only, so
+# Tempest Hurl's real impact (including its boss-inclusive blast) has no
+# delta-driven VFX at all today. Set to ready-for-dev.
+# 2026-07-29: create-story — wrote 3-28-ability-balance-consolidation,
+# resolving D-CC1's remaining AbilityBalance half (3.27/ADR-0006 already
+# resolved the AbilityGeometry half and explicitly split this half out as
+# single-owner Simulation Engineer, future 3-28). Not in epics.md — pure
+# internal refactor. Ownership-scope check confirmed single-owner
+# (apps/simulation-server/** + packages/game-rules/** only, zero
+# host-client consumers verified via repo-wide grep). Via AskUserQuestion,
+# user chose to skip a new ADR (docs/adr/** is Orchestrator/Protocol
+# Architect territory; no CLAUDE.md hook requires one here since
+# packages/game-rules isn't a Contract-change-hook trigger path) —
+# documented instead via a deferred-work.md resolution note and the
+# story's own Dev Notes. Exhaustive research: full current balance.ts
+# content (9 tables), every read site in GameRoom.ts (~12 expressions) and
+# dispatchAbility (4 lookups), both real test-file consumers
+# (tests/unit/abilities.test.ts — 4 whole-tuple assertions need a logic
+# rewrite — and tests/contract/ability-vfx-budget.test.ts), confirmed
+# packages/game-rules/tests/unit/balance.test.ts needs no change. A
+# fresh-context subagent review verified the transcribed AbilityBalance
+# literal byte-identical against live balance.ts, confirmed the GameRoom.ts
+# read-site list complete, and caught one imprecision (Task 4's `?? 0`
+# fallback note didn't flag that 3 non-literal-index sites, including line
+# ~2467, need `?.field` for noUncheckedIndexedAccess to typecheck) — fixed
+# before finalizing. Set to ready-for-dev.
+# 2026-07-29: code-review of 3-27-ability-geometry-consolidation-per-ability-
+# objects (review → done) — 3 parallel layers (Blind Hunter, Edge Case Hunter,
+# Acceptance Auditor). Acceptance Auditor: zero AC violations, full AC1-AC8
+# compliance confirmed independently. 5 patch (all applied: readonly
+# AbilityGeometry fields, hoisted single geometry lookup in GameRoom.ts's
+# zone-delivery branch, 2 misleading/stale comment fixes, contract test's
+# EXPECTED type tightened to a 4-tuple), 3 defer (D-3.27-A/B/C — pre-existing
+# helper-design characteristics / deliberate documented choices, appended to
+# deferred-work.md), 3 dismissed (2 Edge Case Hunter findings — Soul Mend's
+# "dropped ?? 0 fallback" — confirmed false positives via a clean typecheck
+# proving literal-union tuple indices can't be undefined, plus codebase
+# precedent at the pre-existing Dark Pact call site; 1 Blind Hunter finding
+# resolved by fuller story context the context-free layer lacked). Re-ran
+# typecheck (clean) + full suite (637/639, 2 pre-existing unrelated failures)
+# after applying patches. Status → done.
+# 2026-07-29: dev-story — implemented 3-27-ability-geometry-consolidation-per-
+# ability-objects. Replaced ability-geometry.ts's 5 flat per-class tables
+# (ABILITY_HIT_RANGE_PX/RADIUS_PX/SHAPE/CONE_ANGLE_DEG/DELIVERY) with one
+# AbilityGeometry object per ability (ABILITY_GEOMETRY), hard cutover — resolves
+# D-CC1's shared-types half (ADR-0006; balance half split to future 3-28).
+# Migrated every read site: GameRoom.ts (~17 expressions + gatherPlayersInHitZone/
+# isInAbilityHitZone now take one AbilityGeometry param instead of 3-5 scalars),
+# 4 host-client VFX files, 10 test files. New tests/contract/ability-geometry-
+# shape.test.ts byte-identical migration guard. Typecheck clean (10/10 tsconfigs)
+# after fixing one read-site the story's own task list missed (Spirit Nova sweep,
+# caught by first typecheck pass). Full suite: 0 regressions — 2 pre-existing
+# failures confirmed via git stash against the clean baseline (Stonehide VFX
+# geometry test, already memory-tracked; an intermittent Ancestor's Voice e2e
+# heal assertion, also previously flagged by 3.26's own session — new memory
+# note added). Status → review.
+# 2026-07-29: create-story — wrote 3-27-ability-geometry-consolidation-per-
+# ability-objects, resolving D-CC1's shared-types half (deferred-work.md,
+# raised during 3.25's correct-course session, target shape already named in
+# ADR-0005's "Alternatives considered": AbilityGeometry in shared-types,
+# AbilityBalance in game-rules). Not in epics.md — a pure internal refactor,
+# no new gameplay FR. Ownership-scope check (per CLAUDE.md's ownership hook)
+# found this spans 3 areas: Protocol Architect (shared-types schema),
+# Simulation Engineer (GameRoom.ts read-sites), Host Experience Engineer
+# (4 host-client VFX files' read-sites) — confirmed via import-graph grep
+# that host-client never imports game-rules/balance.ts, so the geometry vs.
+# balance halves of D-CC1 split cleanly on real code boundaries. User chose,
+# via AskUserQuestion, to (1) implement D-CC1 now as a dedicated story rather
+# than just re-deferring it in a routine hardening sweep, and (2) split
+# geometry (this story, pre-approved 3-way cross-boundary, mechanical-only
+# consumer edits) from balance (future 3-28, single-owner Simulation
+# Engineer, not yet created) rather than one combined cross-boundary story.
+# Hard-cutover design (5 old flat tables removed, not soft-deprecated) per
+# D-CC1's own "needs its own story" framing. New ADR-0006 required (first
+# non-additive change to ability-geometry.ts since ADR-0003). Exhaustive
+# research via a dedicated Explore subagent: full current file content,
+# every read-site in GameRoom.ts (~15 expressions) and 4 host-client VFX
+# files, all 10 affected test files (3 need logic changes beyond import
+# rename, not just mechanical), ADR-0003/ADR-0005 full text, and the
+# tests/contract/ precedent (ability-vfx-budget.test.ts) to mirror for the
+# new byte-identical migration guard test. Set to ready-for-dev.
+# 2026-07-28: code-review of 3-26-stormcaller-rework-ii-lightning-arc-chain-and-
+# tempest-hurl-projectile (review → done) — 3 parallel layers (Blind Hunter, Edge
+# Case Hunter, Acceptance Auditor), full spec mode against the story's own ACs.
+# 4 patch (all applied: ability:chain-hit no longer broadcasts on a failed hit,
+# removed a duplicated magic-number-12 projectile-radius literal, a test now
+# imports the real corridor-range constant instead of hardcoding 160, and the
+# game-rules/systems/targeting.ts ownership-path deviation was flagged in
+# Completion Notes), 0 decision_needed, 0 defer, 11 dismissed after verification
+# (a claimed same-tick double-detonation race was disproved by the pre-existing
+# `pi === -1` guard; a claimed damage-computation divergence was disproved — both
+# Tempest Hurl detonation paths derive damage identically within the same tick;
+# a claimed 56px-vs-76px boss-radius inconsistency was confirmed spec-mandated by
+# direct quote from the story's own Task 3c/3d text, not a slip). Acceptance
+# Auditor independently re-ran typecheck + all 4 touched test files (161/161).
+# Status → done.
+# 2026-07-28: dev-story — implemented 3-26-stormcaller-rework-ii-lightning-arc-chain-
+# and-tempest-hurl-projectile. Lightning Arc (Stormcaller AUTO) now corridor-gathers
+# (isInConeZone, 30deg) + chains up to 2 bounces at 70% falloff, broadcasting a new
+# ability:chain-hit delta (packages/net-protocol, additive, Contract-change hook
+# triggered — Protocol Architect review still outstanding). Tempest Hurl (Stormcaller
+# RELEASE) is now a real 28px/300px/s projectile with a 56px blast radius, reusing
+# Blood Spike/Void Pulse's ProjectileState machinery; added a Tempest-Hurl-scoped
+# manual per-tick boss-proximity check since the boss body's filterMaskBits: 0 means
+# it can never generate a planck contact event (pre-existing gap, closed only for
+# this ability per the story's explicit non-goal). Storm Eye gained a documentation-
+# only STORM_EYE_PLACEMENT_RANGE_PX alias. Extracted pure chain/falloff math into
+# game-rules/systems/targeting.ts (findNearestCandidate, resolveLightningArcChain) —
+# new tests/unit/lightning-arc.test.ts. Judgment call flagged in Completion Notes:
+# boss included in Lightning Arc's chain hops (ambiguous AC text), per the story's
+# own recommendation. Edited tests/unit/abilities.test.ts outside declared Allowed
+# paths to fix a stale Story 3.19 ABILITY_DELIVERY assertion this story's own Task 3a
+# change made stale — same precedent Story 3.20 used for its own ABILITY_DELIVERY
+# change. Typecheck clean (10/10 tsconfigs); full suite green apart from 2 confirmed
+# pre-existing failures (Stonehide VFX geometry test, already tracked in memory; an
+# intermittent Ancestor's Voice e2e assertion, confirmed via git stash to fail
+# identically on the pre-story baseline). Status → review.
+# 2026-07-28: create-story — wrote full context-engine story files for 3-25 and 3-26
+# (exhaustive analysis of epics.md, ADR-0005, sprint-change-proposal-2026-07-28.md,
+# deferred-work.md D-CC1, and direct reads of ability-geometry.ts/combat.ts/balance.ts/
+# GameRoom.ts/world.ts/sensors.ts). Both set to ready-for-dev. epic-3 reopened
+# backlog→in-progress (was closed done after 3.24) — same reopen-for-a-correction-batch
+# pattern already used 3 times before for this epic. Notable findings baked into the
+# story files rather than left for the dev to rediscover: (1) the boss body's physics
+# fixture has filterMaskBits: 0 (GameRoom.ts:1082-1088) — it has never been able to
+# generate ANY planck contact event, so no projectile (including today's Blood Spike/
+# Void Pulse) has ever been able to hit it; Tempest Hurl's own AC requires boss
+# inclusion in its blast, so 3.26 adds a Tempest-Hurl-scoped manual per-tick proximity
+# check rather than widening the boss's physics category generally (Blood Spike/Void
+# Pulse's inability to hit the boss stays exactly as-is, not fixed here). (2) the epics
+# AC text for Lightning Arc's chain is internally inconsistent — first-target gather
+# says "living enemies (+boss)" but the chain-hop re-search line says only "living
+# enemy" — flagged explicitly in 3.26's dev notes as a judgment call (recommend
+# including the boss, for consistency with every other multi-target ability in this
+# codebase) rather than silently resolved either way. (3) ability:chain-hit's
+# toEnemyId field (per ADR-0005's literal wire shape) has no boss variant — resolved
+# as "reuse gameState.boss.id in that string field," not a new field, without
+# Protocol Architect sign-off already secured. (4) isInConeZone's blast-adjacent
+# reasoning also applies to Tempest Hurl's AoE: no new geometry primitive is needed
+# there — isInHitZone's existing non-directional circle test already does it.
+# Ownership: both stories touch packages/shared-types + packages/game-rules/
+# apps/simulation-server (3.26 also packages/net-protocol) — Multi-context, same as
+# every 3.16-3.20 kit-rework story before them; proceeding on that established
+# precedent rather than re-litigating the split.
+# 2026-07-28: correct-course (sprint-change-proposal-2026-07-28.md, ADR-0005) — closes the
+# 3.16/3.17/3.19 Cone/Line spec drift (Stone Wall, Avalanche, Ancestor's Voice, Crimson Lash
+# never actually hit a cone, only a circle) and reopens 3.20's "Lightning Arc/Tempest Hurl
+# already correct" scoping note per the user's explicit request. Created 3.25 (CONE contract +
+# 3-class conversion) and 3.26 (Lightning Arc chain lightning + Tempest Hurl real projectile +
+# Storm Eye placement alias), both backlog. Also filed D-CC1 (deferred-work.md): ability config
+# tables should eventually consolidate from flat per-property tables to per-ability objects
+# within each existing package boundary — raised by the user, deliberately deferred, not part
+# of this change. Follow-up VFX story still needed for Epic 7 (cone/wedge primitive, chain-arc
+# rendering, resized Tempest Hurl visuals) — not created here, flagged in the proposal.
+# 2026-07-27: code review of 7-12-epic-7-post-710-deferred-hardening-simulation (done) —
+# 3 parallel layers (Blind Hunter, Edge Case Hunter, Acceptance Auditor), full spec mode.
+# Acceptance Auditor independently re-ran typecheck + the new test file, confirmed no AC
+# violation. 0 decision_needed, 2 patch (both applied: added 4 control-flow tests —
+# processEnemyEvents/processBossEvents mirror functions confirming the enemy-loop continue
+# and boss-switch break each scope to only their own event, 10/10 tests passing — and fixed
+# a self-contradictory perf-note wording), 2 defer, 12 dismissed. Deferred D-7.12-A
+# (boss:charged broadcasts an unguarded position, unlike its now-guarded boss:moved sibling
+# — tryCharge shares tickBossChase's exact dx/dy/len arithmetic) and D-7.12-B (enemy:stomped
+# bypasses the finite guard entirely — the check is nested inside the enemy:moved branch
+# only) to deferred-work.md; both real but outside this story's literal AC2 scope
+# (enemy:moved/boss:moved only), consistent with CLAUDE.md's no-silent-scope-expansion rule.
+# Typecheck clean (10/10 tsconfigs). Status set to done — no Client-UX manual-pass gate
+# applies (simulation-only story, no host/mobile file touched).
+# 2026-07-27: implemented 7-12-epic-7-post-710-deferred-hardening-simulation (review) —
+# added Number.isFinite guards at all four :moved broadcast sites in GameRoom.ts
+# (player/projectile physics read-back, enemy AI, boss-event switch's boss:moved case)
+# per D-7.10-B, plus a default exhaustiveness arm on the boss-event switch mirroring
+# apply-delta.ts's established _exhaustive: never pattern per D-7.7a-B. New
+# game-room-post-710-deferred-hardening.test.ts (6 tests) mirrors the finite-gate logic
+# as a standalone function per the established GameRoom-isn't-instantiable test pattern.
+# Typecheck clean (10/10 tsconfigs). Full suite run twice (TWO-STRIKE QA): 579/583
+# passing on run 2; all remaining failures (ability-dispatch.test.ts flaky heal timing,
+# full-run.test.ts/hub-ability-use.test.ts WSL2 port-binding timeout, ability-vfx.test.ts
+# Stone Wall centering) match this story's own pre-documented known-issue list verbatim
+# and touch no file this story changed. Sibling to 7-11 (host-only half of the same
+# deferred-item sweep, already done).
+# 2026-07-27: code review of 7-8-environmental-and-bond-vfx-polish (stays review, not
+# done) — 3 parallel layers (Blind Hunter, Edge Case Hunter, Acceptance Auditor), full
+# spec mode. Two of the three layers' first runs were lost to a subagent-session API
+# limit; both retried once and completed. 0 decision_needed, 6 patch (all applied and
+# re-verified — typecheck clean, 56/56 relevant vitest green), 1 defer (D-7.8-A, Task
+# 10.4's manual pass, deferred-work.md), 12 dismissed as noise/false-positive/by-design.
+# Patches: ProjectileAppearance.trail was missing its alpha field (every trail rendered
+# at createTrail's hardcoded default instead of the per-ability spec value); a duplicate
+# assertion in the new table-sanity zone test left DEFAULT_ZONE_VISUAL's fallback tier
+# untested; a null-guard style inconsistency (non-null assertion vs optional chaining)
+# in the same diff; a duplicate boss:defeated delta could double-fire the purification
+# pulse and push its deadline later (pre-existing gap, hardened while already touching
+# that branch); the new table-sanity test never validated trail.alpha bounds or the new
+# spawnRing field at all. Two false positives from the zero-context blind layer (claimed
+# P and TrailHandle were undefined/unimported — both pre-existing, outside the diff's
+# changed lines, confirmed by direct read) were the reason typecheck was re-run to
+# settle the question rather than trusting either claim. Status intentionally stays
+# review, not done: this project's own established precedent (7.5, 7.6, 7.7b, 3.23,
+# dev-3) gates done on the human Client-UX manual pass, independent of code-review
+# outcome — the generic skill default ("all patches resolved -> done") does not
+# override that project-specific Merge Gate requirement.
+# 2026-07-26: implemented 7-8-environmental-and-bond-vfx-polish (review) — the real AC2
+# fix was rebuilding resolveZoneVisual (ability-vfx-config.ts) as a proper three-tier
+# fallback ladder (exact class:effectType -> effectType-only tier -> global default); the
+# pre-existing 7.5 version skipped the middle tier entirely, falling straight to the flat
+# purple default on any owner-not-found or wrong-class case. Added resolveProjectileAppearance
+# + DEFAULT_PROJECTILE_APPEARANCE and wired per-ability projectile body + persistent
+# TrailHandle into DungeonScreen's Projectiles block (previously a hardcoded white dot with
+# no trail at all); added Void Pulse's own zone visual (VOID_PULSE_ZONE_VISUAL, built from
+# 7.4's already-authored but never-consumed ZONE_APPEARANCE.pull) and a one-shot zone spawn
+# ring on first-seen. Ported the purification pulse and reward-reveal burst onto
+# createRingShockwave/createParticleBurst with a purificationPulseEndsAtRef deadline (VfxEngine
+# has no completion callback) driving the reward-reveal handoff exactly once; restyled bond
+# tethers (glow+breathing core, NaN-guarded CSS-hex parse). Confirmed Task 1 (VfxEngine wiring)
+# and Task 5.1 (projectile:hit whitelist) were already shipped by 7.2/7.4 — no changes needed
+# there. Fixing AC2 correctly required updating 2 now-stale stormcaller-vfx.test.ts assertions
+# (7.5) that had encoded the old, AC2-incorrect fallback behavior as expected — that suite's own
+# comment had explicitly anticipated this. New ability-vfx-config.test.ts (9 tests). Typecheck
+# clean (10/10 tsconfigs). Full suite: 571 passed / 3 skipped / 3 failed, all 3 pre-existing and
+# unrelated (ability-vfx.test.ts Stone Wall centering — documented pre-existing; ability-
+# dispatch.test.ts/hub-ability-use.test.ts — simulation-server port-binding timeout, host-only
+# story never touches simulation-server). Status set to review, not done: Task 10.4's manual
+# Client-UX pass (cast Blood Spike/Void Pulse, watch Storm Eye, disconnect a zone owner
+# mid-zone, boss defeat -> purification -> reward handoff, bond tethers below sprites) was not
+# performed — no display in this sandbox, matching established precedent (7.5, 7.6, 7.7b, 3.23,
+# dev-3) — needs a human pass before this story can be closed.
+# 2026-07-26: started work on 7-8-environmental-and-bond-vfx-polish. Re-verified the
+# story's literal spec against current source before implementing: 7.4/7.5/7.7b already
+# built the real "7.8 seam" as apps/host-client/src/vfx/ability-vfx-config.ts (not the
+# story's literal ability-visuals.ts path — matches this project's established pattern of
+# story specs naming superseded files, see 7.7b/7.6 history). VfxEngine wiring (Task 1) and
+# the projectile:hit whitelist (Task 5) are already shipped; projectile per-ability body/
+# trail rendering (Tasks 2-3), the zone owner-unknown fallback tier (Task 4 AC2), and the
+# purification-pulse/reward-burst/bond-tether clock-unification passes (Tasks 6-8) are not.
+# Proceeding to implement the real remaining gap against the existing ability-vfx-config.ts
+# module rather than forking a second config file.
+# 2026-07-26: 7-7b-grassland-boss-attack-vfx-and-charge-visual → done. User (Cyby)
+# confirmed Task 8.4's manual Client-UX pass live and gave explicit sign-off to close.
+# 2026-07-26: code review of 7-7b-grassland-boss-attack-vfx-and-charge-visual (was left at
+# review, not done, pending the above) — self-run Blind Hunter + Edge Case Hunter + Acceptance Auditor,
+# review_mode: full. 10 raw findings → 4 patch (all applied: Number.isFinite guards on
+# planBossCharged/planBossStomped, File List fix, NaN-sweep test widened to array colors,
+# bossDamageVfxAtRef reset added to unmount cleanup), 2 defer (D-7.7b-A/B in
+# deferred-work.md), 4 dismissed as noise after verification. Typecheck + full suite
+# re-confirmed clean after patching. Status intentionally stays review: Task 8.4's manual
+# Client-UX pass is still outstanding (no display in this sandbox), matching this
+# project's established precedent (7.5, 7.6, 3.23, dev-3).
+# 2026-07-26: implemented 7-7b-grassland-boss-attack-vfx-and-charge-visual (review) —
+# 7.7a had shipped at this baseline (BossChargedDelta exists, GameRoom.ts broadcasts it),
+# so all 8 tasks done in full, not the degraded path. New boss-vfx.ts pure planner (5
+# tests) drives all four boss reactions (charged/stomped/phaseChanged/damaged) from the
+# 7.1 primitive library via a new applyBossVfxPlan bridge in DungeonScreen.tsx: replaced
+# the raw 66ms boss:stomped Graphics ring, gave boss:phaseChanged its first-ever on-screen
+# effect, added a throttled boss:damaged impact burst, wired the new boss:charged post-hoc
+# dash visual end-to-end (planner + host-session.ts whitelist + DungeonScreen branch).
+# One deliberate deviation from the story's literal Task 7.1 code sample: applyBossVfxPlan
+# threads Date.now() as startedAt into every primitive (BACKGROUNDED-TICKER rule, matching
+# spawnSouldrinkerVfx/triggerSpiritcallerCast) since these branches trigger from a
+# non-RAF-gated useEffect — the story text didn't call this out but established codebase
+# convention did. Typecheck clean (10/10 tsconfigs), full suite 83 passed / 1 pre-existing
+# failure (ability-vfx.test.ts Stone Wall centering, confirmed via git stash against
+# baseline, unrelated). Status set to review, not done: Task 8.4's Client-UX manual pass
+# was not performed — no display in this sandbox, matching established precedent (7.5,
+# 7.6, 3.23, dev-3) — needs a human pass before the story can be closed.
+# 2026-07-26: 7-6-status-effect-vfx → done. User ran the live Client-UX pass (Task
+# 7.1/7.2) themselves: all four effect shapes/colors confirmed correct. One real
+# finding — Warding Cry's shield aura was visible but not visibly pulsing — root-
+# caused to SHIELD_ALPHA_BASE (0.22) being too low-contrast for a filled/unstroked
+# shape versus the other three effects' 0.55-0.95 peak alpha; fixed by bumping to
+# 0.45 in status-aura.ts, user re-confirmed working live. Separately clarified (not
+# a VFX bug, not changed): the caster never sees the shield on themselves when
+# casting Warding Cry because GameRoom.ts's gatherPlayersInHitZone excludes the
+# caster from allies-in-zone targeting (pre-existing Story 3.17 simulation
+# behavior, Simulation-Engineer-owned, out of this story's scope). Task 7.3-7.6
+# (stacking/reconnect/down-spirit/kill) were not individually walked in the
+# reported session; user gave explicit sign-off to close the story regardless.
+# 2026-07-25: code review of 7-6-status-effect-vfx (stays review, not done) — Blind Hunter
+# subagent ran clean; the Edge Case Hunter and Acceptance Auditor subagents both hit a
+# session usage-limit failure mid-run and could not be retried, so that analysis was
+# performed directly instead (disclosed in the story's Review Findings section, not
+# claimed as independent-subagent output). 2 patches applied: a MAX_STATUS_AURAS
+# ceiling-denial edge case that could permanently strand a stale aura handle (self-
+# reinforcing ratchet under sustained >64-concurrent-aura load, well above the ~44
+# documented worst case but a real correctness gap), and 2 dead imports. 11 other Blind
+# Hunter findings dismissed as noise after verification (down/spirit "missing filter" and
+# "dropped isFrozen dim" both matched pre-existing/spec-mandated behavior; setChildIndex
+# usage matched the established tethers/zones/bodies idiom, not the different Iron-Skin
+# pattern a past review actually rejected; several claims were disproven by reading
+# engine.ts/primitives.ts, which the blind layer had no access to). All 6 ACs individually
+# re-audited: PASS. Status intentionally left at review, not done — code review is clean
+# but Task 7's human Client-UX pass (CLAUDE.md Merge Gate) is still outstanding.
+# 2026-07-25: implemented 7-6-status-effect-vfx (review) — new status-aura.ts (pure
+# spec/factory, 13 tests) drives all 4 status-effect types (damageReduction ring,
+# shield dome, damageBuff burst, slow orbiting trail) from the 7.1 primitive library,
+# replacing DungeonScreen's flat-colour badge. Composition-rule call: removed 7.2's
+# Iron Skin persistent shell and 7.3's Warding Cry persistent shield pulse outright
+# (both were the same "persist-for-duration" visual this story generalizes, per the
+# story's own Dev Notes; neither had a separate cast-instant worth keeping) — 7.4's
+# Dark Pact onset was left alone since it was already only a one-shot cue. Typecheck
+# clean (10/10 tsconfigs), full suite 555 passed / 2 pre-existing failures (confirmed
+# via git stash against the pre-story baseline) / 3 skipped. deferred-work.md's D-7.1-D
+# updated with this story's concrete concurrent-handle (~44 worst case) and allocation-
+# rate (~34/s) verdict — pooling stays deferred. Status set to review, not done: Task 7's
+# Client-UX manual pass (live host + phones, couch-distance legibility) was not performed
+# — no display in this sandbox, matching this project's established precedent (7.5, 3.23,
+# dev-3) — needs a human pass before the story can be closed.
+# 2026-07-22: created the remaining Epic 7 stories in one batch (7.2-7.6, 7.7a, 7.7b, 7.8).
+# Story 7.7 was split into 7.7a (protocol+sim) and 7.7b (host) — see the E7 block below.
+# Three epic-text claims were corrected against the shipped code during creation:
+# (1) boss:charged is not a whitelist fix — the delta type does not exist (7.7a);
+# (2) ZoneState has no class/abilityIndex fields, only ProjectileState does, so 7.8 derives
+#     zone identity from ownerId->class + effectType instead of adding schema fields;
+# (3) Stone Wall is not a cone/line — ABILITY_HIT_RANGE_PX.stonehide[0] is 0, so it resolves
+#     self-centred at r100, and TAP abilities ignore their hitRange entirely.
+# Two cross-cutting risks are recorded in every story rather than fixed here: App.tsx's
+# latestTransientDelta is a single state value (React 18 batching collapses same-task deltas),
+# and 7.1's VfxEngine is still unconsumed, so whichever story ships first also does the
+# one-time DungeonScreen wiring (each story specifies it guarded "if not already present").
 # 2026-07-21: ran epic-1-retrospective (done) — first retrospective run on the project,
 # retroactively (Epics 1-6 all already complete by the time it ran). Synthesized findings
 # from stories 1.1-1.10's dev notes/code-review history rather than fresh memory, since
 # Epic 1 is pure infrastructure with no UI surface to recall. 2 action items created:
 # (1) isHost flag has no server-side auth check (security debt open since 1.3, relevant
-# again given Epic 7's registered-accounts scope), owner Simulation Engineer; (2)
+# again given Epic 8's registered-accounts scope), owner Simulation Engineer; (2)
 # apps/mobile-controller has zero automated test coverage as of 1.10, owner Mobile
 # Controller Engineer + QA support. Zod validation on deserialize() and the e2e
 # reconnect.test.ts it.todo stub were surfaced but left at their existing deferred-work.md
 # priority, not escalated. No epic-plan update needed — Epic 2 (the numerically next epic)
-# is already done; actual next work is Epic 7 (backlog, no stories yet). Full retro saved:
+# is already done; actual next work was Epic 7 (backlog, no stories yet) at retro time —
+# since renumbered to Epic 8 by sprint-change-proposal-2026-07-21.md, which inserted a new
+# Epic 7 (Ability & Environmental VFX Prototyping) ahead of it. Full retro saved:
 # epic-1-retro-2026-07-21.md.
 # 2026-07-20: code review of 5-9-epic-5-post-58-deferred-hardening (done) — Blind Hunter +
 # Edge Case Hunter + Acceptance Auditor all ran. Acceptance Auditor found zero AC violations
@@ -467,7 +918,7 @@ development_status:
   # dungeon combat. Players use abilities, go down, get revived, enter spirit
   # form. "Clear" objective type is operational.
   # FRs: FR9(Clear), FR11, FR12, FR13, FR17, FR18, FR19, FR20, FR21, FR22, FR23
-  epic-3: done
+  epic-3: in-progress
   3-1-xoshiro128-prng-and-planckjs-physics-world: done
   3-2-enemy-ai-base-fsm-and-layered-difficulty-behaviors: done
   3-3-4-alpha-class-implementations-abilities-and-input-types: done
@@ -508,6 +959,22 @@ development_status:
   # lift. Also closes 3.22's own review leftovers (e2e cleanup/raceTimeout hygiene, shield
   # magnitude guard) and 3.23's un-run Client-UX text-occlusion finding.
   3-24-epic-3-post-323-deferred-hardening: done
+  # Epic 3 Correction: Cone Hit-Geometry & Stormcaller Delivery Rework
+  # (correct-course, 2026-07-28, sprint-change-proposal-2026-07-28.md) —
+  # closes the 3.16/3.17/3.19 Cone/Line spec drift and reopens 3.20's
+  # Lightning Arc/Tempest Hurl scoping note. Sequenced a(3.25) -> b(3.26).
+  3-25-cone-hit-geometry-contract-and-stonehide-spiritcaller-souldrinker-cone-conversion: done
+  3-26-stormcaller-rework-ii-lightning-arc-chain-and-tempest-hurl-projectile: done
+  # Resolves D-CC1's shared-types half (deferred-work.md, raised during 3.25's
+  # correct-course session; target shape pre-named in ADR-0005's "Alternatives
+  # considered"). Geometry-only — split from the balance half (single-owner
+  # Simulation Engineer, future 3-28, not yet created) because host-client only
+  # ever consumes the geometry side, not game-rules/balance.ts.
+  3-27-ability-geometry-consolidation-per-ability-objects: done
+  # Resolves D-CC1's remaining game-rules/balance.ts half (single-owner
+  # Simulation Engineer, no new ADR — packages/game-rules isn't a
+  # Contract-change-hook trigger path, unlike shared-types in 3.27).
+  3-28-ability-balance-consolidation: done
   epic-3-retrospective: optional
 
   # ─── Dev infra fixes (no epic) ──────────────────────────────────────────────
@@ -585,28 +1052,90 @@ development_status:
   6-10-epic-6-post-69-deferred-hardening: done
   epic-6-retrospective: optional
 
-  # ─── E7: Progression & Persistent Meta ──────────────────────────────────────
-  # Registered accounts, Spirit Essence persistence, mastery counters, hub shop.
-  # Stories: not yet defined
-  epic-7: backlog
+  # ─── E7: Ability & Environmental VFX Prototyping ────────────────────────────
+  # Inserted by sprint-change-proposal-2026-07-21.md — shape/particle-based visual
+  # identity for all 16 shipped abilities + Grassland boss attacks + status effects,
+  # replacing today's undifferentiated flat-color circles, ahead of the final
+  # PixelLab pixel-art pass. No new FRs. Pushed Progression/Full Class Roster/
+  # Ancient Forest Biome/Polish down one slot each (old E7-E10 -> E8-E11).
+  epic-7: in-progress
+  7-1-vfx-engine-foundations: done
+  7-2-stonehide-ability-vfx: done
+  7-3-spiritcaller-ability-vfx: done
+  7-4-souldrinker-ability-vfx: done
+  7-5-stormcaller-ability-vfx: done
+  7-6-status-effect-vfx: done
+  # Epic 7.7 was split at story-creation time (2026-07-22, user-approved): the epic assumed
+  # boss:charged only needed a host whitelist entry, but there is no BossChargedDelta in
+  # net-protocol's DeltaEventMsg union at all and GameRoom.ts:1926 explicitly swallows the
+  # event. Making it reach the host spans 3 ownership areas, so 7.7a confines the
+  # protocol+sim work (Contract-change + Simulation-safety hooks) to one small story and
+  # 7.7b stays host-only. 7.7b depends on 7.7a for its charge AC only; its three boss
+  # reskin ACs are independent and ship regardless.
+  7-7a-boss-charged-delta-contract-and-broadcast: done
+  7-7b-grassland-boss-attack-vfx-and-charge-visual: done
+  7-8-environmental-and-bond-vfx-polish: done
+  # 7.9 (2026-07-23, user "Option B" decision): move ability spatial geometry from
+  # game-rules/balance.ts into shared-types so the VFX tracks balance dynamically instead
+  # of hand-transcribing it (resolves D-7.2-A). Second sanctioned Epic 7 contract-change
+  # exception (after 7.7a). Multi-owner (Protocol Architect + Simulation Engineer + Host);
+  # kept as one story because a constant relocation is atomic. Should land BEFORE 7.4/7.5/7.8
+  # so they consume the contract rather than transcribe (Task 5 re-points their specs).
+  7-9-shared-ability-geometry-contract: done
+  # 7.10 (2026-07-23): defect found in the 7.4 playtest — projectiles simulate server-side but
+  # have no projectile:moved delta, so the host dot freezes/teleports (only the 5 s snapshot syncs
+  # it). Protocol + Simulation joint story (mirrors 7.7a); unblocks projectile visuals in 7.4/7.8.
+  7-10-projectile-position-streaming: done
+  # 7.11/7.12 (2026-07-27): closes the open Epic 7 deferred-work.md backlog accumulated
+  # since 7.3/7.4/7.7a/7.10 (no hardening pass had picked these up yet). Re-verified each
+  # candidate against current source rather than trusting deferred-work.md's text alone:
+  # confirmed D-7.3-A/D-7.4-A's batch-collapse bug is still live (found a matching in-code
+  # comment at DungeonScreen.tsx:1008 documenting an observed instance) and confirmed
+  # D-7.4-B's assumed fix (Story 7.10) never materialized since 7.10 shipped with zero
+  # apps/host-client changes by design; confirmed D-7.10-B (no finite guard on any :moved
+  # broadcast site) and D-7.7a-B (boss-event switch missing the exhaustiveness guard
+  # apply-delta.ts already has) are both still open. Split into two single-owner stories
+  # (user-confirmed) rather than one cross-boundary story, per CLAUDE.md's ownership-split
+  # rule: 7.11 is host-only (Host Experience Engineer), 7.12 is simulation-only (Simulation
+  # Engineer) — no code or test coupling between them. Re-verified and left re-deferred, not
+  # picked up: D-7.1-A (TrailHandle is added exactly once per id in the shipped 7.8 code, no
+  # double-add path exists despite the original finding's stated revisit trigger), D-7.2-C
+  # (both long-lived VFX consumers named as revisit triggers — 7.6 status auras, 7.8 trails —
+  # already prune/fade correctly by design).
+  7-11-epic-7-post-710-deferred-hardening-host: done
+  7-12-epic-7-post-710-deferred-hardening-simulation: done
+  # 7.13 (2026-07-29): the Epic 7 VFX follow-up ADR-0005's own Consequences
+  # section named as still-open work — cone/wedge shape for Stone Wall/
+  # Avalanche/Ancestor's Voice/Crimson Lash, chain-arc rendering for Lightning
+  # Arc, and a resized/re-timed projectile + blast burst for Tempest Hurl.
+  # Single-owner Host Experience Engineer (apps/host-client/** only, no
+  # shared-types/net-protocol/game-rules changes — all three gaps consume
+  # constants/deltas 3.25-3.27 already shipped).
+  7-13-cone-wedge-chain-lightning-and-tempest-hurl-vfx: done
   epic-7-retrospective: optional
 
-  # ─── E8: Full Class Roster ──────────────────────────────────────────────────
-  # Remaining 6 classes (Sunwarden, Wildshaper, Songweaver, Trailhunter,
-  # Shadowstalker, Windwalker) bringing total to 10.
+  # ─── E8: Progression & Persistent Meta ──────────────────────────────────────
+  # Registered accounts, Spirit Essence persistence, mastery counters, hub shop.
   # Stories: not yet defined
   epic-8: backlog
   epic-8-retrospective: optional
 
-  # ─── E9: Ancient Forest Biome ───────────────────────────────────────────────
-  # Second biome fully playable: enemy pool, boss, achievements, visual identity.
+  # ─── E9: Full Class Roster ───────────────────────────────────────────────────
+  # Remaining 6 classes (Sunwarden, Wildshaper, Songweaver, Trailhunter,
+  # Shadowstalker, Windwalker) bringing total to 10.
   # Stories: not yet defined
   epic-9: backlog
   epic-9-retrospective: optional
 
-  # ─── E10: Polish, Performance & Telemetry ───────────────────────────────────
-  # All NFRs verified by measurement; telemetry instruments key flows;
-  # difficulty curve playtested and tuned.
+  # ─── E10: Ancient Forest Biome ───────────────────────────────────────────────
+  # Second biome fully playable: enemy pool, boss, achievements, visual identity.
   # Stories: not yet defined
   epic-10: backlog
   epic-10-retrospective: optional
+
+  # ─── E11: Polish, Performance & Telemetry ───────────────────────────────────
+  # All NFRs verified by measurement; telemetry instruments key flows;
+  # difficulty curve playtested and tuned.
+  # Stories: not yet defined
+  epic-11: backlog
+  epic-11-retrospective: optional

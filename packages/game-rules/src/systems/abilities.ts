@@ -1,7 +1,7 @@
 import type { PlayerClass, AbilityInputType } from 'shared-types';
 import { CLASS_DEFINITIONS } from 'shared-types';
 import type { Result } from '../state/result.js';
-import { ABILITY_COOLDOWNS_MS, ABILITY_DAMAGE, ABILITY_SELF_COST_HP, ABILITY_HP_SCALED_DAMAGE } from '../balance.js';
+import { ABILITY_BALANCE } from '../balance.js';
 
 export interface AbilityDispatchContext {
   playerClass: PlayerClass;
@@ -53,16 +53,28 @@ export function dispatchAbility(ctx: AbilityDispatchContext): Result<AbilityFire
   }
 
   const idx = ctx.abilityIndex as 0 | 1 | 2 | 3;
-  const cooldownMs = ABILITY_COOLDOWNS_MS[ctx.playerClass][idx];
+  const balance = ABILITY_BALANCE[ctx.playerClass][idx];
+  const cooldownMs = balance.cooldownMs;
   const damage = calculateHpScaledDamage(
-    ABILITY_DAMAGE[ctx.playerClass][idx],
-    ABILITY_HP_SCALED_DAMAGE[ctx.playerClass][idx],
+    balance.damage,
+    balance.hpScaledDamage,
     ctx.casterHp,
     ctx.casterMaxHp,
   );
-  const selfCostHpApplied = calculateSelfCostHp(ABILITY_SELF_COST_HP[ctx.playerClass][idx], ctx.casterHp);
+  const selfCostHpApplied = calculateSelfCostHp(balance.selfCostHp, ctx.casterHp);
 
   const inputType: AbilityInputType = ability.inputType;
+
+  // Directional abilities (AUTO/RELEASE) require a real aim vector. A zero-aim cast
+  // is skipped downstream by the sim's `mag === 0` hit guard, so accepting it here
+  // would spend the full cooldown and broadcast cooldown:update + ability:fired for
+  // a cast that does nothing (the "cooldown burned, nothing happened" symptom). Gate
+  // it out before the cooldown is set. TAP is self-centred and ignores direction, so
+  // it is exempt. (Cooldown-sync fix 2026-07-25.)
+  if (inputType !== 'TAP' && !(Math.hypot(ctx.directionX, ctx.directionY) > 0)) {
+    return { ok: false, error: { code: 'ZERO_AIM' } };
+  }
+
   const dirX = inputType === 'TAP' ? 0 : ctx.directionX;
   const dirY = inputType === 'TAP' ? 0 : ctx.directionY;
 

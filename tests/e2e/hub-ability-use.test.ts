@@ -55,7 +55,9 @@ describe('live-room hub ability use (Story 2.8)', { timeout: 60_000 }, () => {
 
     const update = await raceTimeout(cooldownUpdate, 5_000, 'COOLDOWN_UPDATE after hub ability fire');
     expect(update.abilityIndex).toBe(2);
-    expect(update.remainingMs).toBeGreaterThan(0);
+    // ADR-0004: an active cooldown is expiresAtMs > serverNowMs (was remainingMs > 0).
+    expect(update.expiresAtMs).toBeGreaterThan(update.serverNowMs);
+    expect(update.startedAtMs).toBeLessThanOrEqual(update.serverNowMs);
 
     await Promise.all([host.leave(), player.leave()]);
   });

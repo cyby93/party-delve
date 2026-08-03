@@ -124,27 +124,6 @@ Primary write areas:
 
 If a task needs multiple ownership areas, split it unless there is a strong reason not to.
 
-## Required Task Header
-
-Every implementation task must begin with this header:
-
-```md
-Phase:
-Context:
-Owner agent:
-Goal:
-Allowed paths:
-Blocked paths:
-Inputs:
-Non-goals:
-Acceptance criteria:
-Required hooks:
-Required tests:
-Telemetry impact:
-```
-
-If this header is missing, stop and define it first.
-
 ## Hook Policy
 
 ### Pre-task hook
@@ -298,19 +277,6 @@ Be extra strict about contract and simulation safety in this phase.
 - Do not bypass the event contract with ad hoc state changes.
 - Do not move gameplay authority into host or mobile code.
 - Keep docs updated when changing protocol, authority boundaries, or session lifecycle.
-
-## Default First Tasks
-
-If the repository is empty, start in this order:
-1. create repo structure
-2. create `docs/adr/` and `docs/specs/`
-3. write `ADR-0001-hybrid-authority.md`
-4. write `networking-spec.md`
-5. scaffold `packages/shared-types/` and `packages/net-protocol/`
-6. scaffold `apps/simulation-server/`
-7. scaffold `apps/host-client/`
-8. scaffold `apps/mobile-controller/`
-9. create an end-to-end join-room happy path
 
 ## Output Expectations
 

@@ -123,6 +123,20 @@ export type AbilityFiredDelta = {
   directionY: number;
 };
 
+// Lightning Arc's chain-lightning visual signal (Story 3.26) — broadcast once
+// per hit in the chain (including the first) so the host can draw connected
+// arcs without guessing which same-tick deltas belong to which cast. toEnemyId
+// may carry the boss's id (gameState.boss.id) — plain string, no separate boss
+// field, per ADR-0005's exact wire shape.
+export type AbilityChainHitDelta = {
+  type: 'ability:chain-hit';
+  casterId: string;
+  fromX: number;
+  fromY: number;
+  toEnemyId: string;
+  chainIndex: number;
+};
+
 export type PlayerHpUpdatedDelta = {
   type: 'player:hp-updated';
   playerId: string;
@@ -194,6 +208,17 @@ export type BossStompedDelta = {
   radius: number;
 };
 
+// The Grassland boss's charge lunge (Story 7.7a). Post-hoc: tryCharge moves the boss
+// and fires this in the same tick — there is no windup/telegraph state on the sim side.
+// x/y are the boss's POST-charge position. No radius (unlike boss:stomped) — the sim
+// event carries none; charge damage is resolved by contact, not an AoE radius.
+export type BossChargedDelta = {
+  type: 'boss:charged';
+  bossId: string;
+  x: number;
+  y: number;
+};
+
 export type BossAddSpawnedDelta = {
   type: 'add:spawned';
   enemyId: string;
@@ -231,6 +256,13 @@ export type BossDefeatedDelta = {
   type: 'boss:defeated';
   bossId: string;
   reward: RunReward;
+};
+
+export type ProjectileMovedDelta = {
+  type: 'projectile:moved';
+  projectileId: string;
+  x: number;
+  y: number;
 };
 
 export type ProjectileHitDelta = {
@@ -303,6 +335,7 @@ export type DeltaEventMsg =
   | PlayerPoiExitedDelta
   | PlayerClassUpdatedDelta
   | AbilityFiredDelta
+  | AbilityChainHitDelta
   | PlayerHpUpdatedDelta
   | PlayerSpiritDelta
   | SpiritAbilityFiredDelta
@@ -318,9 +351,11 @@ export type DeltaEventMsg =
   | BossDefeatedDelta
   | BossMovedDelta
   | BossStompedDelta
+  | BossChargedDelta
   | BossAddSpawnedDelta
   | StatusAppliedDelta
   | StatusExpiredDelta
+  | ProjectileMovedDelta
   | ProjectileHitDelta
   | ProjectileExpiredDelta
   | ZoneTickDelta

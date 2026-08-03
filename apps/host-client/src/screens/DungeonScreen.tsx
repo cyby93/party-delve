@@ -1,14 +1,69 @@
 import { useEffect, useRef, useState } from 'react';
 import { Application, Graphics, Assets, Text, TextStyle } from 'pixi.js';
-import type { GameState, PlayerState, StatusEffectType } from 'shared-types';
+import type { GameState, PlayerState } from 'shared-types';
 import { SessionColor, CLASS_DEFINITIONS, PlayerClass, BossPhase, PURIFICATION_PULSE_DURATION_MS, REWARD_REVEAL_DURATION_MS } from 'shared-types';
 import type { HostSession } from '../session/host-session';
 import type { DeltaEventMsg } from 'net-protocol';
+import {
+  VfxEngine,
+  createRingShockwave,
+  createConeWedge,
+  createBeam,
+  createParticleBurst,
+  createTrail,
+  createTintPulse,
+  planBossVfx,
+  BOSS_DAMAGE_VFX_MIN_INTERVAL_MS,
+  type VfxDescriptor,
+  progress,
+  getAbilityVfxConfig,
+  resolveAbilityVfxPlacement,
+  planSpiritcallerCast,
+  factionAccentFor,
+  triggerSpiritcallerCast,
+  triggerFactionAccent,
+  triggerSoulMendStart,
+  triggerSoulMendLink,
+  triggerSoulMendTerminal,
+  SPIRIT_NOVA_MAX_RADIUS_VFX_PX,
+  SPIRIT_NOVA_DURATION_VFX_MS,
+  MAX_FACTION_ACCENTS_PER_CAST,
+  SOUL_MEND_BEAM_INTERVAL_MS,
+  type SpiritcallerCastPlan,
+  planSouldrinkerCast,
+  spawnSouldrinkerVfx,
+  planBloodSpikeImpact,
+  planBloodSpikeSplash,
+  planVoidPulseImpact,
+  planDamageBuffOnset,
+  planHpLossCue,
+  planHpGainCue,
+  classifyHpChanges,
+  DARK_PACT_COST_CUE_WINDOW_MS,
+  resolveStormcallerCast,
+  spawnStormcallerCast,
+  spawnStormcallerSpecs,
+  planChainHitBeam,
+  planTempestHurlImpact,
+  spawnStormEyePulse,
+  spawnStormEyeStrike,
+  resolveZoneVisual,
+  resolveProjectileAppearance,
+  isStormEyeZone,
+  stormEyeTickCadence,
+  statusAuraSpec,
+  createStatusAura,
+  slowOrbitPoint,
+  MAX_STATUS_AURAS,
+  type StatusAuraEntry,
+  type TrailHandle,
+  type EffectHandle,
+} from '../vfx';
 
 interface DungeonScreenProps {
   gameState: GameState | null;
   session: HostSession | null;
-  latestTransientDelta: DeltaEventMsg | null;
+  transientDeltaQueue: DeltaEventMsg[];
 }
 
 const SESSION_COLOR_HEX: Record<SessionColor, number> = {
@@ -30,18 +85,54 @@ const ABILITY_FLASH_MS = 300;
 const SPIRIT_ABILITY_FLASH_MS = 200;
 const KILL_FADE_MS = 300;
 const ESSENCE_FLASH_MS = 400;
-const STATUS_BADGE_RADIUS = 6;
 const DAMAGE_NUMBER_DURATION_MS = 700;
 const DAMAGE_NUMBER_RISE_PX = 30;
 const DAMAGE_NUMBER_Y_OFFSET = ENEMY_RADIUS + 24; // clears the health bar at -32
+// Story 7.8 Task 6.2: the magic 1400 formerly inline in the purification-pulse ticker block.
+const PURIFICATION_PULSE_MAX_RADIUS_PX = 1400;
+// Story 7.8 Task 7.2: the reward-reveal particle burst's duration (was a local
+// PARTICLE_DURATION_MS inside the old ticker block).
+const REWARD_PARTICLE_DURATION_MS = 1000;
+// Story 7.8 Task 8: bond tether restyle constants.
+const BOND_TETHER_GLOW_WIDTH = 8;
+const BOND_TETHER_CORE_WIDTH = 3;
+const BOND_TETHER_BREATH_PERIOD_MS = 1800;
 
-// One generic badge shape for all status effects — differentiated by color only.
-const STATUS_EFFECT_COLORS: Record<StatusEffectType, number> = {
-  damageReduction: 0x3498db,
-  slow: 0x9b59b6,
-  damageBuff: 0xe67e22,
-  shield: 0xf1c40f,
-};
+/** Parse a `BondState.color` CSS hex string (`'#6ea8d8'`) to a PixiJS numeric
+ *  color. Guards the `NaN` case — `parseInt('zz', 16)` is `NaN`, and an
+ *  unguarded `NaN` color reaches PixiJS today — falling back to `accent-spirit`,
+ *  the established bond color. */
+function parseCssHexColor(css: string, fallback: number): number {
+  const parsed = parseInt(css.slice(1), 16);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+/**
+ * Resolve a target id (from a delta that carries no x/y of its own, e.g.
+ * `zone:strike`'s `targetId` or `ability:chain-hit`'s `toEnemyId`) against the
+ * current snapshot: an enemy first, then the boss by id. `null` when neither
+ * matches — an already-dead/left target, stale by the time the delta renders
+ * — so the caller can silently skip rather than throw. Shared by both call
+ * sites (code review 2026-07-29: was duplicated inline in each).
+ */
+function resolveEnemyOrBossPosition(
+  targetId: string,
+  gameState: GameState | null,
+): { x: number; y: number } | null {
+  const enemy = gameState?.enemies.find(e => e.id === targetId);
+  if (enemy) return { x: enemy.x, y: enemy.y };
+  if (gameState?.boss?.id === targetId) return { x: gameState.boss.position.x, y: gameState.boss.position.y };
+  return null;
+}
+
+// Story 7.6: warn at most once (never per-frame at 60fps) when MAX_STATUS_AURAS
+// load-sheds a new status aura.
+let auraCeilingWarned = false;
+function warnAuraCeiling(): void {
+  if (auraCeilingWarned) return;
+  auraCeilingWarned = true;
+  console.warn(`[vfx] MAX_STATUS_AURAS (${MAX_STATUS_AURAS}) reached — shedding new status aura creation`);
+}
 
 interface PlayerEntry {
   circle: Graphics;
@@ -55,6 +146,13 @@ interface EnemyEntry {
   deadUntil: number;  // 0 = alive; >0 = fading out
 }
 
+// Story 7.8: one persistent trail per live projectile, created on first-seen and
+// fed every frame — never re-created per frame (D-7.1-D / Task 3.4-3.5).
+interface ProjectileEntry {
+  g: Graphics;
+  trail: TrailHandle | null;
+}
+
 interface EssenceFlash {
   g: Graphics;
   deadline: number;
@@ -66,19 +164,86 @@ interface DamageNumberEntry {
   startY: number;
 }
 
-interface PurificationPulse {
-  graphic: Graphics;
-  startTime: number;
-  originX: number;
-  originY: number;
-  duration: number;
+// ── Story 7.3 Spiritcaller VFX context (per-frame runtime state, not Graphics) ──
+interface ActiveCast extends SpiritcallerCastPlan {
+  startedAt: number;
+  accentsSpawned: number;
+}
+interface SoulMendVisual {
+  targetPlayerId: string;
+  localStartedAt: number;
+  durationMs: number;
+  nextBeamAt: number;
+  lastTargetX: number;
+  lastTargetY: number;
+  progressRingId: number; // cancel the imploding progress ring on early termination
+}
+/** The Epic 7 engine + correlation state threaded into renderFrame, extending
+ *  the object rather than adding another positional param. */
+interface VfxContext {
+  engine: VfxEngine | null;
+  hpMemory: Map<string, number>;            // entityId -> last observed hp
+  activeCasts: Map<string, ActiveCast>;     // casterId -> cast inside its accent window
+  soulMend: Map<string, SoulMendVisual>;    // casterId -> channel visual state
+  soulMendTerminal: Map<string, 'completed' | 'cancelled'>; // casterId -> observed terminal delta
+  // Story 7.4: projectileId -> its owning class/ability/owner, cached at
+  // create-on-first-seen. applyDelta removes the projectile from GameState on
+  // projectile:hit, so this cache is the only thing that survives to identify a
+  // Souldrinker Blood Spike / Void Pulse impact in the delta effect.
+  projectileMeta: Map<string, { class: PlayerClass; abilityIndex: number; ownerId: string }>;
+  // Story 7.5: zoneId -> its last observed ticksRemaining + live pulse handle.
+  // effectId -1 = "seen but not yet pulsed" (first sighting). The remove-before-add
+  // on each tick boundary is AC4's one-live-pulse-per-zone invariant.
+  stormEyePulse: Map<string, { ticksRemaining: number; effectId: number }>;
 }
 
-interface PurificationParticle {
-  graphic: Graphics;
-  startTime: number;
-  vx: number;
-  vy: number;
+/**
+ * Translate a `planBossVfx` plan into live effects on `engine`. Lives here
+ * (not in vfx/boss-vfx.ts) because it needs both the pixi factories and the
+ * borrowed boss `Graphics` (Story 7.7b Task 7). Stamps `Date.now()` as every
+ * primitive's `startedAt` (BACKGROUNDED-TICKER rule, Story 7.2 review — matches
+ * `spawnSouldrinkerVfx`/`triggerSpiritcallerCast`): this is called from the
+ * transient-delta `useEffect`, not from inside the RAF-gated ticker, so an
+ * effect added with no explicit start would sit un-started while a hidden
+ * tab's ticker is stopped and all fire at once on resume.
+ *
+ * Returns the effect id of the `tint` descriptor if one was created, else
+ * `null`, so the caller can track and later cancel it (D-7.1-C).
+ */
+function applyBossVfxPlan(engine: VfxEngine, plan: VfxDescriptor[], bossTarget: Graphics | null): number | null {
+  const startedAt = Date.now();
+  let tintId: number | null = null;
+  for (const d of plan) {
+    switch (d.kind) {
+      case 'ring':
+        engine.add(createRingShockwave({
+          x: d.x, y: d.y, color: d.color, startRadius: d.startRadius, maxRadius: d.maxRadius,
+          lineWidth: d.lineWidth, durationMs: d.durationMs, alpha: d.alpha, startedAt,
+        }));
+        break;
+      case 'beam':
+        engine.add(createBeam({
+          x: d.x, y: d.y, toX: d.toX, toY: d.toY, color: d.color,
+          width: d.width, durationMs: d.durationMs, alpha: d.alpha, startedAt,
+        }));
+        break;
+      case 'burst':
+        engine.add(createParticleBurst({
+          x: d.x, y: d.y, color: d.color, count: d.count, speed: d.speed, spread: d.spread,
+          particleRadius: d.particleRadius, durationMs: d.durationMs, alpha: d.alpha, startedAt,
+        }));
+        break;
+      case 'tint':
+        // Boss already despawned/defeated — skip silently, never throw (7.1 AC3).
+        if (bossTarget === null) break;
+        tintId = engine.add(createTintPulse({
+          target: bossTarget, color: d.color, durationMs: d.durationMs,
+          minAlpha: d.minAlpha, maxAlpha: d.maxAlpha, startedAt,
+        }));
+        break;
+    }
+  }
+  return tintId;
 }
 
 function renderFrame(
@@ -89,10 +254,11 @@ function renderFrame(
   essenceFlashes: Map<string, EssenceFlash>,
   tetherGraphics: Map<string, Graphics>,
   isPurified: boolean,
-  statusBadgeGraphics: Map<string, Graphics>,
-  projectileGraphics: Map<string, Graphics>,
+  statusAuras: Map<string, StatusAuraEntry>,
+  projectileGraphics: Map<string, ProjectileEntry>,
   zoneGraphics: Map<string, Graphics>,
   damageNumberGraphics: Map<string, DamageNumberEntry>,
+  vfxRefs: VfxContext,
 ): void {
   app.stage.scale.set(app.screen.width / VIRTUAL_W, app.screen.height / VIRTUAL_H);
 
@@ -250,62 +416,312 @@ function renderFrame(
     const pB = state.players.find(p => p.id === bond.playerB);
     g.clear();
     if (pA && pB) {
-      const color = parseInt(bond.color.slice(1), 16);
-      g.moveTo(pA.x, pA.y).lineTo(pB.x, pB.y).stroke({ color, width: 2, alpha: 0.7 });
+      const color = parseCssHexColor(bond.color, 0x6ea8d8);
+      // Story 7.8 Task 8: two-pass restyle — a soft glow underlay plus a
+      // breathing core, so the tether reads as living spirit energy rather than
+      // a flat debug line. Breath stays in 0.48-0.76 (never invisible, never
+      // opaque enough to compete with sprites) — couch-readability check.
+      const coreAlpha = 0.62 + 0.14 * Math.sin((now / BOND_TETHER_BREATH_PERIOD_MS) * Math.PI * 2);
+      g.moveTo(pA.x, pA.y).lineTo(pB.x, pB.y).stroke({ color, width: BOND_TETHER_GLOW_WIDTH, alpha: 0.16 });
+      g.moveTo(pA.x, pA.y).lineTo(pB.x, pB.y).stroke({ color, width: BOND_TETHER_CORE_WIDTH, alpha: coreAlpha });
     }
   }
 
-  // ── Status effect badges ─────────────────────────────────────────────────────
-  // Reuses the create-on-first-seen / cleanup-on-missing pattern from playerGraphics/
-  // enemyGraphics above — one generic badge per entity, differentiated by color only.
+  // ── Status effect auras (Story 7.6) ──────────────────────────────────────────
+  // Four shape-distinct, per-entity, persistent auras built entirely from the
+  // Story 7.1 primitive library, replacing the old one-generic-badge-per-effect
+  // block. Snapshot-driven only (AC4) — survives reconnect, late join, batched-
+  // delta loss. Supersedes 7.2's Iron Skin shell and 7.3's Warding Cry shield
+  // pulse: both were the same "persist-for-the-duration" visual this story
+  // generalizes, so per the Story 7.6 composition rule they are removed here
+  // rather than double-rendered alongside the generic aura.
   const badgeTargets = [
     ...state.players.map(p => ({ id: p.id, x: p.x, y: p.y, radius: PLAYER_RADIUS, effects: p.statusEffects })),
     ...state.enemies.filter(e => e.isAlive).map(e => ({ id: e.id, x: e.x, y: e.y, radius: ENEMY_RADIUS, effects: e.statusEffects })),
   ];
-  const activeBadgeIds = new Set(badgeTargets.filter(t => t.effects.length > 0).map(t => t.id));
-  for (const [id, g] of statusBadgeGraphics) {
-    if (!activeBadgeIds.has(id)) {
-      app.stage.removeChild(g);
-      g.destroy();
-      statusBadgeGraphics.delete(id);
+  const vfxEngine = vfxRefs.engine;
+  if (vfxEngine) {
+    const activeAuraIds = new Set(badgeTargets.filter(t => t.effects.length > 0).map(t => t.id));
+    for (const [id, entry] of statusAuras) {
+      if (!activeAuraIds.has(id)) {
+        for (const handle of entry.auras.values()) vfxEngine.remove(handle.effectId);
+        statusAuras.delete(id);
+      }
+    }
+
+    const liveAuraCount = (): number => {
+      let n = 0;
+      for (const entry of statusAuras.values()) n += entry.auras.size;
+      return n;
+    };
+
+    for (const target of badgeTargets) {
+      if (target.effects.length === 0) continue;
+      let entry = statusAuras.get(target.id);
+      if (!entry) {
+        // Math.random() is permitted here — cosmetic host-side effect only.
+        entry = { phase: Math.random() * Math.PI * 2, auras: new Map() };
+        statusAuras.set(target.id, entry);
+      }
+
+      const liveTypes = new Set(target.effects.map(e => e.type));
+      for (const [type, handle] of entry.auras) {
+        if (!liveTypes.has(type)) {
+          vfxEngine.remove(handle.effectId);
+          entry.auras.delete(type);
+        }
+      }
+
+      for (const effect of target.effects) {
+        const spec = statusAuraSpec(effect.type, target.radius, effect.magnitude, effect.expiresAtMs - now);
+        let handle = entry.auras.get(effect.type);
+
+        if (spec.kind === 'trail') {
+          // Persistent handle: fed every frame, never re-created except when
+          // the engine has reaped a stalled trail (disposed).
+          if (!handle || handle.trail!.disposed) {
+            if (liveAuraCount() >= MAX_STATUS_AURAS) {
+              warnAuraCeiling();
+              // Drop the stale bookkeeping entry rather than leaving a disposed
+              // trail parked in the map: it would otherwise count against
+              // liveAuraCount() forever (never re-checked once its type stays
+              // active) while rendering nothing, ratcheting the shed ceiling
+              // tighter every time it's hit instead of shedding only this frame.
+              if (handle) entry.auras.delete(effect.type);
+              continue;
+            }
+            const raw = createStatusAura(spec, target.x, target.y, entry.phase) as TrailHandle;
+            const effectId = vfxEngine.add(raw);
+            if (raw.view) app.stage.setChildIndex(raw.view, 0);
+            handle = { effectId, view: raw.view, trail: raw, nextRetriggerAt: 0 };
+            entry.auras.set(effect.type, handle);
+          }
+          const point = slowOrbitPoint(target.x, target.y, spec.radius, entry.phase, now);
+          handle.trail!.moveTo(point.x, point.y, now);
+          // createTrail.update never assigns view.alpha itself (primitives.ts),
+          // so this composes cleanly on top of its per-segment fade.
+          if (handle.view) handle.view.alpha = spec.alpha;
+          continue;
+        }
+
+        // Cadence kinds (damageReduction/shield/damageBuff): re-trigger a fresh
+        // handle on `spec.cadenceMs`; the outgoing pulse expires on its own
+        // (cadenceMs === durationMs), so it is never explicitly removed — at
+        // most one handoff frame of overlap. Reposition every frame in between.
+        if (!handle || now >= handle.nextRetriggerAt) {
+          if (liveAuraCount() >= MAX_STATUS_AURAS) {
+            warnAuraCeiling();
+            // Same rationale as the trail branch above: an expired-but-uncreated
+            // handle must not linger in the map counting against the ceiling.
+            if (handle) entry.auras.delete(effect.type);
+            continue;
+          }
+          const raw = createStatusAura(spec, target.x, target.y, entry.phase) as EffectHandle;
+          const effectId = vfxEngine.add(raw);
+          if (raw.view) app.stage.setChildIndex(raw.view, 0);
+          handle = { effectId, view: raw.view, trail: null, nextRetriggerAt: now + spec.cadenceMs };
+          entry.auras.set(effect.type, handle);
+        }
+        handle.view?.position.set(target.x, target.y);
+      }
     }
   }
-  for (const target of badgeTargets) {
-    if (target.effects.length === 0) continue;
-    let g = statusBadgeGraphics.get(target.id);
-    if (!g) {
-      g = new Graphics();
-      app.stage.addChild(g);
-      statusBadgeGraphics.set(target.id, g);
+
+  // ── Spiritcaller: Soul Mend channel indicator (Story 7.3, Task 6) ─────────────
+  // State-driven (from player.channelingAbility), not delta-driven, so it is
+  // correct after reconnect/late-join and immune to latestTransientDelta batching.
+  if (vfxEngine) {
+    const channelingIds = new Set(
+      state.players.filter(p => p.channelingAbility !== null).map(p => p.id),
+    );
+    // Start a visual for each newly-channeling caster.
+    for (const player of state.players) {
+      const channel = player.channelingAbility;
+      if (!channel || vfxRefs.soulMend.has(player.id)) continue;
+      const target = state.players.find(p => p.id === channel.targetPlayerId);
+      const tx = target ? (target.bodyX ?? target.x) : player.x;
+      const ty = target ? (target.bodyY ?? target.y) : player.y;
+      const progressRingId = triggerSoulMendStart(vfxEngine, player.x, player.y, tx, ty, channel.durationMs);
+      vfxRefs.soulMend.set(player.id, {
+        targetPlayerId: channel.targetPlayerId,
+        localStartedAt: now, // host clock; never the server-epoch channel.startedAt (clock contract)
+        durationMs: channel.durationMs,
+        nextBeamAt: now + SOUL_MEND_BEAM_INTERVAL_MS,
+        lastTargetX: tx,
+        lastTargetY: ty,
+        progressRingId,
+      });
     }
-    g.position.set(target.x, target.y);
-    g.clear();
-    const badgeY = -(target.radius + 14);
-    target.effects.forEach((effect, i) => {
-      const offsetX = (i - (target.effects.length - 1) / 2) * 14;
-      g!.circle(offsetX, badgeY, STATUS_BADGE_RADIUS).fill({ color: STATUS_EFFECT_COLORS[effect.type] ?? 0xffffff });
-    });
+    // Advance / terminate existing channel visuals.
+    for (const [casterId, visual] of vfxRefs.soulMend) {
+      const caster = state.players.find(p => p.id === casterId);
+      const target = state.players.find(p => p.id === visual.targetPlayerId);
+      if (target) {
+        visual.lastTargetX = target.bodyX ?? target.x;
+        visual.lastTargetY = target.bodyY ?? target.y;
+      }
+      const stillChanneling = channelingIds.has(casterId) && caster !== undefined;
+      if (stillChanneling && caster) {
+        // Re-trigger the link beam on its cadence, following both live positions.
+        if (now >= visual.nextBeamAt) {
+          triggerSoulMendLink(vfxEngine, caster.x, caster.y, visual.lastTargetX, visual.lastTargetY);
+          visual.nextBeamAt = now + SOUL_MEND_BEAM_INTERVAL_MS;
+        }
+        continue;
+      }
+      // Terminated: pick the terminal effect. Prefer an observed cast delta,
+      // else infer from the target's revived state (the load-bearing path — a
+      // cast:completed usually collapses with player:revived under batching).
+      const marker = vfxRefs.soulMendTerminal.get(casterId);
+      let outcome: 'success' | 'fizzle';
+      if (marker === 'completed') outcome = 'success';
+      else if (marker === 'cancelled') outcome = 'fizzle';
+      else outcome = target && !target.isDown ? 'success' : 'fizzle';
+      // Cancel the imploding progress ring so it doesn't keep animating after an
+      // early end (safe no-op if it already completed and was reaped).
+      vfxEngine.remove(visual.progressRingId);
+      triggerSoulMendTerminal(vfxEngine, visual.lastTargetX, visual.lastTargetY, outcome);
+      vfxRefs.soulMendTerminal.delete(casterId);
+      vfxRefs.soulMend.delete(casterId);
+    }
+    // Prune orphan terminal markers (code review 2026-07-23): a cast:completed /
+    // cast:cancelled delta whose channel visual was already resolved by the isDown
+    // inference — or was never created — leaves a marker with no live soulMend
+    // entry. Without this it would leak unboundedly and, keyed by casterId, mis-
+    // resolve this caster's NEXT channel (a fizzle painted as success). A marker
+    // for a still-live visual is kept (consumed by the termination loop above).
+    for (const id of [...vfxRefs.soulMendTerminal.keys()]) {
+      if (!vfxRefs.soulMend.has(id)) vfxRefs.soulMendTerminal.delete(id);
+    }
+
+    // ── Spiritcaller: best-effort mixed-faction accents (Task 5) ────────────────
+    // A COSMETIC CORRELATION HEURISTIC, never a rule check: it reads only `hp`,
+    // and may mis-attribute another source's HP change that overlaps a cast in
+    // time and space, or miss a change that nets to zero in the window. Accents
+    // are capped per cast. See Story 7.3 §5.
+    for (const [casterId, cast] of [...vfxRefs.activeCasts]) {
+      if (now - cast.startedAt > cast.accentWindowMs) vfxRefs.activeCasts.delete(casterId);
+    }
+    const anyActiveCast = vfxRefs.activeCasts.size > 0;
+    const hpEntities: { id: string; x: number; y: number; hp: number }[] = [
+      ...state.players.map(p => ({ id: p.id, x: p.x, y: p.y, hp: p.hp })),
+      ...state.enemies.filter(e => e.isAlive).map(e => ({ id: e.id, x: e.x, y: e.y, hp: e.hp })),
+    ];
+    const liveEntityIds = new Set(hpEntities.map(e => e.id));
+    for (const entity of hpEntities) {
+      const before = vfxRefs.hpMemory.get(entity.id);
+      vfxRefs.hpMemory.set(entity.id, entity.hp);
+      if (before === undefined) continue; // seed silently — no accent on first sight / reconnect
+      if (!anyActiveCast) continue;
+      const kind = factionAccentFor(before, entity.hp);
+      if (!kind) continue;
+      for (const cast of vfxRefs.activeCasts.values()) {
+        if (cast.accentsSpawned >= MAX_FACTION_ACCENTS_PER_CAST) continue;
+        // Spirit Nova accents track the visible ring edge; the others use a fixed radius.
+        const gate = cast.ability === 'spirit-nova'
+          ? SPIRIT_NOVA_MAX_RADIUS_VFX_PX * progress(now, cast.startedAt, SPIRIT_NOVA_DURATION_VFX_MS)
+          : cast.accentRadiusPx;
+        const dx = entity.x - cast.focusX;
+        const dy = entity.y - cast.focusY;
+        if (dx * dx + dy * dy > gate * gate) continue;
+        triggerFactionAccent(vfxEngine, kind, entity.x, entity.y - 8, now);
+        cast.accentsSpawned++;
+        break; // one accent per entity per frame
+      }
+    }
+    // Prune HP memory for entities no longer present (leave, death) so a respawned
+    // id re-seeds silently rather than firing a phantom accent.
+    for (const id of [...vfxRefs.hpMemory.keys()]) {
+      if (!liveEntityIds.has(id)) vfxRefs.hpMemory.delete(id);
+    }
+
+    // ── Stormcaller: Storm Eye zone tick pulse (Story 7.5, AC3/AC4) ──────────────
+    // Snapshot-derived (from ZoneState.expiresAtMs + tickIntervalMs), not delta-
+    // driven, so it is correct after reconnect/late-join and immune to the single-
+    // value latestTransientDelta batching. Each decrement of the backwards-counted
+    // ticksRemaining is a real tick boundary; on each, remove-before-add keeps at
+    // most one live pulse per zone id (the concrete D-7.1-D answer for this story).
+    const liveStormEyeIds = new Set<string>();
+    for (const zone of state.zones) {
+      if (!isStormEyeZone(zone, state.players)) continue;
+      const cadence = stormEyeTickCadence(now, zone.expiresAtMs, zone.tickIntervalMs);
+      if (!cadence) continue;
+      liveStormEyeIds.add(zone.id);
+      const prev = vfxRefs.stormEyePulse.get(zone.id);
+      if (!prev) {
+        // First sighting: record without pulsing (a zone seen mid-life on reconnect
+        // must not fire a spurious pulse the instant it appears).
+        vfxRefs.stormEyePulse.set(zone.id, { ticksRemaining: cadence.ticksRemaining, effectId: -1 });
+        continue;
+      }
+      if (cadence.ticksRemaining < prev.ticksRemaining) {
+        if (prev.effectId >= 0) vfxEngine.remove(prev.effectId);
+        prev.effectId = spawnStormEyePulse(vfxEngine, zone, now);
+      }
+      // Re-baseline every frame (not only on a decrease): a backward Date.now()
+      // step (host clock / NTP correction — Date.now() is not monotonic) can push
+      // the observed ticksRemaining *up*; if the baseline only tracked decreases it
+      // would latch stale-high and suppress pulses for several ticks. The pulse
+      // still fires only on a genuine decrease above; the baseline just always
+      // follows the latest observation (code review 2026-07-24).
+      prev.ticksRemaining = cadence.ticksRemaining;
+    }
+    for (const [id, entry] of vfxRefs.stormEyePulse) {
+      if (!liveStormEyeIds.has(id)) {
+        if (entry.effectId >= 0) vfxEngine.remove(entry.effectId);
+        vfxRefs.stormEyePulse.delete(id);
+      }
+    }
   }
 
   // ── Projectiles ───────────────────────────────────────────────────────────────
+  // Story 7.8: per-ability body (resolveProjectileAppearance) + one persistent
+  // motion trail per live projectile (AC1, AC4). Cleanup-on-missing destroys the
+  // body Graphics but deliberately does NOT engine.remove() the trail — it just
+  // stops feeding it, so it fades point-by-point and the engine reaps it within
+  // its own trailDurationMs (the fade-out *is* the despawn read, Task 3.5).
   const activeProjectileIds = new Set(state.projectiles.map(p => p.id));
-  for (const [id, g] of projectileGraphics) {
+  for (const [id, entry] of projectileGraphics) {
     if (!activeProjectileIds.has(id)) {
-      app.stage.removeChild(g);
-      g.destroy();
+      app.stage.removeChild(entry.g);
+      entry.g.destroy();
       projectileGraphics.delete(id);
+      vfxRefs.projectileMeta.delete(id); // Story 7.4: drop the meta cache alongside the Graphics
     }
   }
   for (const projectile of state.projectiles) {
-    let g = projectileGraphics.get(projectile.id);
-    if (!g) {
-      g = new Graphics();
+    let entry = projectileGraphics.get(projectile.id);
+    const appearance = resolveProjectileAppearance(projectile.class, projectile.abilityIndex);
+    if (!entry) {
+      const g = new Graphics();
       app.stage.addChild(g);
-      projectileGraphics.set(projectile.id, g);
+      const engine = vfxRefs.engine;
+      let trail: TrailHandle | null = null;
+      if (engine) {
+        trail = createTrail({
+          x: projectile.x, y: projectile.y,
+          color: appearance.trail.color, width: appearance.trail.width, alpha: appearance.trail.alpha,
+          durationMs: appearance.trail.durationMs, pointCount: appearance.trail.pointCount,
+        });
+        engine.add(trail);
+      }
+      entry = { g, trail };
+      projectileGraphics.set(projectile.id, entry);
+      // Story 7.4: cache class/ability/owner while the projectile is still in
+      // state — projectile:hit removes it before the delta effect can read it.
+      vfxRefs.projectileMeta.set(projectile.id, {
+        class: projectile.class,
+        abilityIndex: projectile.abilityIndex,
+        ownerId: projectile.ownerId,
+      });
     }
-    g.position.set(projectile.x, projectile.y);
-    g.clear();
-    g.circle(0, 0, 8).fill({ color: 0xffffff });
+    entry.g.position.set(projectile.x, projectile.y);
+    entry.g.clear();
+    if (appearance.halo) {
+      entry.g.circle(0, 0, appearance.halo.radius).fill({ color: appearance.halo.color, alpha: appearance.halo.alpha });
+    }
+    entry.g.circle(0, 0, appearance.core.radius).fill({ color: appearance.core.color, alpha: appearance.core.alpha });
+    if (entry.trail && !entry.trail.disposed) entry.trail.moveTo(projectile.x, projectile.y, now);
   }
 
   // ── Zones/Fields ──────────────────────────────────────────────────────────────
@@ -319,14 +735,33 @@ function renderFrame(
   }
   for (const zone of state.zones) {
     let g = zoneGraphics.get(zone.id);
+    // Story 7.5 → 7.8 seam: per-ability zone body via resolveZoneVisual. The
+    // default branch reproduces today's exact 0x9b59b6 @ 0.25 for every unmapped
+    // zone; the tick pulse (Storm Eye, above) is a separate VfxEngine effect
+    // layered on top of this static body.
+    const zoneVisual = resolveZoneVisual(zone, state.players);
     if (!g) {
       g = new Graphics();
       app.stage.addChildAt(g, 0); // below sprites, like bond tethers
       zoneGraphics.set(zone.id, g);
+      // Task 4.4: one spawn ring on first-seen only, scaled to this zone's own
+      // radius — never per-tick, never per-frame.
+      if (vfxRefs.engine && zoneVisual.spawnRing) {
+        const { color, startRadiusFactor, maxRadiusFactor, lineWidth, durationMs, alpha } = zoneVisual.spawnRing;
+        vfxRefs.engine.add(createRingShockwave({
+          x: zone.x, y: zone.y, color,
+          startRadius: zone.radius * startRadiusFactor,
+          maxRadius: zone.radius * maxRadiusFactor,
+          lineWidth, durationMs, alpha, startedAt: now,
+        }));
+      }
     }
     g.position.set(zone.x, zone.y);
     g.clear();
-    g.circle(0, 0, zone.radius).fill({ color: 0x9b59b6, alpha: 0.25 });
+    g.circle(0, 0, zone.radius).fill({ color: zoneVisual.fillColor, alpha: zoneVisual.fillAlpha });
+    if (zoneVisual.rimColor !== undefined) {
+      g.circle(0, 0, zone.radius).stroke({ color: zoneVisual.rimColor, width: zoneVisual.rimWidth ?? 2, alpha: zoneVisual.rimAlpha ?? 0.5 });
+    }
   }
 
   // ── Essence flashes ───────────────────────────────────────────────────────────
@@ -365,17 +800,31 @@ interface ReviveDeadline {
   name: string;
 }
 
-export function DungeonScreen({ gameState, session, latestTransientDelta }: DungeonScreenProps) {
+export function DungeonScreen({ gameState, session, transientDeltaQueue }: DungeonScreenProps) {
   const canvasContainerRef = useRef<HTMLDivElement>(null);
   const pixiAppRef = useRef<Application | null>(null);
   const playerGraphicsRef = useRef<Map<string, PlayerEntry>>(new Map());
   const enemyGraphicsRef = useRef<Map<string, EnemyEntry>>(new Map());
   const essenceFlashesRef = useRef<Map<string, EssenceFlash>>(new Map());
   const tetherGraphicsRef = useRef<Map<string, Graphics>>(new Map());
-  const statusBadgeGraphicsRef = useRef<Map<string, Graphics>>(new Map());
-  const projectileGraphicsRef = useRef<Map<string, Graphics>>(new Map());
+  const statusAurasRef = useRef<Map<string, StatusAuraEntry>>(new Map());
+  const projectileGraphicsRef = useRef<Map<string, ProjectileEntry>>(new Map());
   const zoneGraphicsRef = useRef<Map<string, Graphics>>(new Map());
   const damageNumberGraphicsRef = useRef<Map<string, DamageNumberEntry>>(new Map());
+  const vfxEngineRef = useRef<VfxEngine | null>(null);
+  // Story 7.3 Spiritcaller correlation/channel state (runtime, not Graphics).
+  const hpMemoryRef = useRef<Map<string, number>>(new Map());
+  const activeCastsRef = useRef<Map<string, ActiveCast>>(new Map());
+  const soulMendRef = useRef<Map<string, SoulMendVisual>>(new Map());
+  const soulMendTerminalRef = useRef<Map<string, 'completed' | 'cancelled'>>(new Map());
+  // Story 7.4 Souldrinker correlation state (runtime, not Graphics).
+  const projectileMetaRef = useRef<Map<string, { class: PlayerClass; abilityIndex: number; ownerId: string }>>(new Map());
+  const lifestealEffectIdRef = useRef<Map<string, number>>(new Map()); // ownerId -> live lifesteal implode id (one per player)
+  const buffedPlayersRef = useRef<Set<string>>(new Set());             // playerIds currently carrying damageBuff (onset diff)
+  const prevPlayerHpRef = useRef<Map<string, number>>(new Map());      // playerId -> last observed hp (Dark Pact cost/gain classifier)
+  const lastDarkPactCastAtRef = useRef(0);                             // Date.now() of the last Souldrinker Dark Pact ability:fired
+  // Story 7.5 Stormcaller runtime state (not Graphics).
+  const stormEyePulseRef = useRef<Map<string, { ticksRemaining: number; effectId: number }>>(new Map());
   const damageNumberIdCounterRef = useRef(0);
   const latestGameStateRef = useRef<GameState | null>(null);
   latestGameStateRef.current = gameState;
@@ -385,11 +834,16 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
   const lastBossHpRef = useRef<number | null>(null);
   const bossDefeatedRef = useRef(false);
   const isPurifiedRef = useRef(false);
-  const purificationPulseRef = useRef<PurificationPulse | null>(null);
+  // Story 7.8 Task 6.3: the purification pulse's completion deadline. VfxEngine
+  // reaps the pulse effect silently (no completion callback), so this ref is what
+  // drives the reward-reveal handoff — set when the pulse is added, nulled first
+  // (so it fires exactly once) when the ticker observes now >= deadline.
+  const purificationPulseEndsAtRef = useRef<number | null>(null);
   const rewardRevealActiveRef = useRef(false);
   const bossLastPositionRef = useRef({ x: 960, y: 540 });
+  const bossTintEffectIdRef = useRef<number | null>(null);
+  const bossDamageVfxAtRef = useRef(0);
   const essenceDisplayRef = useRef<number | null>(null);
-  const purificationParticlesRef = useRef<PurificationParticle[]>([]);
   const [, setTimerTick] = useState(0);
   const [levelClearFlash, setLevelClearFlash] = useState(false);
   const [bondOverlay, setBondOverlay] = useState<{ text: string; fading: boolean } | null>(null);
@@ -415,10 +869,16 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
       }
       canvasContainerRef.current.appendChild(app.canvas);
       pixiAppRef.current = app;
+      // app.stage structurally satisfies VfxStage (vfx/types.ts:21-24)
+      vfxEngineRef.current = new VfxEngine(app.stage);
       app.ticker.add(() => {
+        // CLOCK CONTRACT (vfx/types.ts:26-34): one Date.now() per tick, reused for
+        // everything below — vfxEngineRef.current.update() and the purification-
+        // pulse deadline check. renderFrame recomputes its own (they agree; left
+        // alone, Story 7.8 Dev Notes "The clock unification").
+        const now = Date.now();
         const state = latestGameStateRef.current;
-        if (!state) return;
-        renderFrame(
+        if (state) renderFrame(
           state,
           app,
           playerGraphicsRef.current,
@@ -426,11 +886,31 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
           essenceFlashesRef.current,
           tetherGraphicsRef.current,
           isPurifiedRef.current,
-          statusBadgeGraphicsRef.current,
+          statusAurasRef.current,
           projectileGraphicsRef.current,
           zoneGraphicsRef.current,
           damageNumberGraphicsRef.current,
+          {
+            engine: vfxEngineRef.current,
+            hpMemory: hpMemoryRef.current,
+            activeCasts: activeCastsRef.current,
+            soulMend: soulMendRef.current,
+            soulMendTerminal: soulMendTerminalRef.current,
+            projectileMeta: projectileMetaRef.current,
+            stormEyePulse: stormEyePulseRef.current,
+          },
         );
+
+        // CLOCK CONTRACT (vfx/types.ts:26-34): Date.now() only — no other clock.
+        // Placed AFTER renderFrame (code review 2026-07-23): renderFrame rewrites
+        // circle.alpha every frame, so a borrowed-target tint pulse (Spirit Nova /
+        // Warding Cry casts) must be applied after it or it is clobbered within the
+        // same frame (7.1 clock contract + Task 1.5). It still runs when state is
+        // null — outside the guard below — so effects live at that moment keep
+        // advancing and get reaped (the Story 7.2 review concern that first moved
+        // this call up; satisfied here without shadowing the tint pulses).
+        vfxEngineRef.current?.update(now);
+        if (!state) return;
 
         // Boss sprite — managed in ticker to keep renderFrame signature stable
         if (state.boss && !bossDefeatedRef.current) {
@@ -454,47 +934,29 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
             g.circle(0, 0, 12).fill({ color: 0xff2222 });
           }
         } else if (bossGraphicsRef.current) {
+          // Cancel any live phase-tint pulse before the target it animates is
+          // destroyed (D-7.1-C: neither the engine nor the primitive detects an
+          // externally destroyed target — Story 7.7b Dev Notes).
+          if (bossTintEffectIdRef.current !== null) {
+            vfxEngineRef.current?.remove(bossTintEffectIdRef.current);
+            bossTintEffectIdRef.current = null;
+          }
           app.stage.removeChild(bossGraphicsRef.current);
           bossGraphicsRef.current.destroy();
           bossGraphicsRef.current = null;
         }
 
-        // Purification pulse animation
-        const pulse = purificationPulseRef.current;
-        if (pulse) {
-          const elapsed = performance.now() - pulse.startTime;
-          const t = Math.min(elapsed / pulse.duration, 1);
-          const radius = t * 1400;
-          const alpha = 0.6 * (1 - t);
-          pulse.graphic.clear();
-          pulse.graphic.circle(0, 0, radius).fill({ color: 0x90d8f0, alpha });
-          if (t >= 1) {
-            app.stage.removeChild(pulse.graphic);
-            pulse.graphic.destroy();
-            purificationPulseRef.current = null;
-            rewardRevealActiveRef.current = true;
-            setRewardRevealVisible(true);
-            setVoiceVisible(true);
-          }
-        }
-
-        // Reward reveal particles (8-12 bursting circles)
-        const PARTICLE_DURATION_MS = 1000;
-        const particles = purificationParticlesRef.current;
-        for (let i = particles.length - 1; i >= 0; i--) {
-          const p = particles[i]!;
-          const elapsed = performance.now() - p.startTime;
-          const t = Math.min(elapsed / PARTICLE_DURATION_MS, 1);
-          p.graphic.position.set(
-            VIRTUAL_W / 2 + p.vx * elapsed,
-            VIRTUAL_H / 2 + p.vy * elapsed,
-          );
-          p.graphic.alpha = 1 - t;
-          if (t >= 1) {
-            app.stage.removeChild(p.graphic);
-            p.graphic.destroy();
-            particles.splice(i, 1);
-          }
+        // Purification pulse → reward-reveal handoff (Story 7.8 Task 6.3). The
+        // pulse graphic itself now lives entirely inside VfxEngine (createRingShockwave,
+        // added from the boss:defeated delta handler) — VfxEngine reaps it silently
+        // with no completion callback, so this deadline ref is the one thing that
+        // must not get wrong: null-out FIRST so the handoff fires exactly once,
+        // using the same `now` the deadline was computed from.
+        if (purificationPulseEndsAtRef.current !== null && now >= purificationPulseEndsAtRef.current) {
+          purificationPulseEndsAtRef.current = null;
+          rewardRevealActiveRef.current = true;
+          setRewardRevealVisible(true);
+          setVoiceVisible(true);
         }
       });
     }
@@ -503,6 +965,11 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
       cancelled = true;
       const app = pixiAppRef.current;
       if (app) {
+        // Before app.destroy: clear() calls stage.removeChild on a live stage.
+        bossTintEffectIdRef.current = null;
+        bossDamageVfxAtRef.current = 0;
+        vfxEngineRef.current?.clear();
+        vfxEngineRef.current = null;
         app.canvas.remove();
         app.destroy(true, { children: true });
         pixiAppRef.current = null;
@@ -511,8 +978,7 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
         bossGraphicsRef.current.destroy();
         bossGraphicsRef.current = null;
       }
-      purificationPulseRef.current = null;
-      purificationParticlesRef.current = [];
+      purificationPulseEndsAtRef.current = null;
       bossDefeatedRef.current = false;
       isPurifiedRef.current = false;
       rewardRevealActiveRef.current = false;
@@ -520,8 +986,18 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
       enemyGraphicsRef.current.clear();
       essenceFlashesRef.current.clear();
       tetherGraphicsRef.current.clear();
-      statusBadgeGraphicsRef.current.clear();
+      statusAurasRef.current.clear();
       damageNumberGraphicsRef.current.clear();
+      hpMemoryRef.current.clear();
+      activeCastsRef.current.clear();
+      soulMendRef.current.clear();
+      soulMendTerminalRef.current.clear();
+      projectileMetaRef.current.clear();
+      lifestealEffectIdRef.current.clear();
+      buffedPlayersRef.current.clear();
+      prevPlayerHpRef.current.clear();
+      lastDarkPactCastAtRef.current = 0;
+      stormEyePulseRef.current.clear();
     };
   }, []);
 
@@ -535,22 +1011,255 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
 
   // Handle transient delta visuals: ability flash, enemy kill fade, essence drop flash, level-complete flash
   useEffect(() => {
-    if (!latestTransientDelta) return;
+    for (const latestTransientDelta of transientDeltaQueue) {
     const app = pixiAppRef.current;
 
     if (latestTransientDelta.type === 'bond:assigned') {
-      // ponytail: level:complete flash may be skipped when bond-moment follows in same batch; deferred
+      // Story 7.11: level:complete and bond:assigned in the same batch now both
+      // reach here (queue conversion) — no longer skipped. Two bond:assigned in
+      // the same batch can still collapse to the last one's overlay text, since
+      // setBondOverlay itself is single-slot (see deferred-work.md D-7.11-F).
       const nameA = gameState?.players.find(p => p.id === latestTransientDelta.playerA)?.displayName ?? latestTransientDelta.playerA;
       const nameB = gameState?.players.find(p => p.id === latestTransientDelta.playerB)?.displayName ?? latestTransientDelta.playerB;
       const label = latestTransientDelta.bondType === 'fate' ? 'Fate' : 'Proximity';
-      // ponytail: timers live in a separate effect keyed on trigger counter so they survive latestTransientDelta being cleared at 400ms
+      // ponytail: timers live in a separate effect keyed on trigger counter so they survive transientDeltaQueue being cleared synchronously (Story 7.11)
       setBondOverlay({ text: `${nameA} · ${nameB} — ${label} Bond`, fading: false });
       setBondOverlayTrigger(c => c + 1);
     } else if (latestTransientDelta.type === 'level:complete') {
       setLevelClearFlash(true);
     } else if (latestTransientDelta.type === 'ability:fired') {
-      const entry = playerGraphicsRef.current.get(latestTransientDelta.playerId);
-      if (entry) entry.flashUntil = Date.now() + ABILITY_FLASH_MS;
+      const d = latestTransientDelta;
+      const entry = playerGraphicsRef.current.get(d.playerId);
+      // AbilityFiredDelta carries no class — resolve the caster from state.
+      const caster = gameState?.players.find(p => p.id === d.playerId);
+      const engine = vfxEngineRef.current;
+
+      // Story 7.3: Spiritcaller owned delta-casts (idx 0/1/3) take the planner
+      // path and never fall back to flashUntil (AC1). Soul Mend (idx 2) is
+      // channel-driven and never emits ability:fired, so it is excluded here.
+      if (caster && engine && caster.class === PlayerClass.SPIRITCALLER && d.abilityIndex !== 2) {
+        const plan = planSpiritcallerCast(caster, d.abilityIndex, d.directionX, d.directionY);
+        if (plan) {
+          // Delta-triggered → stamp startedAt at trigger (BACKGROUNDED-TICKER rule).
+          const triggeredAt = Date.now();
+          triggerSpiritcallerCast(engine, plan, triggeredAt, entry?.circle ?? null);
+          // Register for the best-effort mixed-faction accent window (Task 5).
+          activeCastsRef.current.set(caster.id, { ...plan, startedAt: triggeredAt, accentsSpawned: 0 });
+        }
+        // plan === null → zero-aim Ancestor's Voice: SILENT (no effect, no flash).
+      } else if (caster && engine && caster.class === PlayerClass.SOULDRINKER) {
+        // Story 7.4: Souldrinker owned cast → suppress-and-replace (AC1, user
+        // decision 2026-07-23). Never set entry.flashUntil for any of the four
+        // abilities. planSouldrinkerCast returns [] for a zero-aim cast (the sim
+        // skips it — GameRoom.ts:2073-2074, 2203), so rendering [] draws nothing:
+        // no VFX and no flash (SILENT rule, matching 7.2's Avalanche / 7.5).
+        const triggeredAt = Date.now();
+        const hpFraction = caster.maxHp > 0 ? Math.max(0, Math.min(1, caster.hp / caster.maxHp)) : 1;
+        const souldrinkerSpecs = planSouldrinkerCast({
+          abilityIndex: d.abilityIndex,
+          casterX: caster.x, casterY: caster.y,
+          dirX: d.directionX, dirY: d.directionY,
+          hpFraction,
+        });
+        spawnSouldrinkerVfx(engine, souldrinkerSpecs, triggeredAt);
+        // Dark Pact (idx 2): open the cost/gain-cue correlation window (Task 6.3),
+        // but only when the cast actually resolved. A zero-aim Dark Pact returns []
+        // (the sim skips it), so arming the window then would mislabel any coincident
+        // HP change as Dark Pact's drain (code review 2026-07-24).
+        if (d.abilityIndex === 2 && souldrinkerSpecs.length > 0) lastDarkPactCastAtRef.current = triggeredAt;
+      } else if (caster && engine && caster.class === PlayerClass.STORMCALLER) {
+        // Story 7.5: Stormcaller owned cast → suppress-and-replace (AC1). Never set
+        // entry.flashUntil for any of the four abilities. resolveStormcallerCast
+        // returns null for a zero-aim directional cast (Lightning Arc / Tempest Hurl
+        // / Storm Eye) — the sim skipped that hit (GameRoom.ts:2203), so rendering
+        // nothing (no VFX, no flash) is the honest result (SILENT rule, matching
+        // 7.2's Avalanche / 7.4). Thunder Clap (idx 2, self-centred) always plans.
+        const triggeredAt = Date.now();
+        const plan = resolveStormcallerCast(d.abilityIndex, caster.x, caster.y, d.directionX, d.directionY);
+        if (plan) {
+          // Delta-triggered → stamp startedAt at trigger (BACKGROUNDED-TICKER rule).
+          // Story 7.13: Tempest Hurl's cast plan carries no more flight — its real
+          // body streams via the generic state.projectiles path and its impact is
+          // driven by the projectile:hit handler below.
+          spawnStormcallerCast(engine, plan, triggeredAt);
+        }
+      } else {
+      const cfg = caster ? getAbilityVfxConfig(caster.class, d.abilityIndex) : null;
+      if (!cfg || !caster || !engine) {
+        // Legacy path, unchanged: any class 7.3-7.5 has not reached yet; the
+        // late-join/reconnect race where the caster is not in state; and the
+        // engine being absent (a delta landing inside the await app.init()
+        // window, or after teardown nulled the ref). That last case is an
+        // implementation state, not a deliberate skip, so it still deserves
+        // the cast flash (code review 2026-07-22).
+        if (entry) entry.flashUntil = Date.now() + ABILITY_FLASH_MS;
+      } else {
+        const place = resolveAbilityVfxPlacement(cfg, caster.x, caster.y, d.directionX, d.directionY);
+        // place === null: the sim skipped this cast's hit too (zero direction on
+        // a ranged ability, GameRoom.ts:2203) — render nothing rather than lie.
+        // No flash either: reviewed and kept spec-literal (Task 3.4).
+        if (place) {
+          // Stamped once at trigger rather than captured on the first update()
+          // (overrides Task 3.5, code review 2026-07-22): the ticker stops with
+          // requestAnimationFrame on a backgrounded tab while deltas keep
+          // arriving, so effects that never got a first update() would pile up
+          // un-started and un-reaped, then all play at once on resume. An
+          // absolute deadline self-expires instead — the same property the
+          // legacy flashUntil path and the damage numbers already rely on.
+          // Date.now() is mandatory here: it must match VfxEngine.update()'s clock.
+          const triggeredAt = Date.now();
+          const anchor = (at: 'caster' | 'hit') =>
+            at === 'hit' ? { x: place.hitX, y: place.hitY } : { x: place.casterX, y: place.casterY };
+          for (const ring of cfg.rings) {
+            const { x, y } = anchor(ring.at);
+            engine.add(createRingShockwave({
+              x, y,
+              color: ring.color,
+              alpha: ring.alpha,
+              durationMs: ring.durationMs,
+              startedAt: triggeredAt,
+              startRadius: ring.startRadius,
+              maxRadius: ring.maxRadius,
+              lineWidth: ring.lineWidth,
+              filled: ring.filled,
+            }));
+          }
+          if (cfg.cones) {
+            // No independent zero-aim check here (Dev Notes) — `place` is
+            // already null for a zero-aim cast of any ability with hitRangePx
+            // > 0, which is true of every cone ability today, so reaching this
+            // line already guarantees normX/normY are non-zero. Layered wedges
+            // (fill + bright outline, Story 7.13 manual pass round 3) draw in
+            // array order, outline last so it reads crisply on top.
+            for (const cone of cfg.cones) {
+              engine.add(createConeWedge({
+                x: place.casterX, y: place.casterY,
+                dirX: place.normX, dirY: place.normY,
+                angleDeg: cone.angleDeg,
+                startRadius: cone.startRadius,
+                maxRadius: cone.maxRadius,
+                lineWidth: cone.lineWidth,
+                filled: cone.filled,
+                color: cone.color,
+                alpha: cone.alpha,
+                durationMs: cone.durationMs,
+                startedAt: triggeredAt,
+              }));
+            }
+          }
+          if (cfg.beam) {
+            const beam = cfg.beam;
+            const target = anchor(beam.target);
+            const originX = place.casterX + place.normX * beam.originOffsetPx;
+            const originY = place.casterY + place.normY * beam.originOffsetPx;
+            // A rim-anchored beam with no aim direction collapses to a point —
+            // skip it rather than draw a zero-length line.
+            if (beam.originOffsetPx === 0 || place.normX !== 0 || place.normY !== 0) {
+              engine.add(createBeam({
+                x: originX, y: originY,
+                toX: target.x, toY: target.y,
+                color: beam.color,
+                alpha: beam.alpha,
+                durationMs: beam.durationMs,
+                startedAt: triggeredAt,
+                width: beam.width,
+              }));
+            }
+          }
+          if (cfg.burst) {
+            const burst = cfg.burst;
+            const { x, y } = anchor(burst.at);
+            engine.add(createParticleBurst({
+              x, y,
+              color: burst.colors,
+              alpha: burst.alpha,
+              durationMs: burst.durationMs,
+              startedAt: triggeredAt,
+              count: burst.count,
+              speed: burst.speed,
+              spread: burst.spread,
+              particleRadius: burst.particleRadius,
+            }));
+          }
+        }
+      }
+      }
+    } else if (latestTransientDelta.type === 'projectile:hit') {
+      // Story 7.4: Souldrinker projectile impacts. projectileMetaRef is the only
+      // surviving identity — applyDelta already removed the projectile from
+      // gameState (apply-delta.ts:247-249) by the time this effect runs.
+      const meta = projectileMetaRef.current.get(latestTransientDelta.projectileId);
+      const engine = vfxEngineRef.current;
+      if (meta && engine && meta.class === PlayerClass.SOULDRINKER) {
+        const triggeredAt = Date.now();
+        const { x: hitX, y: hitY } = latestTransientDelta;
+        if (meta.abilityIndex === 0) {
+          // Blood Spike lifesteal return. The heal lands only when the caster is
+          // present, alive and not a spirit (GameRoom.ts:1774); otherwise show
+          // just the impact splash so the visual never promises a heal that the
+          // sim skipped.
+          const owner = gameState?.players.find(p => p.id === meta.ownerId);
+          if (owner && !owner.isDown && !owner.isSpirit) {
+            const prevId = lifestealEffectIdRef.current.get(meta.ownerId);
+            if (prevId !== undefined) engine.remove(prevId); // one live implode per player (Task 4.6 / D-7.1-D)
+            const ids = spawnSouldrinkerVfx(
+              engine,
+              planBloodSpikeImpact({ hitX, hitY, casterX: owner.x, casterY: owner.y }),
+              triggeredAt,
+            );
+            lifestealEffectIdRef.current.set(meta.ownerId, ids[ids.length - 1]!); // implode ring is last by contract
+          } else {
+            spawnSouldrinkerVfx(engine, planBloodSpikeSplash({ hitX, hitY }), triggeredAt);
+          }
+        } else if (meta.abilityIndex === 3) {
+          // Void Pulse impact — implodes from the chained pull-zone's radius,
+          // announcing the pull field about to appear.
+          spawnSouldrinkerVfx(engine, planVoidPulseImpact({ hitX, hitY }), triggeredAt);
+        }
+      } else if (meta && engine && meta.class === PlayerClass.STORMCALLER && meta.abilityIndex === 1) {
+        // Story 7.13: Tempest Hurl's real impact — the only impact visual for
+        // this ability now that the stale fake-flight ring is removed.
+        const triggeredAt = Date.now();
+        const { x: hitX, y: hitY } = latestTransientDelta;
+        spawnStormcallerSpecs(engine, planTempestHurlImpact({ hitX, hitY }), triggeredAt);
+      }
+    } else if (latestTransientDelta.type === 'ability:chain-hit') {
+      // Story 7.13: Lightning Arc's chain-lightning VFX — one beam per hop,
+      // from the delta's real fromX/fromY to the resolved toEnemyId (an enemy
+      // or the boss), via the same target-resolution helper zone:strike uses.
+      // A toEnemyId resolving to neither (already-dead/left, stale by render
+      // time) silently skips that hop's beam rather than throwing.
+      const engine = vfxEngineRef.current;
+      const { fromX, fromY, toEnemyId, chainIndex } = latestTransientDelta;
+      const target = resolveEnemyOrBossPosition(toEnemyId, gameState);
+      if (engine && target) {
+        // Chain visual pacing (judgment call, not an AC, Dev Notes): stagger
+        // same-tick hops' startedAt by chainIndex so each hop starts fading a
+        // little later than the last — every beam still appears at full alpha
+        // on the same frame (geometry/alpha are fixed at creation, and
+        // progress() clamps a not-yet-reached startedAt to t=0), so the read is
+        // a staggered fade-out across the chain, not a travelling appearance —
+        // still a deliberate directional cue, not the no-op it might look like.
+        // Guard: a non-finite chainIndex (code review 2026-07-30, round 2)
+        // would NaN startedAt and silently drop this hop's beam.
+        const startedAt = Date.now() + (Number.isFinite(chainIndex) ? chainIndex * 40 : 0);
+        spawnStormcallerSpecs(engine, [planChainHitBeam(fromX, fromY, target.x, target.y)], startedAt);
+      }
+    } else if (latestTransientDelta.type === 'zone:strike') {
+      // Story 7.5 Task 6: Storm Eye's bonus-strike accent (decorative, NOT the AC3
+      // tick path — that is the snapshot pulse in renderFrame). The delta carries no
+      // x/y, so resolve the target from the snapshot via resolveEnemyOrBossPosition
+      // (the sim can strike the boss, GameRoom.ts:1631-1641). Target-not-found →
+      // silently skip. Delta-triggered → stamp Date.now() at trigger (clock contract).
+      const engine = vfxEngineRef.current;
+      const target = resolveEnemyOrBossPosition(latestTransientDelta.targetId, gameState);
+      if (engine && target) spawnStormEyeStrike(engine, target.x, target.y, Date.now());
+    } else if (latestTransientDelta.type === 'cast:cancelled') {
+      // Story 7.3: record the terminal so renderFrame picks the fizzle effect.
+      // Often collapsed by batching — renderFrame's isDown inference is the backstop.
+      soulMendTerminalRef.current.set(latestTransientDelta.casterId, 'cancelled');
+    } else if (latestTransientDelta.type === 'cast:completed') {
+      soulMendTerminalRef.current.set(latestTransientDelta.casterId, 'completed');
     } else if (latestTransientDelta.type === 'spirit-ability:fired') {
       const entry = playerGraphicsRef.current.get(latestTransientDelta.playerId);
       if (entry) entry.flashUntil = Date.now() + SPIRIT_ABILITY_FLASH_MS;
@@ -583,48 +1292,162 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
       app.stage.addChild(g);
       essenceFlashesRef.current.set(drop.id, { g, deadline: Date.now() + ESSENCE_FLASH_MS });
     } else if (latestTransientDelta.type === 'boss:phaseChanged') {
-      bossPhaseRef.current = latestTransientDelta.newPhase;
+      bossPhaseRef.current = latestTransientDelta.newPhase;         // UNCHANGED — drives the glow ring + eye
+      const engine = vfxEngineRef.current;
+      if (engine) {
+        const pos = bossLastPositionRef.current;
+        const plan = planBossVfx(
+          { type: 'boss:phaseChanged', newPhase: latestTransientDelta.newPhase },
+          { bossX: pos.x, bossY: pos.y, prevX: pos.x, prevY: pos.y },
+        );
+        if (bossTintEffectIdRef.current !== null) engine.remove(bossTintEffectIdRef.current);
+        bossTintEffectIdRef.current = applyBossVfxPlan(engine, plan, bossGraphicsRef.current);
+      }
     } else if (latestTransientDelta.type === 'boss:damaged') {
       const prevHp = lastBossHpRef.current;
       const damage = prevHp != null ? Math.max(0, prevHp - latestTransientDelta.newHp) : 0;
       lastBossHpRef.current = latestTransientDelta.newHp;
       setBossDamageFlash({ amount: damage, until: Date.now() + 800 });
       setTimeout(() => setBossDamageFlash(null), 800);
-    } else if (latestTransientDelta.type === 'boss:stomped' && app) {
-      const ring = new Graphics();
-      ring.circle(0, 0, latestTransientDelta.radius).stroke({ color: 0xff4444, width: 3, alpha: 0.7 });
-      ring.position.set(latestTransientDelta.x, latestTransientDelta.y);
-      app.stage.addChild(ring);
-      setTimeout(() => {
-        app.stage.removeChild(ring);
-        ring.destroy();
-      }, 66);
-    } else if (latestTransientDelta.type === 'boss:defeated' && app) {
+
+      const engine = vfxEngineRef.current;
+      const nowMs = Date.now();
+      if (engine && nowMs - bossDamageVfxAtRef.current >= BOSS_DAMAGE_VFX_MIN_INTERVAL_MS) {
+        bossDamageVfxAtRef.current = nowMs;
+        const pos = bossLastPositionRef.current;
+        applyBossVfxPlan(engine, planBossVfx({ type: 'boss:damaged' }, { bossX: pos.x, bossY: pos.y, prevX: pos.x, prevY: pos.y }), bossGraphicsRef.current);
+      }
+    } else if (latestTransientDelta.type === 'boss:stomped') {
+      const engine = vfxEngineRef.current;
+      if (engine) {
+        const { x, y, radius } = latestTransientDelta;
+        applyBossVfxPlan(engine, planBossVfx({ type: 'boss:stomped', x, y, radius }, { bossX: x, bossY: y, prevX: x, prevY: y }), bossGraphicsRef.current);
+      }
+    } else if (latestTransientDelta.type === 'boss:charged') {
+      const engine = vfxEngineRef.current;
+      if (engine) {
+        const prev = bossLastPositionRef.current;
+        const { x, y } = latestTransientDelta;
+        applyBossVfxPlan(engine, planBossVfx({ type: 'boss:charged', x, y }, { bossX: x, bossY: y, prevX: prev.x, prevY: prev.y }), bossGraphicsRef.current);
+      }
+    } else if (latestTransientDelta.type === 'boss:defeated' && app && !bossDefeatedRef.current) {
+      // Story 7.8 review: guard against a duplicate boss:defeated delta re-adding
+      // a second overlapping pulse and pushing the reward-reveal deadline later
+      // (pre-existing gap, hardened while already touching this branch).
       bossDefeatedRef.current = true;
       isPurifiedRef.current = true;
       setIsPurified(true);
       essenceDisplayRef.current = latestTransientDelta.reward.essenceTotal;
-      // Record boss last position for pulse origin (fall back to arena center)
+      // Record boss last position for pulse origin (fall back to arena center,
+      // UX-DR16 — keep using bossLastPositionRef; state.boss may already be gone).
       const bossPos = bossLastPositionRef.current;
       // Background color swap: light purification tint
       app.renderer.background.color = 0x90d8f0;
-      // Create purification pulse circle
-      const pulseGraphic = new Graphics();
-      pulseGraphic.position.set(bossPos.x, bossPos.y);
-      app.stage.addChild(pulseGraphic);
-      purificationPulseRef.current = {
-        graphic: pulseGraphic,
-        startTime: performance.now(),
-        originX: bossPos.x,
-        originY: bossPos.y,
-        duration: PURIFICATION_PULSE_DURATION_MS,
-      };
+      // Story 7.8 Task 6.2/6.3: the pulse itself is now a VfxEngine primitive —
+      // createRingShockwave was generalized from this exact block (primitives.ts:187).
+      // Delta-triggered (not RAF-gated) → stamp Date.now() explicitly (BACKGROUNDED-
+      // TICKER rule) and set the completion deadline from the same timestamp so the
+      // reward-reveal handoff (ticker, Task 6.3) fires off the same clock.
+      const triggeredAt = Date.now();
+      vfxEngineRef.current?.add(createRingShockwave({
+        x: bossPos.x, y: bossPos.y, color: 0x90d8f0, alpha: 0.6, filled: true,
+        startRadius: 0, maxRadius: PURIFICATION_PULSE_MAX_RADIUS_PX,
+        durationMs: PURIFICATION_PULSE_DURATION_MS, startedAt: triggeredAt,
+      }));
+      purificationPulseEndsAtRef.current = triggeredAt + PURIFICATION_PULSE_DURATION_MS;
     }
-  }, [latestTransientDelta]);
+    }
+  }, [transientDeltaQueue]);
+
+  // Story 7.11 Task 3: populate projectileMetaRef from every gameState update,
+  // not only renderFrame's ticker-cadenced pass — a projectile whose whole
+  // lifetime falls between two ticker frames would otherwise never get cached,
+  // making its projectile:hit cue no-op. renderFrame's own population
+  // (:699-703) and its :676 cleanup on Graphics teardown are untouched.
+  // This effect's own cleanup below (review finding, Story 7.11) prunes any
+  // id no longer in gameState.projectiles: for a projectile the ticker never
+  // observes, no projectileGraphics entry is ever created for it, so
+  // renderFrame's Graphics-teardown cleanup can never reach it either — this
+  // is the only removal path for that specific case. Harmless no-op for ids
+  // renderFrame's own cleanup would also reach.
+  useEffect(() => {
+    if (!gameState) return;
+    const activeIds = new Set(gameState.projectiles.map(p => p.id));
+    for (const p of gameState.projectiles) {
+      if (!projectileMetaRef.current.has(p.id)) {
+        projectileMetaRef.current.set(p.id, {
+          class: p.class,
+          abilityIndex: p.abilityIndex,
+          ownerId: p.ownerId,
+        });
+      }
+    }
+    for (const id of projectileMetaRef.current.keys()) {
+      if (!activeIds.has(id)) projectileMetaRef.current.delete(id);
+    }
+  }, [gameState]);
+
+  // Story 7.4 Task 6.2: Dark Pact buff-gained cue — snapshot-driven onset pulse.
+  // Uses player.statusEffects (in every snapshot, reconciled across reconnects)
+  // rather than status:applied (not whitelisted). damageBuff is applied by exactly
+  // one ability in the shipped game — Dark Pact (balance.ts:216-219) — so no class
+  // gate is needed. Story 7.6 owns the *persistent* per-status aura; 7.4 owns only
+  // this one-shot onset, so the two do not double-draw.
+  useEffect(() => {
+    const engine = vfxEngineRef.current;
+    if (!gameState || !engine) return;
+    const now = Date.now();
+    const current = new Set<string>();
+    for (const player of gameState.players) {
+      if (!player.statusEffects.some(e => e.type === 'damageBuff')) continue;
+      current.add(player.id);
+      if (!buffedPlayersRef.current.has(player.id)) {
+        spawnSouldrinkerVfx(engine, planDamageBuffOnset({ x: player.x, y: player.y }), now);
+      }
+    }
+    // Overwrite (drops expired ids) so a second Dark Pact re-triggers the onset.
+    buffedPlayersRef.current = current;
+  }, [gameState]);
+
+  // Story 7.4 Task 6.3: Dark Pact cost/gain cue — classifier-driven, windowed.
+  // The drained ally's HP drop is the one change no delta identifies (AC3), so it
+  // is resolved from the pure classifier + a short window after a Souldrinker Dark
+  // Pact ability:fired. Scope guard: the loss cue only inside the window; the gain
+  // cue additionally only for Souldrinkers (Spiritcaller heal visuals are 7.3's).
+  // Every other HP change — enemy melee, bond drain, Blood Spike's own self-cost
+  // (Task 4.2) and lifesteal (Task 4.5) — is deliberately left untouched.
+  useEffect(() => {
+    if (!gameState) return;
+    const engine = vfxEngineRef.current;
+    const now = Date.now();
+    const withinWindow = now - lastDarkPactCastAtRef.current <= DARK_PACT_COST_CUE_WINDOW_MS;
+    if (engine && withinWindow) {
+      for (const change of classifyHpChanges(prevPlayerHpRef.current, gameState.players)) {
+        const player = gameState.players.find(p => p.id === change.playerId);
+        if (!player) continue;
+        if (change.direction === 'loss') {
+          // Loss cue = the drained ally only. Skip Souldrinkers so the caster's own
+          // Blood Spike self-cost (already shown by Task 4.2) does not double-draw a
+          // spurious loss cue inside the window (code review 2026-07-24). Pairs with
+          // the gain cue below: loss = non-Souldrinker allies, gain = Souldrinkers.
+          if (player.class !== PlayerClass.SOULDRINKER) {
+            spawnSouldrinkerVfx(engine, planHpLossCue({ x: player.x, y: player.y }), now);
+          }
+        } else if (player.class === PlayerClass.SOULDRINKER) {
+          spawnSouldrinkerVfx(engine, planHpGainCue({ x: player.x, y: player.y }), now);
+        }
+      }
+    }
+    // Refresh the HP baseline every pass (even outside the window) so the next
+    // comparison is against the latest snapshot, not a stale one.
+    const next = new Map<string, number>();
+    for (const player of gameState.players) next.set(player.id, player.hp);
+    prevPlayerHpRef.current = next;
+  }, [gameState]);
 
   // Track revive deadlines from downed/revived/spirit deltas
   useEffect(() => {
-    if (!latestTransientDelta) return;
+    for (const latestTransientDelta of transientDeltaQueue) {
     if (latestTransientDelta.type === 'player:downed') {
       const player = gameState?.players.find(p => p.id === latestTransientDelta.playerId);
       reviveDeadlinesRef.current.set(latestTransientDelta.playerId, {
@@ -638,7 +1461,8 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
     ) {
       reviveDeadlinesRef.current.delete(latestTransientDelta.playerId);
     }
-  }, [latestTransientDelta, gameState]);
+    }
+  }, [transientDeltaQueue, gameState]);
 
   // Track boss HP reference for damage number computation
   useEffect(() => {
@@ -684,7 +1508,7 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
     }
   }, [gameState]);
 
-  // Bond overlay fade/clear lifecycle — keyed on trigger counter so timers survive latestTransientDelta being cleared at 400ms
+  // Bond overlay fade/clear lifecycle — keyed on trigger counter so timers survive transientDeltaQueue being cleared synchronously (Story 7.11)
   // and correctly restart if the same pair is bonded again (same text, different trigger)
   useEffect(() => {
     if (bondOverlayTrigger === 0) return;
@@ -700,28 +1524,27 @@ export function DungeonScreen({ gameState, session, latestTransientDelta }: Dung
     return () => clearTimeout(timer);
   }, [levelClearFlash]);
 
-  // Reward reveal: spawn particles and set voice line hide timer
+  // Reward reveal: spawn particles and set voice line hide timer.
+  // Story 7.8 Task 7: like-for-like port onto createParticleBurst — the
+  // primitive this exact block was generalized from (primitives.ts:17). Keeps
+  // the randomized count/palette/spread/speed/radius exactly; the only change
+  // is the clock (Date.now() only — this is a useEffect, not
+  // the RAF-gated ticker, so BACKGROUNDED-TICKER rule applies: stamp startedAt
+  // explicitly). Still originates at arena centre (AC6.4), not the boss position.
   useEffect(() => {
     if (!rewardRevealVisible) return;
-    const app = pixiAppRef.current;
-    if (app) {
-      const PARTICLE_COLORS = [0x6ea8d8, 0xf0c070];
-      const count = 8 + Math.floor(Math.random() * 5); // 8-12
-      for (let i = 0; i < count; i++) {
-        const g = new Graphics();
-        const color = PARTICLE_COLORS[i % 2]!;
-        g.circle(0, 0, 8 + Math.random() * 8).fill({ color });
-        g.position.set(VIRTUAL_W / 2, VIRTUAL_H / 2);
-        app.stage.addChild(g);
-        const angle = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.5;
-        const speed = 0.1 + Math.random() * 0.15; // pixels per ms
-        purificationParticlesRef.current.push({
-          graphic: g,
-          startTime: performance.now(),
-          vx: Math.cos(angle) * speed,
-          vy: Math.sin(angle) * speed,
-        });
-      }
+    const engine = vfxEngineRef.current;
+    if (engine) {
+      engine.add(createParticleBurst({
+        x: VIRTUAL_W / 2, y: VIRTUAL_H / 2,
+        color: [0x6ea8d8, 0xf0c070],
+        count: 8 + Math.floor(Math.random() * 5), // 8-12
+        speed: 0.175,
+        spread: 0.5,
+        particleRadius: 8,
+        durationMs: REWARD_PARTICLE_DURATION_MS,
+        startedAt: Date.now(),
+      }));
     }
     const voiceTimer = setTimeout(() => setVoiceVisible(false), 2000);
     return () => clearTimeout(voiceTimer);

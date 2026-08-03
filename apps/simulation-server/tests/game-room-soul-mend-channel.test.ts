@@ -12,7 +12,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   findSoulMendTarget, shouldCancelSoulMendChannel, reviveBySoulMend,
-  ABILITY_HIT_RANGE_PX, ABILITY_HIT_RADIUS_PX, REVIVE_HP,
+  ABILITY_GEOMETRY, REVIVE_HP,
   SOUL_MEND_CHANNEL_DURATION_MS, SOUL_MEND_LIVENESS_MS,
 } from 'game-rules';
 import { PlayerClass, SessionColor } from 'shared-types';
@@ -20,8 +20,8 @@ import type { PlayerState } from 'shared-types';
 
 const TICK_MS = 33; // mirrors mobile's continuous-send interval and the 30Hz tick rate
 const ABILITY_INDEX = 2; // Soul Mend — Spiritcaller slot 2
-const HIT_RANGE = ABILITY_HIT_RANGE_PX[PlayerClass.SPIRITCALLER][ABILITY_INDEX];
-const HIT_RADIUS = ABILITY_HIT_RADIUS_PX[PlayerClass.SPIRITCALLER][ABILITY_INDEX];
+const HIT_RANGE = ABILITY_GEOMETRY[PlayerClass.SPIRITCALLER][ABILITY_INDEX].hitRangePx;
+const HIT_RADIUS = ABILITY_GEOMETRY[PlayerClass.SPIRITCALLER][ABILITY_INDEX].hitRadiusPx;
 const MAX_RANGE = HIT_RANGE + HIT_RADIUS;
 
 function mockPlayer(overrides: Partial<PlayerState> = {}): PlayerState {
