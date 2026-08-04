@@ -29,6 +29,7 @@ function mockGameState(): GameState {
     tick: 0,
     floorLayout: null,
     runProposal: null,
+    abandonProposal: null,
     boss: null,
     projectiles: [],
     zones: [],
@@ -648,6 +649,30 @@ describe('net-protocol contract tests', () => {
     it('SnapshotMsg with runProposal survives serialize → deserialize', () => {
       const state = mockGameState();
       state.runProposal = { biome: 'grassland', difficulty: DifficultyTier.EASY, proposedBy: 'p1' };
+      const msg = { type: 'snapshot' as const, state };
+      expect(deserialize<typeof msg>(serialize(msg))).toEqual(msg);
+    });
+  });
+
+  describe('Story 4.15a abandon-run vote contract', () => {
+    it('run:abandoned delta survives serialize → deserialize', () => {
+      const delta = { type: 'run:abandoned' as const } satisfies DeltaEventMsg;
+      expect(deserialize<DeltaEventMsg>(serialize(delta))).toEqual(delta);
+    });
+
+    it('applyDelta run:abandoned clears abandonProposal and sets phase to hub', () => {
+      const state: GameState = mockGameState();
+      state.abandonProposal = { proposedBy: 'p1' };
+      state.session.phase = 'dungeon';
+      const next = applyDelta(state, { type: 'run:abandoned' });
+      expect(next.abandonProposal).toBeNull();
+      expect(next.session.phase).toBe('hub');
+      expect(state.abandonProposal).toEqual({ proposedBy: 'p1' }); // original must not be mutated
+    });
+
+    it('SnapshotMsg with abandonProposal survives serialize → deserialize', () => {
+      const state = mockGameState();
+      state.abandonProposal = { proposedBy: 'p1' };
       const msg = { type: 'snapshot' as const, state };
       expect(deserialize<typeof msg>(serialize(msg))).toEqual(msg);
     });

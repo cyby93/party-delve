@@ -39,7 +39,7 @@ function makeGameState(playerCount: number, downCount = 0, spiritCount = 0): Gam
       bossLevelStartedAt: 0, anyPlayerDownedDuringBoss: false, allBondsAtBossStart: false,
     },
     players, enemies: [], activeBonds: [], essenceDrops: [],
-    tick: 0, floorLayout: null, runProposal: null,
+    tick: 0, floorLayout: null, runProposal: null, abandonProposal: null,
     boss: null,
     projectiles: [], zones: [],
   };

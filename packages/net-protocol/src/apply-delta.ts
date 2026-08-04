@@ -164,6 +164,8 @@ export function applyDelta(state: GameState, evt: DeltaEventMsg): GameState {
       return { ...state, runProposal: { biome: evt.biome, difficulty: evt.difficulty, proposedBy: evt.proposedBy } };
     case 'run:starting':
       return { ...state, runProposal: null, session: { ...state.session, phase: 'dungeon', difficulty: evt.difficulty } };
+    case 'run:abandoned':
+      return { ...state, abandonProposal: null, session: { ...state.session, phase: 'hub' } };
     case 'wave:started':
       return { ...state, session: { ...state.session, waveIndex: evt.waveIndex, totalWaves: evt.totalWaves } };
     case 'wave:complete':

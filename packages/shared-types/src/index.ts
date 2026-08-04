@@ -10,6 +10,7 @@ export * from './floor-layout.js';
 export * from './poi.js';
 export * from './class-definitions.js';
 export * from './run-proposal.js';
+export * from './abandon-proposal.js';
 export * from './boss.js';
 export * from './achievements.js';
 export * from './run-reward.js';

@@ -169,6 +169,14 @@ export type RunCompleteDelta = {
   totalEssence: number;
 };
 
+// ponytail: no payload. The proposer id already rides on gameState.abandonProposal
+// (cleared by this same delta in apply-delta.ts), and Story 4.15c's Non-goals rule out
+// a host banner, so there is nothing left for a field to carry. Do not "helpfully" add
+// abandonedBy/proposedBy — that would duplicate state the clients already hold.
+export type RunAbandonedDelta = {
+  type: 'run:abandoned';
+};
+
 export type RunProposedDelta = {
   type: 'run:proposed';
   biome: 'grassland';
@@ -344,6 +352,7 @@ export type DeltaEventMsg =
   | RunCompleteDelta
   | RunProposedDelta
   | RunStartingDelta
+  | RunAbandonedDelta
   | WaveStartedDelta
   | WaveCompleteDelta
   | BossDamagedDelta

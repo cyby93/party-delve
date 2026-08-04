@@ -26,6 +26,15 @@ export interface VoteMsg {
   accept: boolean;
 }
 
+export interface AbandonProposeMsg {
+  type: 'run:abandon-propose';
+}
+
+export interface AbandonVoteMsg {
+  type: 'run:abandon-vote';
+  accept: boolean;
+}
+
 export interface ReturnToCampMsg {
   type: 'return:to-camp';
 }

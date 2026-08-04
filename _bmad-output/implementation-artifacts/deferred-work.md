@@ -4,6 +4,16 @@ Items surfaced during reviews that are real findings but pre-exist the triggerin
 
 ---
 
+## Deferred from: code review of 4-15a-abandon-run-vote-contract (2026-08-04)
+
+**D-4.15a-A — `AbandonProposal` has no id/nonce, so a stale or delayed `AbandonVoteMsg` could theoretically be misapplied against a newer proposal that superseded the one it was cast for** [`packages/shared-types/src/abandon-proposal.ts`]
+Raised by the Blind Hunter layer. Verified: `RunProposal` (the sibling, pre-existing pattern this story deliberately mirrors) has the identical gap — only `proposedBy`, no correlation id or timestamp. Not introduced by this story and not fixable in isolation without redesigning the whole proposal/vote pattern shared by both flows. Revisit only if a third vote type is ever added and the "any proposal" abstraction question (already explicitly rejected by ADR-0007's Consequences) gets reopened.
+
+**D-4.15a-B — `run:abandoned`'s `apply-delta.ts` case sets `phase: 'hub'` without clearing dungeon-run state (`enemies`, `boss`, `floorLayout`, `projectiles`, `zones`, per-player position/HP/downed/channeling), unlike `GameRoom.resetToHub()`, the only other code path that ever enters `'hub'`** [`packages/net-protocol/src/apply-delta.ts:167-168`]
+Raised independently by the Edge Case Hunter and Blind Hunter layers. This is a deliberate design choice, not an oversight — Story 4.15a's own Dev Notes explicitly reason through this exact scenario and explicitly forbid the fix: "Do not try to null out entity arrays inside `applyDelta`; the server snapshot is the single authority for that, exactly as with `run:starting`." The design is only correct if **Story 4.15b's `GameRoom` handler broadcasts a full snapshot immediately after emitting `run:abandoned`** (same pattern the Dev Notes claim `run:starting` already follows). Tracked here as a verification item for 4.15b: confirm that ordering actually holds in the `GameRoom.ts` vote-resolution handler before shipping it, since a delayed or dropped snapshot would leave clients rendering a `'hub'` phase with live dungeon entities.
+
+---
+
 ## Resolution note: 7-13-cone-wedge-chain-lightning-and-tempest-hurl-vfx closes ADR-0005's Consequences gap (2026-07-29)
 
 **Resolved by Story 7.13** (`7-13-cone-wedge-chain-lightning-and-tempest-hurl-vfx`): closes the exact gap ADR-0005's own Consequences section named (quoted there verbatim): "Existing Epic 7 VFX for all six touched abilities (Stone Wall, Avalanche, Ancestor's Voice, Crimson Lash, Lightning Arc, Tempest Hurl) now visually mismatches its sim behavior ... until a follow-up Epic 7 VFX story adds the needed primitives (a cone/wedge shape, chain-arc rendering, and a resized/re-timed projectile + blast burst)." Also closes 3.25's Non-goals cross-reference ("VFX for the new cone shape... until a follow-up Epic 7 VFX story adds a cone/wedge primitive to primitives.ts") and 3.26's Non-goals cross-reference ("VFX for chain-lightning arcs or the bigger/slower Tempest Hurl ball — follow-up Epic 7 VFX story").

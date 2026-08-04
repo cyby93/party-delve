@@ -42,7 +42,7 @@
 # Phase2 legacy stories (old Phase-based keys) are tracked below under PHASE 2 STORIES.
 
 generated: 2026-06-22
-last_updated: 2026-08-04 (create-story 4.15a/4.15b/4.15c — backlog → ready-for-dev)
+last_updated: 2026-08-04 (dev-story + code-review 4.15a — review → done, 1 patch applied, 2 deferred)
 # 2026-08-04: create-story produced 4-15a / 4-15b / 4-15c (backlog → ready-for-dev). Contract
 #   shape pinned: AbandonProposal { proposedBy }, AbandonProposeMsg / AbandonVoteMsg, zero-payload
 #   RunAbandonedDelta, applyDelta 'dungeon' → 'hub' (never 'post-run'). Two EventNames entries only
@@ -1081,7 +1081,7 @@ development_status:
   # exit existed before this. Reuses the run:propose/run:vote unanimous-vote
   # shape by explicit user choice; allowed during a boss encounter by explicit
   # user choice (no phase gate). Sequenced a(4.15a contract) -> {4.15b, 4.15c}.
-  4-15a-abandon-run-vote-contract: ready-for-dev
+  4-15a-abandon-run-vote-contract: done
   4-15b-abandon-run-resolution: ready-for-dev
   4-15c-leave-run-button-and-vote-ui: ready-for-dev
   epic-4-retrospective: optional

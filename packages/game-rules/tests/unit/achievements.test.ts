@@ -38,7 +38,7 @@ function makeState(
     session: makeSession(sessionOverrides),
     players,
     enemies: [], activeBonds: [], essenceDrops: [],
-    tick: 0, floorLayout: null, runProposal: null, boss: null,
+    tick: 0, floorLayout: null, runProposal: null, abandonProposal: null, boss: null,
     projectiles: [], zones: [],
   };
 }
