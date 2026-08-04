@@ -42,7 +42,18 @@
 # Phase2 legacy stories (old Phase-based keys) are tracked below under PHASE 2 STORIES.
 
 generated: 2026-06-22
-last_updated: 2026-08-03 (code review of 2-11-class-pick-button-fit — review → done)
+last_updated: 2026-08-04 (create-story 4.15a/4.15b/4.15c — backlog → ready-for-dev)
+# 2026-08-04: create-story produced 4-15a / 4-15b / 4-15c (backlog → ready-for-dev). Contract
+#   shape pinned: AbandonProposal { proposedBy }, AbandonProposeMsg / AbandonVoteMsg, zero-payload
+#   RunAbandonedDelta, applyDelta 'dungeon' → 'hub' (never 'post-run'). Two EventNames entries only
+#   — no RUN_ABANDONED key (it rides the DELTA envelope). No run:abandon-proposed delta: the pending
+#   proposal reaches clients via snapshot, same as the existing decline path (GameRoom.ts:246-247).
+#   Deliberate divergence recorded in 4.15b: a mid-vote disconnect CANCELS the abandon vote, whereas
+#   a disconnect can UNBLOCK the run-start vote (onLeave:502/568 → resolveVoteIfComplete) — per
+#   ADR-0007. 4.15b also closes two resetToHub gaps abandon makes routinely reachable (gameState.boss
+#   never nulled; abandonProposal/abandonVotes not cleared). 4.15a's required GameState field forces
+#   one-line `abandonProposal: null` fixes at 7 literal sites incl. GameRoom.ts:72 — precedented by
+#   Story 5.1's activeBonds, flagged as mechanical, not a logic change.
 # 2026-08-03: code review of 2-11-class-pick-button-fit (Blind Hunter + Edge Case Hunter +
 # Acceptance Auditor). Acceptance Auditor: zero AC violations, clean. 0 decision_needed,
 # 0 patch, 5 defer (D-2.11-A..E in deferred-work.md — mostly latent/unreachable edge cases
@@ -963,7 +974,7 @@ development_status:
   # 2026-08-03, sprint-change-proposal-2026-08-03.md) — 2.10 closes 2.8's
   # deferred training-dummy-POI removal; 2.11 is an unrelated CSS-only fix
   # found in the same review. No dependency between them.
-  2-10-remove-training-dummy-poi: review
+  2-10-remove-training-dummy-poi: done
   2-11-class-pick-button-fit: done
   epic-2-retrospective: optional
 
@@ -1070,9 +1081,9 @@ development_status:
   # exit existed before this. Reuses the run:propose/run:vote unanimous-vote
   # shape by explicit user choice; allowed during a boss encounter by explicit
   # user choice (no phase gate). Sequenced a(4.15a contract) -> {4.15b, 4.15c}.
-  4-15a-abandon-run-vote-contract: backlog
-  4-15b-abandon-run-resolution: backlog
-  4-15c-leave-run-button-and-vote-ui: backlog
+  4-15a-abandon-run-vote-contract: ready-for-dev
+  4-15b-abandon-run-resolution: ready-for-dev
+  4-15c-leave-run-button-and-vote-ui: ready-for-dev
   epic-4-retrospective: optional
 
   # ─── E5: Spirit Bond System ─────────────────────────────────────────────────

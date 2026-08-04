@@ -4,7 +4,7 @@ baseline_commit: 95469a2
 
 # Story 2.10: Remove Training-Dummy POI
 
-Status: review
+Status: done
 
 ## CLAUDE.md Required Task Header
 
