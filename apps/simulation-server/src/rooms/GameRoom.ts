@@ -2,7 +2,7 @@ import { Room, Client, CloseCode } from 'colyseus';
 import type { GameState, PlayerState, RunReward, RunProposal } from 'shared-types';
 import { TICK_RATE_HZ, RECONNECT_GRACE_S, SNAPSHOT_INTERVAL_S, MAX_PLAYERS, PlayerClass, SessionColor, INTERACTIVE_HUB_POIS, PURIFICATION_PULSE_DURATION_MS, REWARD_REVEAL_DURATION_MS } from 'shared-types';
 import { EventNames } from 'net-protocol';
-import type { InputEventMsg, SnapshotMsg, DeltaEventMsg, CooldownUpdateMsg, SpiritFormMsg, RunProposeMsg, VoteMsg, BondNotificationMsg, RunVictoryMsg } from 'net-protocol';
+import type { InputEventMsg, SnapshotMsg, DeltaEventMsg, CooldownUpdateMsg, SpiritFormMsg, RunProposeMsg, VoteMsg, BondNotificationMsg, RunVictoryMsg, AbandonProposeMsg, AbandonVoteMsg } from 'net-protocol';
 import { randomInt } from 'node:crypto';
 import { Vec2, Body, Contact, Fixture, Circle } from 'planck';
 import type { World } from 'planck';
@@ -131,6 +131,7 @@ export class GameRoom extends Room {
   private nextSlotIndex = 0;
   private enemyAttackCooldowns = new Map<string, number>(); // enemyId → expiry epoch ms
   private runVotes = new Map<string, 'accept' | 'decline'>();
+  private abandonVotes = new Map<string, 'accept'>();
   private victoryTriggerBody: Body | null = null;
   private pendingVictoryContact = false;
   // ── Bond proximity tracking ───────────────────────────────────────────────
@@ -255,6 +256,44 @@ export class GameRoom extends Room {
         this.resolveVoteIfComplete();
       } catch {
         logger.warn({ clientId: client.sessionId, roomId: this.roomId }, 'failed to parse VOTE — discarded');
+      }
+    });
+
+    this.onMessage(EventNames.RUN_ABANDON_PROPOSE, (client: Client, raw: unknown) => {
+      try {
+        (typeof raw === 'string' ? JSON.parse(raw) : raw) as AbandonProposeMsg;
+        if (this.gameState.session.phase !== 'dungeon') return;
+        if (this.gameState.abandonProposal !== null) return;
+        const player = this.gameState.players.find(p => p.id === client.sessionId);
+        if (!player || player.isFrozen) return;
+
+        this.abandonVotes.clear();
+        this.gameState.abandonProposal = { proposedBy: client.sessionId };
+        const snapshot: SnapshotMsg = { type: 'snapshot', state: this.gameState };
+        this.broadcast(EventNames.SNAPSHOT, snapshot);
+        logger.info({ roomId: this.roomId, proposedBy: client.sessionId }, 'abandon proposed');
+      } catch {
+        logger.warn({ clientId: client.sessionId, roomId: this.roomId }, 'failed to parse RUN_ABANDON_PROPOSE — discarded');
+      }
+    });
+
+    this.onMessage(EventNames.RUN_ABANDON_VOTE, (client: Client, raw: unknown) => {
+      try {
+        const msg = (typeof raw === 'string' ? JSON.parse(raw) : raw) as AbandonVoteMsg;
+        if (this.gameState.session.phase !== 'dungeon') return;
+        if (this.gameState.abandonProposal === null) return;
+        const player = this.gameState.players.find(p => p.id === client.sessionId);
+        if (!player || player.isFrozen) return;
+
+        if (!msg.accept) {
+          this.cancelAbandonProposal('declined', client.sessionId);
+          return;
+        }
+
+        this.abandonVotes.set(client.sessionId, 'accept');
+        this.resolveAbandonVoteIfComplete();
+      } catch {
+        logger.warn({ clientId: client.sessionId, roomId: this.roomId }, 'failed to parse RUN_ABANDON_VOTE — discarded');
       }
     });
 
@@ -487,6 +526,7 @@ export class GameRoom extends Room {
       this.gameState.activeBonds = this.gameState.activeBonds.filter(b => b.playerA !== client.sessionId && b.playerB !== client.sessionId);
       const delta = { type: 'player:left' as const, playerId: client.sessionId } satisfies DeltaEventMsg;
       this.broadcast(EventNames.DELTA, delta);
+      this.cancelAbandonProposal('player-left', client.sessionId);
       logger.info({ roomId: this.roomId, clientId: client.sessionId }, 'player left (consented)');
       return;
     }
@@ -502,6 +542,7 @@ export class GameRoom extends Room {
     // Freezing this player may unblock a unanimous vote or return-to-camp confirmation.
     this.resolveVoteIfComplete();
     this.checkReturnReady();
+    this.cancelAbandonProposal('player-disconnected', client.sessionId);
 
     try {
       const reconnectedClient = await this.allowReconnection(client, RECONNECT_GRACE_S);
@@ -568,6 +609,7 @@ export class GameRoom extends Room {
       // Removing this player may unblock a unanimous vote or return-to-camp confirmation.
       this.resolveVoteIfComplete();
       this.checkReturnReady();
+      this.cancelAbandonProposal('grace-expired', client.sessionId);
     }
   }
 
@@ -630,6 +672,32 @@ export class GameRoom extends Room {
     const proposal = this.gameState.runProposal;
     this.startDungeon(proposal.difficulty, proposal);
     logger.info({ roomId: this.roomId, difficulty: proposal.difficulty }, 'run starting — unanimous accept');
+  }
+
+  private resolveAbandonVoteIfComplete(): void {
+    if (this.gameState.abandonProposal === null) return;
+    if (this.gameState.session.phase !== 'dungeon') return;
+    const activePlayers = this.gameState.players.filter(p => !p.isFrozen);
+    if (activePlayers.length === 0) return;
+    if (!activePlayers.every(p => this.abandonVotes.get(p.id) === 'accept')) return;
+    this.abandonRun();
+  }
+
+  private cancelAbandonProposal(reason: string, byPlayerId?: string): void {
+    if (this.gameState.abandonProposal === null) return;   // idempotent — safe to call anywhere
+    this.gameState.abandonProposal = null;
+    this.abandonVotes.clear();
+    const snapshot: SnapshotMsg = { type: 'snapshot', state: this.gameState };
+    this.broadcast(EventNames.SNAPSHOT, snapshot);
+    logger.info({ roomId: this.roomId, reason, byPlayerId }, 'abandon proposal cancelled');
+  }
+
+  private abandonRun(): void {
+    this.gameState.abandonProposal = null;
+    this.abandonVotes.clear();
+    this.broadcast(EventNames.DELTA, { type: 'run:abandoned' } satisfies DeltaEventMsg);
+    this.resetToHub();   // mutates state to hub + broadcasts the authoritative snapshot
+    logger.info({ roomId: this.roomId }, 'run abandoned — unanimous accept');
   }
 
   private startDungeon(difficulty: DifficultyTier, proposal: RunProposal | null): void {
@@ -792,6 +860,8 @@ export class GameRoom extends Room {
     }
     for (const wall of this.arenaWallBodies) this.physicsWorld.destroyBody(wall);
     this.arenaWallBodies.length = 0;
+    this.gameState.boss = null;
+    this.pendingBossStompEvents.length = 0;
 
     // Clear game state arrays
     this.gameState.enemies = [];
@@ -858,6 +928,8 @@ export class GameRoom extends Room {
     this.classSelectLastAccepted.clear();
     this.enemyAttackCooldowns.clear();
     this.runVotes.clear();
+    this.gameState.abandonProposal = null;
+    this.abandonVotes.clear();
     this.pendingPoiBeginContacts = [];
     this.pendingPoiEndContacts = [];
     this.pendingEssenceBeginContacts = [];
@@ -2250,6 +2322,9 @@ export class GameRoom extends Room {
                 this.physicsWorld.destroyBody(this.bossBody);
                 this.bossBody = null;
               }
+              // A pending abandon vote can no longer resolve once phase leaves 'dungeon' —
+              // cancel it so it doesn't linger stuck in every post-run/hub snapshot.
+              this.cancelAbandonProposal('boss-defeated');
               this.gameState.session.phase = 'post-run';
               const achievements = evaluateGrasslandAchievements(this.gameState, Date.now());
               const reward: RunReward = { ...evt.reward, achievements };
@@ -3112,6 +3187,9 @@ export class GameRoom extends Room {
       const players = this.gameState.players;
       if (players.length > 0 && players.every(p => p.isSpirit)) {
         const partialEssence = players.reduce((sum, p) => sum + (p.essenceTotal ?? 0), 0);
+        // A pending abandon vote can no longer resolve once phase leaves 'dungeon' —
+        // cancel it so it doesn't linger stuck in every post-run/hub snapshot.
+        this.cancelAbandonProposal('run-failed');
         this.gameState.session.phase = 'post-run';
         this.bondMomentNextLevel = -1;
         this.broadcast(EventNames.DELTA, {
