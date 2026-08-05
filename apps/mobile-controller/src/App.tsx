@@ -144,6 +144,7 @@ export function App() {
     }
     if (delta.type === 'run:complete') { setRunOutcome('complete'); setRunVictoryEssence(null); setInBondMoment(false); setBondNotification(null); }
     else if (delta.type === 'run:failed') { setRunOutcome('failed'); setRunVictoryEssence(null); setInBondMoment(false); setBondNotification(null); }
+    else if (delta.type === 'run:abandoned') { setInBondMoment(false); setBondNotification(null); bondMomentLevelRef.current = null; }
     setGameState(prev => prev !== null ? applyDelta(prev, delta) : prev);
   }, []);
 

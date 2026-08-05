@@ -5,7 +5,6 @@ import type { GameState } from 'shared-types';
 import type { ClassDef } from 'shared-types';
 import type { AbilityInputType, ClassAbilityDef } from 'shared-types';
 import { CLASS_DEFINITIONS, PlayerClass, SessionColor, DifficultyTier } from 'shared-types';
-import type { RunProposal } from 'shared-types';
 import type { CooldownState } from '../App';
 import { SPIRIT_ABILITY_NAMES } from 'game-rules';
 
@@ -28,6 +27,8 @@ const INPUT_INTERVAL_MS = 33; // ~30hz throttle to match sim tick rate
 // exceeds a normal same-LAN vote-resolution round-trip (well under 1s in practice); revisit
 // if this ever proves too short/long in real play.
 const VOTE_ACCEPT_STUCK_TIMEOUT_MS = 6000;
+
+const DIFFICULTY_LABEL: Record<string, string> = { easy: 'Easy', normal: 'Normal', hard: 'Hard' };
 
 const SKILL_JOYSTICK_RING_PX = 80;
 const SKILL_JOYSTICK_KNOB_PX = 28;
@@ -581,12 +582,13 @@ function DungeonEntranceScreen({ session, onBack }: DungeonEntranceScreenProps) 
 }
 
 interface VotePopupProps {
-  proposal: RunProposal;
+  title: string;
+  subtitle: string;
   onAccept: () => void;
   onDecline: () => void;
 }
 
-function VotePopup({ proposal, onAccept, onDecline }: VotePopupProps) {
+function VotePopup({ title, subtitle, onAccept, onDecline }: VotePopupProps) {
   const [hasAccepted, setHasAccepted] = useState(false);
 
   useEffect(() => {
@@ -595,15 +597,14 @@ function VotePopup({ proposal, onAccept, onDecline }: VotePopupProps) {
     return () => clearTimeout(timer);
   }, [hasAccepted]);
 
-  const difficultyLabel: Record<string, string> = { easy: 'Easy', normal: 'Normal', hard: 'Hard' };
   return (
     <div style={{ position: 'absolute', inset: 0, background: 'rgba(15,14,16,0.85)', zIndex: 60,
       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, padding: 24 }}>
       <div style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--text-xl)', color: 'var(--text-primary)' }}>
-        Run Proposed
+        {title}
       </div>
       <div style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', textAlign: 'center' }}>
-        Grassland · {difficultyLabel[proposal.difficulty] ?? proposal.difficulty}
+        {subtitle}
       </div>
       <div style={{ display: 'flex', gap: 12, width: '100%' }}>
         <button
@@ -1077,6 +1078,9 @@ export function ControllerScreen({ session, gameState, cooldowns, bondNotificati
   const bondName = bondNotification
     ? (bondNotification.bondType === 'fate' ? 'Fate Bond' : 'Proximity Bond')
     : null;
+  const abandonProposedByName =
+    gameState?.players.find(p => p.id === gameState.abandonProposal?.proposedBy)?.displayName
+    ?? 'a teammate';
   const joystickZoneRef = useRef<HTMLDivElement>(null);
 
   // Refs for values read inside event handlers — avoids stale closure issues
@@ -1305,6 +1309,36 @@ export function ControllerScreen({ session, gameState, cooldowns, bondNotificati
             background: 'var(--corruption-blood)',
             transition: 'width 150ms ease-out',
           }} />
+        </div>
+      )}
+      {inDungeon && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 'env(safe-area-inset-top, 0px)',
+            left: 0,
+            width: 44,
+            height: 44,
+            // Above BondCard's zIndex:70 (full-screen, opaque) so a bond-moment player can still
+            // reach Leave (AC1) — BondCard has no full-surface tap handler of its own to conflict with.
+            zIndex: 71,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            touchAction: 'manipulation',
+            pointerEvents: (gameState?.abandonProposal ?? null) !== null ? 'none' : 'auto',
+            opacity: (gameState?.abandonProposal ?? null) !== null ? 0.4 : 1,
+          }}
+          onPointerDown={e => { e.preventDefault(); session?.sendAbandonPropose(); }}
+        >
+          <span style={{
+            fontFamily: 'var(--font-body)',
+            fontSize: 'var(--text-xs)',
+            fontWeight: 700,
+            color: 'var(--text-secondary)',
+          }}>
+            Leave
+          </span>
         </div>
       )}
       <InteractButton
@@ -1557,9 +1591,22 @@ export function ControllerScreen({ session, gameState, cooldowns, bondNotificati
       {/* Vote popup — shown to all players when a run is proposed */}
       {!inDungeon && (gameState?.runProposal ?? null) !== null && !dungeonEntranceOpen && (
         <VotePopup
-          proposal={gameState!.runProposal!}
+          key="run-start"
+          title="Run Proposed"
+          subtitle={`Grassland · ${DIFFICULTY_LABEL[gameState!.runProposal!.difficulty] ?? gameState!.runProposal!.difficulty}`}
           onAccept={() => session?.sendVote({ type: 'run:vote', accept: true })}
           onDecline={() => session?.sendVote({ type: 'run:vote', accept: false })}
+        />
+      )}
+
+      {/* Abandon-run vote popup — shown to all players including the proposer */}
+      {inDungeon && (gameState?.abandonProposal ?? null) !== null && (
+        <VotePopup
+          key="abandon"
+          title="Leave Run?"
+          subtitle={`Proposed by ${abandonProposedByName}`}
+          onAccept={() => session?.sendAbandonVote({ type: 'run:abandon-vote', accept: true })}
+          onDecline={() => session?.sendAbandonVote({ type: 'run:abandon-vote', accept: false })}
         />
       )}
 

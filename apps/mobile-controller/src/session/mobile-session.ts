@@ -1,6 +1,6 @@
 import * as Colyseus from '@colyseus/sdk';
 import { EventNames, deserialize } from 'net-protocol';
-import type { SnapshotMsg, DeltaEventMsg, InputEventMsg, ClassSelectMsg, CooldownUpdateMsg, BondNotificationMsg, RunProposeMsg, VoteMsg, ReturnToCampMsg, ContinueMsg, RunVictoryMsg } from 'net-protocol';
+import type { SnapshotMsg, DeltaEventMsg, InputEventMsg, ClassSelectMsg, CooldownUpdateMsg, BondNotificationMsg, RunProposeMsg, VoteMsg, ReturnToCampMsg, ContinueMsg, RunVictoryMsg, AbandonProposeMsg, AbandonVoteMsg } from 'net-protocol';
 import type { GameState } from 'shared-types';
 
 const SIM_URL = import.meta.env['VITE_SIM_URL'] ?? `ws://${window.location.hostname || 'localhost'}:2567`;
@@ -19,6 +19,8 @@ export interface MobileSession {
   sendClassSelect: (msg: ClassSelectMsg) => void;
   sendRunPropose: (msg: RunProposeMsg) => void;
   sendVote: (msg: VoteMsg) => void;
+  sendAbandonPropose: () => void;
+  sendAbandonVote: (msg: AbandonVoteMsg) => void;
   sendReturnToCamp: () => void;
   sendContinue: () => void;
   // Debug-only, dev-build-gated at the call site (see ControllerScreen.tsx) — mirrors the
@@ -143,6 +145,8 @@ export async function joinSession(
     sendClassSelect: (msg: ClassSelectMsg) => room.send(EventNames.CLASS_SELECT, msg),
     sendRunPropose: (msg: RunProposeMsg) => room.send(EventNames.RUN_PROPOSE, msg),
     sendVote: (msg: VoteMsg) => room.send(EventNames.VOTE, msg),
+    sendAbandonPropose: () => room.send(EventNames.RUN_ABANDON_PROPOSE, { type: 'run:abandon-propose' } satisfies AbandonProposeMsg),
+    sendAbandonVote: (msg: AbandonVoteMsg) => room.send(EventNames.RUN_ABANDON_VOTE, msg),
     sendReturnToCamp: () => room.send(EventNames.RETURN_TO_CAMP, { type: 'return:to-camp' } satisfies ReturnToCampMsg),
     sendContinue: () => room.send(EventNames.CONTINUE, { type: 'bond:continue' } satisfies ContinueMsg),
     sendDebugToggleGodMode: () => room.send('debug:toggle-god-mode', {}),
@@ -182,6 +186,8 @@ export async function reconnectToSession(
     sendClassSelect: (msg: ClassSelectMsg) => room.send(EventNames.CLASS_SELECT, msg),
     sendRunPropose: (msg: RunProposeMsg) => room.send(EventNames.RUN_PROPOSE, msg),
     sendVote: (msg: VoteMsg) => room.send(EventNames.VOTE, msg),
+    sendAbandonPropose: () => room.send(EventNames.RUN_ABANDON_PROPOSE, { type: 'run:abandon-propose' } satisfies AbandonProposeMsg),
+    sendAbandonVote: (msg: AbandonVoteMsg) => room.send(EventNames.RUN_ABANDON_VOTE, msg),
     sendReturnToCamp: () => room.send(EventNames.RETURN_TO_CAMP, { type: 'return:to-camp' } satisfies ReturnToCampMsg),
     sendContinue: () => room.send(EventNames.CONTINUE, { type: 'bond:continue' } satisfies ContinueMsg),
     sendDebugToggleGodMode: () => room.send('debug:toggle-god-mode', {}),
