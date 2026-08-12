@@ -4,7 +4,21 @@ import type { GameState } from 'shared-types';
 import { PlayerSlot } from '../components/PlayerSlot';
 import { SIM_HTTP } from '../session/sim-url';
 
-const MOBILE_PORT = import.meta.env['VITE_MOBILE_PORT'] ?? '5174';
+const MOBILE_PORT = import.meta.env['VITE_MOBILE_PORT'] || '5174';
+const MOBILE_URL_OVERRIDE = import.meta.env['VITE_MOBILE_URL'] || null;
+
+// Whatever address the operator used to reach this page is, by construction, an address
+// that works on this network — so prefer it over the server's own interface guess
+// (`/local-ip` picks the first non-internal IPv4, which on WSL2 is an unroutable NAT
+// address). Loopback is the one case where the page hostname tells us nothing about
+// what a phone can reach, and that is where the server probe still earns its keep.
+const LOOPBACK = /^(localhost|127\.\d+\.\d+\.\d+|\[?::1\]?|0\.0\.0\.0)$/i;
+
+function pageHost(): string | null {
+  if (typeof window === 'undefined') return null;
+  const h = window.location.hostname;
+  return h && !LOOPBACK.test(h) ? h : null;
+}
 
 interface LobbyScreenProps {
   roomId: string;
@@ -13,17 +27,26 @@ interface LobbyScreenProps {
 }
 
 export function LobbyScreen({ roomId, gameState, onStartGame }: LobbyScreenProps) {
-  const [mobileHost, setMobileHost] = useState<string | null>(null);
+  const originHost = pageHost();
+  const [probedHost, setProbedHost] = useState<string | null>(null);
+
   useEffect(() => {
+    // Only ask the server which interface it thinks it is when the page hostname can't
+    // answer that for us. Skipping the probe also avoids a pointless request per lobby.
+    if (originHost || MOBILE_URL_OVERRIDE) return;
+    let cancelled = false;
     fetch(`${SIM_HTTP}/local-ip`)
       .then(r => r.json())
-      .then((d: { localIp: string }) => setMobileHost(d.localIp))
+      .then((d: { localIp: string }) => { if (!cancelled) setProbedHost(d.localIp); })
       .catch(() => {});
-  }, []);
+    return () => { cancelled = true; };
+  }, [originHost]);
 
-  const baseUrl = mobileHost
-    ? `http://${mobileHost}:${MOBILE_PORT}`
-    : (import.meta.env['VITE_MOBILE_URL'] ?? `http://localhost:${MOBILE_PORT}`);
+  // An explicit operator override outranks both auto-detection paths.
+  const mobileHost = originHost ?? probedHost;
+  const baseUrl =
+    MOBILE_URL_OVERRIDE ??
+    `http://${mobileHost ?? 'localhost'}:${MOBILE_PORT}`;
   const mobileJoinUrl = `${baseUrl}/?session=${roomId}`;
 
   const handleKick = (playerId: string) => {

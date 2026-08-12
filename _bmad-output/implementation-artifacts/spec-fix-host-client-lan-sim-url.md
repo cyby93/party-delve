@@ -1,4 +1,4 @@
----
+m ---
 title: 'Host-client LAN sim-server URL derivation'
 type: 'bugfix'
 created: '2026-08-12'
@@ -12,7 +12,9 @@ route: 'one-shot'
 
 **Problem:** After `apps/host-client/vite.config.ts` gained `server.host: true`, opening the host app over the LAN (`http://192.168.x.x:5173`) failed session creation with `MatchMakeError: Failed to fetch` — the client hardcoded `ws://localhost:2567` in two places, so Colyseus matchmaking targeted the *viewing* device's localhost rather than the machine running the simulation server.
 
-**Approach:** Extract a single `sim-url.ts` module for the host client that derives both hostname and protocol from the page origin (mirroring `mobile-session.ts`), with `VITE_SIM_URL` / `VITE_SIM_PORT` overrides, a non-DOM guard, and an empty-env guard. Both former call sites now import from it.
+**Approach:** Extract a single `sim-url.ts` module for the host client that derives both hostname and protocol from the page origin (mirroring `mobile-session.ts`), with `VITE_SIM_URL` / `VITE_SIM_PORT` overrides, a non-DOM guard, and an empty-env guard. Both former call sites now import from it. A follow-up commit applies the same principle to the QR join URL, which had been trusting the server's `/local-ip` interface guess.
+
+**Known limitation:** this fixes address *derivation*, not network *reachability*. Under WSL2's default NAT networking the host page is reachable only at `localhost:5173` (Windows forwards loopback into WSL but not the LAN IP), which is exactly the case where the page hostname cannot identify a phone-reachable address. Run the dev servers outside WSL, or set `networkingMode=mirrored` in `.wslconfig`.
 
 ## Suggested Review Order
 
@@ -48,3 +50,17 @@ route: 'one-shot'
 
 - D19's "localhost is correct for host client" decision closed as disproven; three new entries.
   [`deferred-work.md`](./deferred-work.md)
+
+**QR join URL (follow-up commit)**
+
+- Page hostname preferred over the server's interface guess — reachable by construction.
+  [`LobbyScreen.tsx:17`](../../apps/host-client/src/screens/LobbyScreen.tsx#L17)
+
+- Loopback is the one hostname that says nothing about phone reachability.
+  [`LobbyScreen.tsx:15`](../../apps/host-client/src/screens/LobbyScreen.tsx#L15)
+
+- Explicit `VITE_MOBILE_URL` now outranks both auto-detection paths.
+  [`LobbyScreen.tsx:44`](../../apps/host-client/src/screens/LobbyScreen.tsx#L44)
+
+- Probe skipped when unnecessary; cancel flag prevents a post-unmount setState.
+  [`LobbyScreen.tsx:32`](../../apps/host-client/src/screens/LobbyScreen.tsx#L32)
