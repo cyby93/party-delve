@@ -51,6 +51,8 @@ export { resolveMixedFactionTargets, resolveExpandingRadius, pickRandomIndex, fi
 export type { MixedFactionSplit, LightningArcCandidate, LightningArcHit } from './systems/targeting.js';
 export { applyDamage, isInHitZone, isInConeZone } from './systems/combat.js';
 export type { DamageResult, CombatError } from './systems/combat.js';
+export { resolveAimPoint } from './systems/aim-point.js';
+export type { AimPoint } from './systems/aim-point.js';
 export { tickEnemy, tickBaseFSM, createEasyLayers, createNormalLayers, createHardLayers } from './systems/ai/fsm.js';
 export type { EnemyContext, BehaviorLayer, EnemyAIEvent } from './systems/ai/fsm.js';
 export { ChargeLayer } from './systems/ai/layers/charge.js';

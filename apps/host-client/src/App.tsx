@@ -83,5 +83,8 @@ export function App() {
   if (gameState?.session.phase === 'post-run') {
     return <PostRunSummaryScreen gameState={gameState} runOutcome={runOutcome ?? 'complete'} reward={runReward} />;
   }
-  return <HubWorldScreen gameState={gameState} session={session} />;
+  // Story 7.14b: the hub receives the same transient-delta queue the dungeon does.
+  // It was already populated for hub deltas — `host-session.ts` filters by delta
+  // type, never by session phase — the hub screen simply was not handed it.
+  return <HubWorldScreen gameState={gameState} session={session} transientDeltaQueue={transientDeltaQueue} />;
 }

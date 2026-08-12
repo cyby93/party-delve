@@ -140,3 +140,29 @@ export {
   planBossVfx,
 } from './boss-vfx';
 export type { BossVfxInput, BossVfxContext, VfxDescriptor } from './boss-vfx';
+// Story 7.14b: the shared VFX wiring both HubWorldScreen and DungeonScreen call.
+export { createVfxRuntimeRefs, useVfxRuntimeRefs } from './vfx-runtime-refs';
+export type { VfxRuntimeRefs, ActiveCast, SoulMendVisual } from './vfx-runtime-refs';
+export { dispatchAbilityVfx, resolveEnemyOrBossPosition } from './ability-vfx-dispatch';
+export type { AbilityVfxDispatchContext } from './ability-vfx-dispatch';
+export { renderSnapshotVfx } from './snapshot-vfx';
+export type { SnapshotVfxParams } from './snapshot-vfx';
+// Story 7.15c: aim arrow + destination preview.
+export {
+  AIM_PREVIEW_STALE_MS,
+  isAimPreviewStale,
+  pruneStaleAimPreviews,
+  resolveAimPreviewShape,
+  coneSectorPoints,
+  drawAimPreview,
+  AIM_ARROW_LENGTH_PX,
+  AIM_ARROW_WIDTH,
+  AIM_ARROW_ALPHA,
+  AIM_ARROW_HEAD_PX,
+  AIM_ARROW_ORIGIN_OFFSET_PX,
+  AIM_ARROW_HEAD_SPREAD_RAD,
+  AIM_ZONE_FILL_ALPHA,
+  AIM_ZONE_RIM_ALPHA,
+  AIM_ZONE_RIM_WIDTH,
+} from './aim-preview';
+export type { AimPreviewState, AimPreviewShape } from './aim-preview';

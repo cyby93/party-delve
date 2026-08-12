@@ -137,6 +137,48 @@ export type AbilityChainHitDelta = {
   chainIndex: number;
 };
 
+// A player's in-progress aim, before the ability actually fires (Story 7.15a,
+// ADR-0008). Presentation-only and throttled: derived per tick from the aiming
+// player's live direction, never written to persistent GameState, never touching
+// the PRNG or tick determinism — same category as ability:fired/ability:chain-hit,
+// which apply-delta.ts also treats as state no-ops.
+//
+// targetX/targetY are OPTIONAL because most aiming abilities have no destination
+// point at all. The sim (Story 7.15b) fills them only for the four abilities whose
+// landing spot is knowable at aim time — Storm Eye, Stone Wall, Dark Pact, Crimson
+// Lash — using the same placement math the real cast uses, never a second copy.
+// Void Pulse and Tempest Hurl are RELEASE-type too but resolve on projectile
+// contact, so their landing point is genuinely unknowable while aiming and no
+// target is sent: the host renders a direction arrow only.
+//
+// WIRE INVARIANTS — all four coordinate fields are JSON numbers, and
+// `serialize`/`deserialize` are bare JSON.stringify/parse with an unchecked cast:
+// - A non-finite value (NaN/±Infinity) serializes to `null`, arriving typed
+//   `number` while being `null` at runtime. `null` passes an `!== undefined`
+//   optional check and coerces to `0` in arithmetic, so a naive
+//   `if (d.targetX !== undefined)` would draw a preview at the world origin.
+//   Prefer `Number.isFinite(d.targetX)`. The sim (Story 7.15b) is responsible
+//   for never emitting one — this note exists so the host does not assume so.
+// - `directionX`/`directionY` are NOT guaranteed normalized; see the matching
+//   note on `AimPreviewInput` in `packages/shared-types/src/input.ts`.
+//
+// There is deliberately NO terminator in this contract — no `aim:cancelled`
+// delta, no timestamp, no TTL. Cessation is signalled by the phone simply
+// ceasing to send (ADR-0008), so the host must infer "stopped aiming" from
+// absence plus a locally-defined staleness window, and from `ability:fired`.
+// Note the gap that leaves: when a drag ends but `dispatchAbility` rejects the
+// cast (e.g. still on cooldown), no `ability:fired` is broadcast either, so the
+// staleness window is the ONLY thing that clears the preview in that path.
+export type AbilityAimPreviewDelta = {
+  type: 'ability:aim-preview';
+  playerId: string;
+  abilityIndex: number;
+  directionX: number;
+  directionY: number;
+  targetX?: number;
+  targetY?: number;
+};
+
 export type PlayerHpUpdatedDelta = {
   type: 'player:hp-updated';
   playerId: string;
@@ -344,6 +386,7 @@ export type DeltaEventMsg =
   | PlayerClassUpdatedDelta
   | AbilityFiredDelta
   | AbilityChainHitDelta
+  | AbilityAimPreviewDelta
   | PlayerHpUpdatedDelta
   | PlayerSpiritDelta
   | SpiritAbilityFiredDelta

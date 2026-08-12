@@ -152,6 +152,8 @@ export function applyDelta(state: GameState, evt: DeltaEventMsg): GameState {
       return state;  // ponytail: no-op on state — visual effect only; DungeonScreen reads raw delta
     case 'ability:chain-hit':
       return state;  // ponytail: visual only — no GameState mutation; DungeonScreen reads raw delta
+    case 'ability:aim-preview':
+      return state;  // ponytail: presentation-only pre-fire aim (ADR-0008) — never persisted; the host holds it as its own transient state and expires it on staleness/fire
     case 'spirit-ability:fired':
       return state;  // ponytail: visual only — no GameState mutation
     case 'run:failed':

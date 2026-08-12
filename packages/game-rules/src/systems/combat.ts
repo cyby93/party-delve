@@ -2,6 +2,7 @@ import type { EnemyState, EssenceDrop } from 'shared-types';
 import type { Result } from '../state/result.js';
 import { ESSENCE_DROP_AMOUNT } from '../balance.js';
 import { getStatusEffectMagnitude } from './status-effects.js';
+import { resolveAimPoint } from './aim-point.js';
 
 export interface DamageResult {
   enemy: EnemyState;
@@ -37,7 +38,14 @@ export function applyDamage(
 }
 
 // Pure spatial hit-zone check — no physics, no I/O.
-// Directional: hit circle at (player + direction * hitRangePx), radius = hitRadiusPx
+// Directional: hit circle at (player + normalize(direction) * hitRangePx), radius
+//   = hitRadiusPx. Note the normalize: since Story 7.15b this function normalizes
+//   the direction itself (via resolveAimPoint) rather than relying on callers to
+//   have done it, so a non-unit direction no longer scales the centre outward.
+//   Every existing caller already passed a unit vector, so this changed no
+//   behaviour — but it is now a property of the function, not a precondition.
+//   `hitRangePx === 0` keeps the centre at the player regardless of direction
+//   (Story 3.11 — see the comment in the branch).
 // TAP (non-directional): hit circle at player position, radius = hitRadiusPx
 export function isInHitZone(
   playerX: number,
@@ -51,10 +59,30 @@ export function isInHitZone(
   isDirectional: boolean,
 ): boolean {
   if (isDirectional) {
-    const cx = playerX + dirX * hitRangePx;
-    const cy = playerY + dirY * hitRangePx;
-    const dx = enemyX - cx;
-    const dy = enemyY - cy;
+    // Story 7.15b: the hit-circle centre is the same "aim point" the preview
+    // renders, so both come from `resolveAimPoint` — see aim-point.ts for why a
+    // second copy of this expression is the specific bug that must not exist.
+    //
+    // The `hitRangePx === 0` case is handled here rather than delegated, and
+    // that is load-bearing (code review 2026-08-06). Story 3.11's contract is
+    // that a directional ability with zero range "hits at the player's own
+    // position regardless of direction — don't require a drag for those", and
+    // GameRoom's generic hit-scan deliberately forwards an un-normalized zero
+    // vector for exactly that case (its `mag === 0 && hitRange > 0` skip is
+    // conditioned on range being nonzero). `resolveAimPoint` rejects a zero
+    // direction unconditionally, because its preview callers need a real aim
+    // direction to draw — so routing zero-range through it would silently turn
+    // that documented hit into a miss. No shipping ability reaches this today,
+    // but the guard in GameRoom exists to preserve it and must not be quietly
+    // voided from here.
+    const aim = hitRangePx === 0
+      ? { x: playerX, y: playerY }
+      : resolveAimPoint(playerX, playerY, dirX, dirY, hitRangePx);
+    // Non-zero range with no usable direction: the caller should already have
+    // skipped it, and a miss is the honest answer if it did not.
+    if (!aim) return false;
+    const dx = enemyX - aim.x;
+    const dy = enemyY - aim.y;
     return dx * dx + dy * dy <= hitRadiusPx * hitRadiusPx;
   }
   const dx = enemyX - playerX;

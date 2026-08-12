@@ -4,6 +4,37 @@ Items surfaced during reviews that are real findings but pre-exist the triggerin
 
 ---
 
+## Deferred from: code review of the 7.14a/7.14b/7.15a-e branch (2026-08-06/07)
+
+**D-7.15-A — Any throw between the input drain and `inputQueue.length = 0` wedges the room permanently** [`apps/simulation-server/src/rooms/GameRoom.ts`]
+`tick()` is `try/catch`ed, but the queue clear runs near the end of the tick, downstream of most processing. A throw anywhere in between leaves the poisoned input queued and re-thrown every 33ms forever — halting projectiles, zones, revive timers, status expiry and periodic snapshots while the queue grows without bound. Story 7.15b hit this concretely (a `null` direction crashing `broadcastAimPreviews`) and fixed the specific trigger, but the amplification mechanism is generic and pre-existing. Fixing it means either draining defensively or moving the clear earlier — the latter is currently forbidden by an explicit WARNING comment, so it needs a deliberate decision rather than a drive-by change. **Note for whoever picks this up:** a wedge is hard to detect from a test, because the per-player Map collapse lets a later valid input mask it; probe something genuinely downstream of the crash point (the periodic snapshot works).
+
+**D-7.15-B — The projectile-delivery branch still uses the unsafe `mag === 0` zero-check** [`apps/simulation-server/src/rooms/GameRoom.ts`]
+Its zone-delivery sibling ~45 lines away now goes through `resolveAimPoint`, which rejects non-finite directions. `dispatchAbility` rejects `NaN` but **accepts `Infinity`** (`Infinity > 0` is true), so `directionX: Infinity` on Blood Spike / Void Pulse / Tempest Hurl still yields `Infinity/Infinity === NaN`, fed into `createProjectileBody` and pushed into `gameState.projectiles`. Pre-existing, but Story 7.15b proved the fix is a one-call change and leaving one of two adjacent branches on the unsafe idiom is exactly what its "single expression" bar exists to prevent.
+
+**D-7.15-C — Aim previews are forwarded through the transient-delta queue, causing sustained React re-renders** [`apps/host-client/src/session/host-session.ts`, `apps/host-client/src/App.tsx`]
+`onTransientDelta` does `setTransientDeltaQueue(prev => [...prev, delta])` per delta and `App` immediately clears it — two renders of `App` + the active screen per delta. With one preview per aiming player per 30hz tick, eight players aiming is ~480 renders/s of the host's largest component; React 18 auto-batching does not help, since each delta arrives in its own WebSocket message. The mechanism is pre-existing and shared by every whitelisted delta; what is new is that aim previews are *sustained* rather than bursty. The user's 2026-08-07 manual pass reported no frame-rate trouble, so this is a latent scaling concern rather than a live defect. The honest fix is architectural — route presentation-only, ref-backed deltas around React, or coalesce the queue — and touches every consumer.
+
+**D-7.14a-A — The hub `else` branch also fires in `post-run`** [`apps/simulation-server/src/rooms/GameRoom.ts`]
+`SessionState.phase` has four values and `else` on `if (inDungeon)` catches all three non-dungeon ones, whereas Story 7.14a's AC1 scoped this to `lobby`/`hub`. Post-run players are not frozen, so during the reward-reveal screen a player can cast and the host now receives `ability:fired` + `status:applied` deltas it did not before — which the hub VFX layer will render over the post-run UI. A one-line phase check closes it.
+
+**D-7.14a-B — Player `statusEffects` are never reset on run start** [`apps/simulation-server/src/rooms/GameRoom.ts`]
+They are initialized at join and otherwise only expire on their own timer, so a hub Iron Skin buff (3s) can carry into a dungeon. Almost certainly unexploitable against the vote→level-load transition, but the invariant "players enter a run with no status effects" is no longer guaranteed by construction now that self-buffs are castable outside a dungeon. Pre-existing mechanism, newly reachable.
+
+**D-7.15d-A — The spirit skill cell rebuilds its `ability` prop identity every render** [`apps/mobile-controller/src/screens/ControllerScreen.tsx`]
+`{ ...baseAbility, inputType: 'TAP' }` produces a fresh object each parent render, and `ability` is in the touch effect's dep array. Harmless *today* only because the effect's first statement is `if (ability.inputType === 'TAP') return;` — nothing is subscribed, so nothing thrashes. If the spirit cell ever becomes non-TAP, the effect would tear down and re-add all six touch listeners ~30×/s and null `activeTouchRef` mid-gesture. Memoize the override, or at minimum correct the dep-array comment to state the real reason it is safe.
+
+**D-7.15d-B — `canHoldThroughCooldown` omits an `isFrozen` check for non-spirit cells** [`apps/mobile-controller/src/screens/ControllerScreen.tsx`]
+The spirit-cell branch one line above has one. A frozen player can therefore start a RELEASE drag and stream ~30 msg/s of aim previews. No visual consequence — the sim discards frozen players in `broadcastAimPreviews` — so this is wasted uplink only, and the gap is pre-existing for the fire path. Noted because Story 7.15d multiplies the traffic on it.
+
+**D-7.15-D — Story Allowed-paths lists omit `tests/**` while their own Tasks mandate test changes** [story template / `_bmad-output/implementation-artifacts/*.md`]
+CLAUDE.md assigns `tests/**` to QA + Telemetry Engineer, but every implementation story in this sprint has a task requiring coverage there, and none lists it as an allowed path. Stories have been resolving the contradiction ad hoc in Completion Notes. Worth fixing once in the story template rather than per-story.
+
+**D-7.15-E — `docs/specs/networking-spec.md` event enumerations are drifting** [`docs/specs/networking-spec.md`]
+It already lists an `aim` input event and gained `boss:charged` from Story 7.7a, but Story 7.13's `ability:chain-hit` was never added, and Story 7.15a's `ability:aim-preview` was satisfied via ADR-0008 only. The Contract-change hook accepts "spec **or** ADR", so nothing is out of compliance — but the file is now a partial list, which is worse than either a complete one or none. Deserves a deliberate decision.
+
+---
+
 ## Deferred from: code review of 4-15a-abandon-run-vote-contract (2026-08-04)
 
 **D-4.15a-A — `AbandonProposal` has no id/nonce, so a stale or delayed `AbandonVoteMsg` could theoretically be misapplied against a newer proposal that superseded the one it was cast for** [`packages/shared-types/src/abandon-proposal.ts`]

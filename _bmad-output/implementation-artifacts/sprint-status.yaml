@@ -1,5 +1,5 @@
 # generated: 2026-06-22
-# last_updated: 2026-07-26 (7-7a-boss-charged-delta-contract-and-broadcast → done)
+# last_updated: 2026-08-07 (7-14a/b, 7-15b/c/d/e → done; 7-15a awaiting Protocol Architect sign-off)
 # project: party-delve
 # project_key: NOKEY
 # tracking_system: file-system
@@ -1193,11 +1193,25 @@ development_status:
   # all four named zone-target abilities (Storm Eye, Stone Wall, Dark Pact,
   # Crimson Lash) are RELEASE-type. Split by ownership per CLAUDE.md; sequenced
   # a(contract) -> {b(sim), c(host render), d(mobile send)}.
-  7-14-hub-screen-vfx-wiring: backlog
-  7-15a-aim-preview-contract: backlog
-  7-15b-aim-preview-resolution: backlog
-  7-15c-render-aim-arrow-and-destination-preview: backlog
-  7-15d-mobile-drag-preview-sending: backlog
+  # 2026-08-05 (create-story): 7-14 split into 7-14a (sim) + 7-14b (host). The
+  # original single story assumed the hub "already receives and ignores" ability
+  # deltas; verified false — `ability:fired` is broadcast from exactly one site,
+  # GameRoom.ts:2436, inside `if (inDungeon)` (:2434). Host-only wiring would
+  # render nothing. 7-14a ungates the broadcast + self-scope status effects;
+  # 7-14b does the extraction and hub wiring and is blocked by 7-14a.
+  7-14a-hub-ability-fired-broadcast: done
+  7-14b-hub-screen-vfx-wiring: done
+  7-15a-aim-preview-contract: review
+  7-15b-aim-preview-resolution: done
+  7-15c-render-aim-arrow-and-destination-preview: done
+  7-15d-mobile-drag-preview-sending: done
+  # 2026-08-06: user-requested refinement after playing 7.15c/7.15d. AUTO
+  # abilities suppress their cast input while on cooldown (2026-07-25 anti-flood
+  # fix), so the sim had nothing to broadcast during the gap and the host's
+  # staleness window cleared the arrow — it blinked at the cooldown cadence
+  # instead of tracking the thumb. Phone now sends aim-preview during the gap;
+  # host no longer clears previews on fire for held (AUTO/AIM_CAST) abilities.
+  7-15e-auto-ability-continuous-aim-arrow: done
   epic-7-retrospective: optional
 
   # ─── E8: Progression & Persistent Meta ──────────────────────────────────────

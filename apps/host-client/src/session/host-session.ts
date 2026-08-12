@@ -87,7 +87,16 @@ export async function createHostSession(
         // runs unconditionally below and already handles it as a no-op
         // (apply-delta.ts:153-154), so mirror state is unchanged; this only
         // decides whether it reaches React/DungeonScreen.
-        delta.type === 'ability:chain-hit'
+        delta.type === 'ability:chain-hit' ||
+        // Story 7.15c: forward ability:aim-preview so the host can draw the aim
+        // arrow and destination preview. Host-local delivery filtering only —
+        // applyDelta runs unconditionally below and already handles it as a
+        // no-op (apply-delta.ts, Story 7.15a), so mirror state is unchanged;
+        // this only decides whether it reaches React. Unlike zone:tick (which
+        // is deliberately NOT forwarded), this one is worth its volume: it is
+        // capped at one per aiming player per tick by the sim, and it is the
+        // only signal the aim visuals have.
+        delta.type === 'ability:aim-preview'
       )) {
         onTransientDelta(delta);
       }

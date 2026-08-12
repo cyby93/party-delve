@@ -646,13 +646,19 @@ interface SkillCellProps {
   canHoldThroughCooldown: boolean;
   badgeBorderColor: string;
   onAbilityFire: (abilityIndex: number, dirX: number, dirY: number, isContinuous: boolean) => void;
+  /**
+   * Story 7.15d: report an in-progress aim for a RELEASE-type ability, before it
+   * fires. A separate, lower-stakes callback rather than an `onAbilityFire` mode
+   * flag — this never casts anything.
+   */
+  onAimPreview: (abilityIndex: number, dirX: number, dirY: number) => void;
   tapFlash: boolean;
   downedOverlay?: boolean;
   spiritName?: string | null;
   spiritGlowColor?: string;
 }
 
-function SkillCell({ index, ability, cooldownState: cd, isInteractive, canHoldThroughCooldown, badgeBorderColor, onAbilityFire, tapFlash, downedOverlay, spiritName, spiritGlowColor }: SkillCellProps) {
+function SkillCell({ index, ability, cooldownState: cd, isInteractive, canHoldThroughCooldown, badgeBorderColor, onAbilityFire, onAimPreview, tapFlash, downedOverlay, spiritName, spiritGlowColor }: SkillCellProps) {
   const cellRef = useRef<HTMLDivElement>(null);
   const activeTouchRef = useRef<{ id: number; originX: number; originY: number; lastDirX: number; lastDirY: number; releaseFired: boolean } | null>(null);
   const autoIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -697,20 +703,69 @@ function SkillCell({ index, ability, cooldownState: cd, isInteractive, canHoldTh
         autoIntervalRef.current = setInterval(() => {
           const t = activeTouchRef.current;
           if (!t) return;
-          // Cooldown-sync fix (2026-07-25): only emit when the server would actually
-          // accept the cast. Previously this fired ~30/s unconditionally while held —
-          // the server rejected all but one per cooldown, flooding the socket (the
-          // "fires 3-4× then stalls" symptom). Now:
-          //  1. Skip while on cooldown — resumes the instant the (server-accurate,
-          //     ADR-0004) cooldown clears.
-          //  2. Skip zero-aim directional AUTO casts. The sim now rejects these
-          //     without setting a cooldown, so sending them would re-flood (never
-          //     on cooldown → never gated). AIM_CAST keeps firing (it channels and
+          // Cooldown-sync fix (2026-07-25): only emit a real cast when the server
+          // would actually accept it. Previously this fired ~30/s unconditionally
+          // while held — the server rejected all but one per cooldown, flooding the
+          // socket (the "fires 3-4× then stalls" symptom). Rules:
+          //  1. Never send a cast while on cooldown; it resumes the instant the
+          //     (server-accurate, ADR-0004) cooldown clears.
+          //  2. Skip zero-aim directional AUTO casts. The sim rejects these without
+          //     setting a cooldown, so sending them would re-flood (never on
+          //     cooldown → never gated). AIM_CAST keeps firing (it channels and
           //     carries no cooldown while held).
-          if (isOnCooldownRef.current) return;
+          //
+          // Zero-aim is checked first, because it disqualifies BOTH the cast and
+          // the preview: there is no aim to show either way.
           if (ability.inputType === 'AUTO' && t.lastDirX === 0 && t.lastDirY === 0) return;
+
+          if (isOnCooldownRef.current) {
+            // Story 7.15e: keep the host's aim arrow alive during the cooldown gap.
+            // AUTO abilities are held continuously and have short cooldowns, so the
+            // player is still actively aiming the *next* shot — but rule 1 above
+            // means we send nothing, the sim broadcasts nothing, and the host's
+            // staleness window clears the arrow. It reappeared only at each cast,
+            // making it blink at the cooldown cadence instead of tracking the thumb.
+            //
+            // Sending the low-stakes `aim-preview` here instead of a cast is exactly
+            // what that message exists for: it costs the same one message per
+            // interval this branch already budgeted for, and it cannot re-introduce
+            // the flooding rule 1 prevents, because the sim never casts from it.
+            // AIM_CAST never reaches this branch (no cooldown while channelling).
+            onAimPreview(index, t.lastDirX, t.lastDirY);
+            return;
+          }
           onAbilityFire(index, t.lastDirX, t.lastDirY, true);
-        }, 33);
+        }, INPUT_INTERVAL_MS);
+      } else if (ability.inputType === 'RELEASE') {
+        // Story 7.15d: stream the in-progress aim so the host can render a preview
+        // before the thumb lifts. Deliberately an interval, NOT a throttle inside
+        // onTouchMove: touchmove stops firing when the thumb stops moving, so a
+        // player holding a deliberate aim would go silent — and the host infers
+        // "stopped aiming" from silence (there is no cancel event in the
+        // contract, ADR-0008), so it would clear the arrow at exactly the wrong
+        // moment. The AUTO/AIM_CAST branch above already uses an interval for the
+        // same underlying reason. sendJoystick can safely throttle-on-move only
+        // because the sim persists the last joystick vector, where silence means
+        // "keep going" rather than "stopped".
+        //
+        // Reuses autoIntervalRef rather than adding a second ref: a cell's
+        // ability.inputType is fixed for this effect's lifetime, so an
+        // AUTO/AIM_CAST cell never sets a RELEASE interval and vice versa — the
+        // ref is uncontended by construction. Every one of the four teardown
+        // paths (onTouchEnd, onDocumentTouchEnd, the touchcancel listener bound
+        // to onTouchEnd, and this effect's cleanup) already clears it, so
+        // "sending stops on release/fire/cancel" holds with no new teardown code
+        // and no path left to forget. Do not "separate these for clarity".
+        autoIntervalRef.current = setInterval(() => {
+          const t = activeTouchRef.current;
+          if (!t) return;
+          // Zero-aim skip, mirroring the AUTO guard above: the drag has not left
+          // the deadzone yet, so there is no aim to preview. The sim suppresses
+          // zero-aim previews too (Story 7.15b AC6), so neither side has to
+          // defend against a signal the other should not have produced.
+          if (t.lastDirX === 0 && t.lastDirY === 0) return;
+          onAimPreview(index, t.lastDirX, t.lastDirY);
+        }, INPUT_INTERVAL_MS);
       }
     };
 
@@ -809,7 +864,12 @@ function SkillCell({ index, ability, cooldownState: cd, isInteractive, canHoldTh
       setSpawnOrigin(null);
       setKnobOffset({ x: 0, y: 0 });
     };
-  }, [canHoldThroughCooldown, ability, index, onAbilityFire]);
+    // Story 7.15d: onAimPreview joins the deps. It MUST be useCallback-stable
+    // (it is, with an empty dep array, like onAbilityFire) — an unstable callback
+    // would re-run this effect on every parent render, tearing down and re-adding
+    // all six touch listeners mid-gesture and losing activeTouchRef, which would
+    // break firing, not just previewing.
+  }, [canHoldThroughCooldown, ability, index, onAbilityFire, onAimPreview]);
 
   return (
     <div
@@ -1171,6 +1231,29 @@ export function ControllerScreen({ session, gameState, cooldowns, bondNotificati
         });
       }, 150);
     }
+  }, []);
+
+  /**
+   * Story 7.15d (ADR-0008): report an in-progress aim for a RELEASE-type ability.
+   * Strictly lower-stakes than handleAbilityFire — no tapFlash, no cast, no
+   * cooldown. The phone is a controller, not a game screen, so there is
+   * deliberately no on-phone visual for this; the preview it enables renders on
+   * the host (Story 7.15c).
+   *
+   * No local throttle here: the caller is already an interval at
+   * INPUT_INTERVAL_MS. sendJoystick's `lastSendTimeRef` throttle is deliberately
+   * NOT reused — sharing that ref would make joystick movement and aiming
+   * suppress each other, and they are simultaneous by design (left thumb moves,
+   * right thumb aims).
+   */
+  const handleAimPreview = useCallback((abilityIndex: number, dirX: number, dirY: number) => {
+    const s = sessionRef.current;
+    if (!s) return;
+    const msg: InputEventMsg = {
+      type: 'input',
+      event: { type: 'aim-preview', abilityIndex, directionX: dirX, directionY: dirY },
+    };
+    s.sendInput(msg);
   }, []);
 
   const sendJoystick = useCallback((nx: number, ny: number) => {
@@ -1579,6 +1662,7 @@ export function ControllerScreen({ session, gameState, cooldowns, bondNotificati
               canHoldThroughCooldown={canHoldThroughCooldown}
               badgeBorderColor={badgeBorderColor}
               onAbilityFire={handleAbilityFire}
+              onAimPreview={handleAimPreview}
               tapFlash={tapFlash[i] ?? false}
               downedOverlay={(isDown || isSpirit) && i < 3}
               spiritName={spiritAbilityName}

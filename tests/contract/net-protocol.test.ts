@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { serialize, deserialize, applyDelta, EventNames } from 'net-protocol';
-import type { SnapshotMsg, DeltaEventMsg, InputEventMsg, PlayerPoiEnteredDelta, PlayerPoiExitedDelta, AbilityFiredDelta, AbilityChainHitDelta, EnemyDamagedDelta, PlayerDownedDelta, BondNotificationMsg, ContinueMsg, BossDamagedDelta, BossPhaseChangedDelta, BossDefeatedDelta, BossChargedDelta, RunVictoryMsg, StatusAppliedDelta, StatusExpiredDelta, ProjectileMovedDelta, ProjectileHitDelta, ProjectileExpiredDelta, ZoneTickDelta, ZoneExpiredDelta, ZoneStrikeDelta } from 'net-protocol';
+import type { SnapshotMsg, DeltaEventMsg, InputEventMsg, PlayerPoiEnteredDelta, PlayerPoiExitedDelta, AbilityFiredDelta, AbilityChainHitDelta, AbilityAimPreviewDelta, EnemyDamagedDelta, PlayerDownedDelta, BondNotificationMsg, ContinueMsg, BossDamagedDelta, BossPhaseChangedDelta, BossDefeatedDelta, BossChargedDelta, RunVictoryMsg, StatusAppliedDelta, StatusExpiredDelta, ProjectileMovedDelta, ProjectileHitDelta, ProjectileExpiredDelta, ZoneTickDelta, ZoneExpiredDelta, ZoneStrikeDelta } from 'net-protocol';
 import type { GameState, PlayerState, RunReward, ProjectileState, ZoneState, BossState } from 'shared-types';
 import { PlayerClass, SessionColor, EnemyType, DifficultyTier, EnemyFSMState, BondType, BossPhase, BossFSMState, GrasslandAchievement } from 'shared-types';
 
@@ -438,6 +438,19 @@ describe('net-protocol contract tests', () => {
       const msg: InputEventMsg = {
         type: 'input',
         event: { type: 'ability', ability: { abilityIndex: 2, directionX: 1, directionY: 0 } },
+      };
+      expect(deserialize<InputEventMsg>(serialize(msg))).toEqual(msg);
+    });
+
+    // Story 7.15a (ADR-0008). The mobile→server direction has no applyDelta
+    // equivalent, so this envelope round-trip IS the contract test for it.
+    // Note the shape: fields sit inline on the variant, unlike 'ability' which
+    // nests under an `ability` key — ADR-0008's Decision section specifies it
+    // that way and both the sender (7.15d) and the sim reader (7.15b) match it.
+    it('aim-preview input survives serialize → deserialize', () => {
+      const msg: InputEventMsg = {
+        type: 'input',
+        event: { type: 'aim-preview', abilityIndex: 3, directionX: 0.6, directionY: -0.8 },
       };
       expect(deserialize<InputEventMsg>(serialize(msg))).toEqual(msg);
     });
@@ -1076,6 +1089,94 @@ describe('net-protocol contract tests', () => {
         chainIndex: 0,
       };
       expect(applyDelta(state, delta)).toBe(state);
+    });
+  });
+
+  // ── Story 7.15a: aim-preview contract (ADR-0008) ────────────────────────────
+  describe('AbilityAimPreviewDelta round-trip', () => {
+    it('round-trips WITH targetX/targetY (a destination-preview ability)', () => {
+      const delta: AbilityAimPreviewDelta = {
+        type: 'ability:aim-preview',
+        playerId: 'player-1',
+        abilityIndex: 3,
+        directionX: 0.6,
+        directionY: 0.8,
+        targetX: 1056,
+        targetY: 668,
+      };
+      expect(deserialize<DeltaEventMsg>(serialize(delta))).toEqual(delta);
+    });
+
+    // The `hasOwnProperty` assertions are what carry this test — vitest's
+    // `toEqual` treats `{ a: 1, targetX: undefined }` as equal to `{ a: 1 }`
+    // (that distinction is `toStrictEqual`'s job), so the deep-equality line
+    // alone would NOT catch an optional that came back as an explicit
+    // `undefined` key. Absent-vs-undefined matters downstream: the host
+    // branches on whether a destination preview should render at all.
+    it('round-trips WITHOUT targetX/targetY (an arrow-only ability)', () => {
+      const delta: AbilityAimPreviewDelta = {
+        type: 'ability:aim-preview',
+        playerId: 'player-2',
+        abilityIndex: 0,
+        directionX: -1,
+        directionY: 0,
+      };
+      const decoded = deserialize<DeltaEventMsg>(serialize(delta));
+      expect(decoded).toEqual(delta);
+      expect(Object.prototype.hasOwnProperty.call(decoded, 'targetX')).toBe(false);
+      expect(Object.prototype.hasOwnProperty.call(decoded, 'targetY')).toBe(false);
+    });
+
+    // Note what this does and does not prove. It pins the *referential identity*
+    // property — `applyDelta` must return the SAME object, not a copy — which is
+    // load-bearing: `host-session.ts` calls `onStateUpdate(currentState)` for
+    // every delta, so same-reference is what lets React bail out of re-rendering
+    // under a ~30Hz preview stream. It does NOT prove the `case` arm exists:
+    // `apply-delta.ts`'s `default:` arm also returns `state` by reference, so
+    // deleting the case keeps this green. The case's existence is enforced at
+    // compile time instead, by the `const _exhaustive: never = evt` guard in that
+    // default arm — i.e. by `npm run typecheck`, which is a separate script from
+    // `npm test`. Both must run for this delta to be fully covered.
+    it('applyDelta ability:aim-preview returns state by reference (presentation-only; never persisted)', () => {
+      const state = mockGameState();
+      const delta: DeltaEventMsg = {
+        type: 'ability:aim-preview',
+        playerId: 'player-1',
+        abilityIndex: 3,
+        directionX: 0.6,
+        directionY: 0.8,
+        targetX: 1056,
+        targetY: 668,
+      };
+      expect(applyDelta(state, delta)).toBe(state);
+    });
+
+    // Pins the JSON wire behaviour that the type signature cannot express, so
+    // consumers (Stories 7.15b/7.15c) are written against what actually arrives
+    // rather than against what `number` implies. A non-finite direction is not
+    // hypothetical: normalizing a zero-length drag vector produces 0/0 = NaN.
+    it('coerces non-finite coordinates to null on the wire (documented hazard, not a feature)', () => {
+      const delta: AbilityAimPreviewDelta = {
+        type: 'ability:aim-preview',
+        playerId: 'player-1',
+        abilityIndex: 3,
+        directionX: NaN,
+        directionY: Infinity,
+        targetX: -Infinity,
+        targetY: 0,
+      };
+      const decoded = deserialize<AbilityAimPreviewDelta>(serialize(delta));
+      expect(decoded.directionX).toBeNull();
+      expect(decoded.directionY).toBeNull();
+      expect(decoded.targetX).toBeNull();
+      expect(decoded.targetY).toBe(0);
+      // The trap this documents: `null` is NOT `undefined`, so the natural
+      // "did the sim send a target?" check silently passes and then coerces to 0.
+      expect(decoded.targetX).not.toBeUndefined();
+      expect(Number(decoded.targetX)).toBe(0);
+      // The NaN-safe guard the fire path already uses (abilities.ts) rejects it;
+      // an `=== 0` check would not.
+      expect(Math.hypot(decoded.directionX, decoded.directionY) > 0).toBe(false);
     });
   });
 });

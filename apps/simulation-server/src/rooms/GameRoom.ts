@@ -1,5 +1,5 @@
 import { Room, Client, CloseCode } from 'colyseus';
-import type { GameState, PlayerState, RunReward, RunProposal } from 'shared-types';
+import type { GameState, PlayerState, RunReward, RunProposal, AimPreviewInput, AbilityInput } from 'shared-types';
 import { TICK_RATE_HZ, RECONNECT_GRACE_S, SNAPSHOT_INTERVAL_S, MAX_PLAYERS, PlayerClass, SessionColor, INTERACTIVE_HUB_POIS, PURIFICATION_PULSE_DURATION_MS, REWARD_REVEAL_DURATION_MS } from 'shared-types';
 import { EventNames } from 'net-protocol';
 import type { InputEventMsg, SnapshotMsg, DeltaEventMsg, CooldownUpdateMsg, SpiritFormMsg, RunProposeMsg, VoteMsg, BondNotificationMsg, RunVictoryMsg, AbandonProposeMsg, AbandonVoteMsg } from 'net-protocol';
@@ -12,8 +12,8 @@ import {
   CAT_BOSS, createZoneBody, createProjectileBody,
 } from '../physics/world.js';
 import type { PoiBeginContactEvent, PoiEndContactEvent, EssenceBeginContactEvent, PhysicsBodyData } from '../physics/world.js';
-import { createRng, tickEnemy, dispatchAbility, getEnemyCount, applyDamage, isInHitZone, isInConeZone, ABILITY_GEOMETRY, ABILITY_BALANCE, applyPlayerDamage, getReviveWindowMs, ENEMY_MELEE_DAMAGE, ENEMY_MELEE_RANGE_PX, ENEMY_ATTACK_COOLDOWN_MS, REVIVE_RADIUS_PX, REVIVE_HP, SPIRIT_ABILITY_COOLDOWN_MS, generateFloorLayout, GRASSLAND_ROOM_POOL, WAVE_COUNTS, WAVE_PAUSE_MS, WAVE_ENEMY_SCALE, bondKey, getProximityBuffedPlayers, getFateBuffedPlayers, getFateBondWipeTargets, getProximityDrainTargets, BOND_PROXIMITY_RANGE_PX, BOND_DRAIN_THRESHOLD_S, BOND_DRAIN_HP_PER_TICK, BOND_SPEED_MULT, assignBond, BOND_DESCRIPTIONS, BOND_MECHANICS, createBossState, tickBoss, BOSS_ADD_HP, BOSS_STOMP_DAMAGE, evaluateGrasslandAchievements, JOYSTICK_DEADBAND, createEasyLayers, createNormalLayers, createHardLayers, tickStatusEffects, getStatusEffectMagnitude, applyStatusEffect, resolveProjectileHit, isProjectileExpired, shouldZoneTick, isZoneExpired, PROJECTILE_MAX_RANGE_PX, PROJECTILE_SPEED_PX_S, applyDisplacement, resolveMixedFactionTargets, healPlayer, calculateLifesteal, resolveExpandingRadius, SPIRIT_NOVA_DURATION_MS, SPIRIT_NOVA_MAX_RADIUS_PX, findSoulMendTarget, shouldCancelSoulMendChannel, reviveBySoulMend, SOUL_MEND_CHANNEL_DURATION_MS, SOUL_MEND_LIVENESS_MS, VOID_PULSE_PULL_STRENGTH_PX, DARK_PACT_DRAIN_PCT, STORM_EYE_ZONE_RADIUS_PX, STORM_EYE_TICK_MS, STORM_EYE_TICK_DAMAGE, STORM_EYE_DURATION_MS, STORM_EYE_STRIKE_INTERVAL_MS, STORM_EYE_STRIKE_DAMAGE, pickRandomIndex, resolveOutgoingDamage, LIGHTNING_ARC_CORRIDOR_ANGLE_DEG, LIGHTNING_ARC_CHAIN_RADIUS_PX, LIGHTNING_ARC_MAX_BOUNCES, LIGHTNING_ARC_CHAIN_DAMAGE_FALLOFF, findNearestCandidate, resolveLightningArcChain, TEMPEST_HURL_PROJECTILE_RADIUS_PX, TEMPEST_HURL_SPEED_PX_S, TEMPEST_HURL_BLAST_RADIUS_PX } from 'game-rules';
-import type { BehaviorLayer, EnemyContext, EnemyAIEvent, BossEvent, BossStompedEvent, ChainedZoneConfig, AbilityGeometry, LightningArcCandidate } from 'game-rules';
+import { createRng, tickEnemy, dispatchAbility, resolveAimPoint, getEnemyCount, applyDamage, isInHitZone, isInConeZone, ABILITY_GEOMETRY, ABILITY_BALANCE, applyPlayerDamage, getReviveWindowMs, ENEMY_MELEE_DAMAGE, ENEMY_MELEE_RANGE_PX, ENEMY_ATTACK_COOLDOWN_MS, REVIVE_RADIUS_PX, REVIVE_HP, SPIRIT_ABILITY_COOLDOWN_MS, generateFloorLayout, GRASSLAND_ROOM_POOL, WAVE_COUNTS, WAVE_PAUSE_MS, WAVE_ENEMY_SCALE, bondKey, getProximityBuffedPlayers, getFateBuffedPlayers, getFateBondWipeTargets, getProximityDrainTargets, BOND_PROXIMITY_RANGE_PX, BOND_DRAIN_THRESHOLD_S, BOND_DRAIN_HP_PER_TICK, BOND_SPEED_MULT, assignBond, BOND_DESCRIPTIONS, BOND_MECHANICS, createBossState, tickBoss, BOSS_ADD_HP, BOSS_STOMP_DAMAGE, evaluateGrasslandAchievements, JOYSTICK_DEADBAND, createEasyLayers, createNormalLayers, createHardLayers, tickStatusEffects, getStatusEffectMagnitude, applyStatusEffect, resolveProjectileHit, isProjectileExpired, shouldZoneTick, isZoneExpired, PROJECTILE_MAX_RANGE_PX, PROJECTILE_SPEED_PX_S, applyDisplacement, resolveMixedFactionTargets, healPlayer, calculateLifesteal, resolveExpandingRadius, SPIRIT_NOVA_DURATION_MS, SPIRIT_NOVA_MAX_RADIUS_PX, findSoulMendTarget, shouldCancelSoulMendChannel, reviveBySoulMend, SOUL_MEND_CHANNEL_DURATION_MS, SOUL_MEND_LIVENESS_MS, VOID_PULSE_PULL_STRENGTH_PX, DARK_PACT_DRAIN_PCT, STORM_EYE_ZONE_RADIUS_PX, STORM_EYE_TICK_MS, STORM_EYE_TICK_DAMAGE, STORM_EYE_DURATION_MS, STORM_EYE_STRIKE_INTERVAL_MS, STORM_EYE_STRIKE_DAMAGE, pickRandomIndex, resolveOutgoingDamage, LIGHTNING_ARC_CORRIDOR_ANGLE_DEG, LIGHTNING_ARC_CHAIN_RADIUS_PX, LIGHTNING_ARC_MAX_BOUNCES, LIGHTNING_ARC_CHAIN_DAMAGE_FALLOFF, findNearestCandidate, resolveLightningArcChain, TEMPEST_HURL_PROJECTILE_RADIUS_PX, TEMPEST_HURL_SPEED_PX_S, TEMPEST_HURL_BLAST_RADIUS_PX } from 'game-rules';
+import type { BehaviorLayer, EnemyContext, EnemyAIEvent, BossEvent, BossStompedEvent, ChainedZoneConfig, AbilityGeometry, AbilityStatusEffectConfig, LightningArcCandidate } from 'game-rules';
 import { BOSS_ARENA_SPAWN_POINTS, loadBossArena } from '../levels/boss-arena.js';
 import { CLASS_DEFINITIONS } from 'shared-types';
 import type { EnemyState, StatusEffect, ZoneState, ProjectileState } from 'shared-types';
@@ -1278,6 +1278,127 @@ export class GameRoom extends Room {
     return result.value.target as T;
   }
 
+  // Story 7.14a: the self-scope status apply, shared by the dungeon dispatch path
+  // and the hub path so the two can never drift. Extracted rather than duplicated
+  // because the hub branch needs the identical behaviour (find the caster by id,
+  // apply, broadcast status:applied) and a second copy would be one more place to
+  // forget when the effect shape changes.
+  private applySelfScopeStatus(casterId: string, config: AbilityStatusEffectConfig, nowMs: number): void {
+    const casterIdx = this.gameState.players.findIndex(p => p.id === casterId);
+    if (casterIdx === -1) return;
+    this.gameState.players[casterIdx] = this.applyStatusEffectToTarget(
+      this.gameState.players[casterIdx]!,
+      { type: config.effectType, magnitude: config.magnitude, expiresAtMs: nowMs + config.durationMs },
+      nowMs,
+    );
+  }
+
+  /**
+   * Story 7.15b (ADR-0008): broadcast one `ability:aim-preview` per aiming player
+   * per tick. Presentation-only — never writes `GameState`, never touches the
+   * PRNG, never creates a body. Two input sources, per AC1/AC3:
+   *   - `RELEASE` abilities: the new `input:aim-preview` event (Story 7.15d).
+   *   - `AUTO`/`AIM_CAST` abilities: their existing fire-direction input, so
+   *     these need no new client-side signal at all.
+   *
+   * `targetX`/`targetY` are attached only when the landing point is genuinely
+   * knowable while aiming. The rule is declarative rather than a list of ability
+   * names: `inputType === 'RELEASE' && delivery !== 'projectile'`. That selects
+   * exactly Stone Wall, Crimson Lash, Dark Pact and Storm Eye today, excludes
+   * Void Pulse and Tempest Hurl (which resolve on projectile contact, so no aim-
+   * time point exists), and excludes every `AUTO` ability — notably Lightning Arc,
+   * whose real landing point is a corridor-gathered nearest target, not
+   * `caster + dir × range`. A future `RELEASE` hitscan/zone ability is covered
+   * automatically; nothing here needs updating for it.
+   *
+   * Dark Pact note: its true landing "point" is the nearest ally found by
+   * `handleDarkPact`, not the search centre. Previewing the search centre is the
+   * deliberate choice (documented in this story's Dev Notes) — it uses the same
+   * shared expression the cast itself uses to centre that search, at a fraction
+   * of the cost of re-running a nearest-ally scan every preview tick.
+   */
+  private broadcastAimPreviews(
+    aimPreviews: ReadonlyMap<string, AimPreviewInput>,
+    abilityInputs: ReadonlyMap<string, AbilityInput>,
+  ): void {
+    if (aimPreviews.size === 0 && abilityInputs.size === 0) return;
+
+    for (const player of this.gameState.players) {
+      // Same eligibility guard the cast path uses — a frozen, downed, spirit or
+      // classless player is not aiming.
+      if (player.class === null || player.isFrozen || player.isDown || player.isSpirit) continue;
+
+      const preview = aimPreviews.get(player.id);
+      const abilityInput = abilityInputs.get(player.id);
+
+      // The cast fired THIS TICK: suppress the preview entirely for this player.
+      //
+      // This guard must be checked against `abilityInput` unconditionally, not
+      // only when no preview arrived. The phone sends previews every ~33ms and
+      // the tick is also ~33ms, so the final preview of a drag and the release's
+      // `ability` message very often land in the SAME `inputQueue` drain. When
+      // that happens the sim would broadcast `ability:fired` (from the dispatch
+      // loop above) and then `ability:aim-preview` (from here) in the same tick,
+      // and the host applies deltas in receive order — clearing the preview on
+      // the fire and immediately re-inserting it, leaving a ghost arrow hanging
+      // over the cast VFX until the staleness window expires it ~150ms later.
+      // Found by code review 2026-08-06; the earlier `preview ? undefined : …`
+      // form made this branch dead in exactly the case it existed to handle.
+      if (abilityInput && player.class !== null) {
+        const firedDef = CLASS_DEFINITIONS[player.class].abilities[abilityInput.abilityIndex];
+        if (firedDef?.inputType === 'RELEASE') continue;
+      }
+
+      const abilityIndex = preview?.abilityIndex ?? abilityInput?.abilityIndex;
+      if (abilityIndex === undefined) continue;
+
+      const abilityDef = CLASS_DEFINITIONS[player.class].abilities[abilityIndex];
+      const geometry = ABILITY_GEOMETRY[player.class][abilityIndex as 0 | 1 | 2 | 3];
+      if (!abilityDef || !geometry) continue;
+
+      // A TAP ability is self-centred and has no aim to preview.
+      if (abilityDef.inputType === 'TAP') continue;
+      // An `ability` input only stands in for a preview on the two continuous
+      // types. (A RELEASE ability with an `ability` input already `continue`d above.)
+      if (!preview && abilityDef.inputType !== 'AUTO' && abilityDef.inputType !== 'AIM_CAST') continue;
+
+      // Explicit ternary, NOT `??`. `??` treats `null` as nullish, so a preview
+      // whose directionX arrived as `null` — the exact shape JSON produces from
+      // a NaN, documented on `AimPreviewInput` — would fall through to
+      // `abilityInput!.directionX` and throw a TypeError when there is no
+      // ability input this tick (the normal case for a RELEASE drag).
+      //
+      // That throw is not a skipped frame. `tick()` is try/caught, but
+      // `inputQueue.length = 0` runs downstream of this call, so the poisoned
+      // event would never be drained and would re-throw every 33ms forever —
+      // permanently halting projectile/zone/revive/status processing and growing
+      // the queue without bound. Found by code review 2026-08-06.
+      // `resolveAimPoint` below is what actually rejects the bad value; it must
+      // be reached, not crashed past.
+      const rawX = preview ? preview.directionX : abilityInput!.directionX;
+      const rawY = preview ? preview.directionY : abilityInput!.directionY;
+
+      // AC6 / SILENT rule: a zero or non-finite aim is suppressed entirely rather
+      // than broadcast as direction-only. The sim skips such a cast, so handing
+      // the host a signal for a state in which nothing would happen would force
+      // 7.15c to invent its own suppression. resolveAimPoint's null covers zero,
+      // NaN, and the `null`-from-JSON case in one guard.
+      const aim = resolveAimPoint(player.x, player.y, rawX, rawY, geometry.hitRangePx);
+      if (!aim) continue;
+
+      const showsTarget = abilityDef.inputType === 'RELEASE' && geometry.delivery !== 'projectile';
+
+      this.broadcast(EventNames.DELTA, {
+        type: 'ability:aim-preview' as const,
+        playerId: player.id,
+        abilityIndex,
+        directionX: aim.dirX,
+        directionY: aim.dirY,
+        ...(showsTarget ? { targetX: aim.x, targetY: aim.y } : {}),
+      } satisfies DeltaEventMsg);
+    }
+  }
+
   // Called from the projectile-hit-resolution phase when the hitting ability's
   // AbilityBalance.chainedZone entry is non-null (Story 3.19's Void Pulse). Declarative —
   // this method has no knowledge of which ability triggered it.
@@ -1623,9 +1744,39 @@ export class GameRoom extends Room {
     // Drain joystick events into persistent map (latest entry per player wins).
     // WARNING: both this loop and the ability loop below read inputQueue before it is cleared.
     // Do not move the inputQueue.length = 0 clear above either loop.
+    // Story 7.15b: collapse this tick's aim-preview events to the latest per
+    // player, exactly as the joystick drain above does. The tick boundary IS the
+    // throttle — input arrives at ~33ms and the tick runs at 30hz, so in the
+    // steady state each aiming player contributes about one event per tick, and a
+    // burst collapses here rather than needing per-player timestamp state that
+    // would also have to be cleaned up on leave.
+    //
+    // Story 7.15a review, deferred finding #1: `InputEvent` has no exhaustiveness
+    // guard anywhere in the repo, so every consumer is a negative filter and a new
+    // variant is silently dropped. The `default` arm below is that guard — adding a
+    // fourth `InputEvent` variant now fails typecheck here until it is handled or
+    // explicitly ignored.
+    const aimPreviewThisTick = new Map<string, AimPreviewInput>();
+    const abilityInputThisTick = new Map<string, AbilityInput>();
     for (const { clientId, msg } of this.inputQueue) {
-      if (msg.event.type === 'joystick') {
-        this.lastKnownJoystick.set(clientId, msg.event.joystick);
+      switch (msg.event.type) {
+        case 'joystick':
+          this.lastKnownJoystick.set(clientId, msg.event.joystick);
+          break;
+        case 'aim-preview':
+          aimPreviewThisTick.set(clientId, msg.event);
+          break;
+        case 'ability':
+          // Still dispatched by the ability loop further down — this only mirrors
+          // it so AUTO/AIM_CAST abilities can source an aim preview from the
+          // fire-direction stream they already send (AC3), with no new client signal.
+          abilityInputThisTick.set(clientId, msg.event.ability);
+          break;
+        default: {
+          const _exhaustive: never = msg.event;
+          void _exhaustive;
+          break;
+        }
       }
     }
 
@@ -2431,16 +2582,25 @@ export class GameRoom extends Room {
         } satisfies DeltaEventMsg);
       }
 
-      if (inDungeon) {
-        const abilityDelta = {
-          type: 'ability:fired' as const,
-          playerId: clientId,
-          abilityIndex,
-          directionX: dirX,
-          directionY: dirY,
-        } satisfies DeltaEventMsg;
-        this.broadcast(EventNames.DELTA, abilityDelta);
+      // Story 7.14a: the cast's own broadcast is phase-agnostic. A hub cast is a
+      // real, accepted cast (Story 2.8 removed the training-dummy gate on the
+      // input side), and the host needs to hear about it to render the same VFX
+      // a dungeon cast gets. Before this story `ability:fired` was emitted from
+      // this one site only, from inside the dungeon gate below, so hub casting
+      // was visually silent — a cooldown spinner and nothing else.
+      // Deliberately kept AFTER the self-cost `player:hp-updated` broadcast
+      // above: the host's Souldrinker Dark Pact cost/gain classifier correlates
+      // HP changes against the cast timestamp, so the relative order matters.
+      const abilityDelta = {
+        type: 'ability:fired' as const,
+        playerId: clientId,
+        abilityIndex,
+        directionX: dirX,
+        directionY: dirY,
+      } satisfies DeltaEventMsg;
+      this.broadcast(EventNames.DELTA, abilityDelta);
 
+      if (inDungeon) {
         // Hit-scan: check all living enemies against this ability's hit zone
         const abilityDef = CLASS_DEFINITIONS[player.class].abilities[abilityIndex];
         if (!abilityDef) continue;
@@ -2491,13 +2651,15 @@ export class GameRoom extends Room {
         // damage later, not this dispatch.
         const zoneGeometry = ABILITY_GEOMETRY[player.class][abilityIndex as 0 | 1 | 2 | 3];
         if (zoneGeometry.delivery === 'zone') {
-          const mag = Math.hypot(dirX, dirY);
-          if (mag === 0) continue; // no direction = no placement, same rule as every other directional ability
-          const normDirX = dirX / mag;
-          const normDirY = dirY / mag;
-          const hitRange = zoneGeometry.hitRangePx;
-          const zoneX = player.x + normDirX * hitRange;
-          const zoneY = player.y + normDirY * hitRange;
+          // Story 7.15b: placement now goes through the shared `resolveAimPoint`,
+          // the same function the aim preview calls, so the ghost zone the host
+          // draws and the real zone spawned here can never drift apart (ADR-0008).
+          // Null covers the old `mag === 0 → continue` case and additionally
+          // rejects a non-finite direction, which `=== 0` would have let through.
+          const aim = resolveAimPoint(player.x, player.y, dirX, dirY, zoneGeometry.hitRangePx);
+          if (!aim) continue; // no usable direction = no placement, same rule as every other directional ability
+          const zoneX = aim.x;
+          const zoneY = aim.y;
           const zoneId = `zone-${this.tickCount}-${clientId}-${this.nextZoneSeq++}`;
           const zone: ZoneState = {
             id: zoneId,
@@ -2548,14 +2710,7 @@ export class GameRoom extends Room {
         // since buff abilities carry no damage.
         const statusConfig = abilityBalance?.statusEffect;
         if (statusConfig?.scope === 'self') {
-          const casterIdx = this.gameState.players.findIndex(p => p.id === clientId);
-          if (casterIdx !== -1) {
-            this.gameState.players[casterIdx] = this.applyStatusEffectToTarget(
-              this.gameState.players[casterIdx]!,
-              { type: statusConfig.effectType, magnitude: statusConfig.magnitude, expiresAtMs: nowAbility + statusConfig.durationMs },
-              nowAbility,
-            );
-          }
+          this.applySelfScopeStatus(clientId, statusConfig, nowAbility);
         } else if (statusConfig?.scope === 'allies-in-zone') {
           // Warding Cry (Story 3.17): proximity radius, no direction/cone — uses Task 1's
           // players-gathering query instead of the enemy loop. Same "runs independent of
@@ -2762,10 +2917,45 @@ export class GameRoom extends Room {
             newHp: this.gameState.boss.hp,
           } satisfies DeltaEventMsg);
         }
+      } else {
+        // Story 7.14a — hub/lobby cast. A cast outside a dungeon resolves to its
+        // caster-resource effects only: cooldown and self-cost (both already
+        // applied above, unchanged since Story 2.8/3.19) plus a self-scope status
+        // buff. Everything in the dungeon block above is combat — hit-scan damage,
+        // projectile spawning, zone placement, Dark Pact's ally drain, Lightning
+        // Arc's chain, displacement, heals, boss damage — and stays gated.
+        //
+        // That boundary is not only a design choice. The tick phases that would
+        // advance the combat entities are each independently dungeon-gated (grep
+        // this file for `session.phase === 'dungeon'`: the projectile advance/
+        // expiry/hit phase, and the zone tick/strike/expiry phases), so a
+        // projectile or zone spawned out here would be stranded — never advanced,
+        // never expired, re-broadcast in every snapshot forever. Widening this gate means
+        // ungating those phases too, which is a separate story with real design
+        // questions attached (friendly fire? zones in a social space?).
+        const hubStatus = ABILITY_BALANCE[player.class][abilityIndex]?.statusEffect;
+        // Dark Pact (souldrinker[2]) also declares scope 'self', but in a dungeon
+        // it `continue`s into handleDarkPact before the generic self-scope branch
+        // above is ever reached, and applies its damageBuff only when a drain
+        // target is actually found. Excluded here so the hub path matches the
+        // dungeon path's real reachability rather than granting a buff the
+        // dungeon would have withheld. Iron Skin (stonehide[2]) is the only
+        // ability that reaches this branch today.
+        if (hubStatus?.scope === 'self' && !(player.class === PlayerClass.SOULDRINKER && abilityIndex === 2)) {
+          this.applySelfScopeStatus(clientId, hubStatus, nowAbility);
+        }
+        // Expiry needs no hub-specific handling: the status tick near the end of
+        // tick() is already phase-agnostic, so a hub buff ends on its own.
       }
 
       logger.debug({ roomId: this.roomId, clientId, abilityIndex, dirX, dirY }, 'ability fired');
     }
+
+    // ── Aim-preview broadcast (Story 7.15b, ADR-0008) ─────────────────────────
+    // Presentation-only and derived: nothing below writes GameState, touches the
+    // PRNG, creates a body, or alters tick ordering. Placed after the ability
+    // dispatch so this tick's inputs are fully known.
+    this.broadcastAimPreviews(aimPreviewThisTick, abilityInputThisTick);
 
     // ── Spirit Nova sweep (Story 3.17) ────────────────────────────────────────
     // One-shot growing-ring sweep: each active entry's hit radius grows from 0 to
