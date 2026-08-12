@@ -2,9 +2,8 @@ import QRCode from 'react-qr-code';
 import { useState, useEffect } from 'react';
 import type { GameState } from 'shared-types';
 import { PlayerSlot } from '../components/PlayerSlot';
+import { SIM_HTTP } from '../session/sim-url';
 
-const SIM_URL = import.meta.env['VITE_SIM_URL'] ?? 'ws://localhost:2567';
-const SIM_HTTP = SIM_URL.replace(/^ws(s?):\/\//, 'http$1://');
 const MOBILE_PORT = import.meta.env['VITE_MOBILE_PORT'] ?? '5174';
 
 interface LobbyScreenProps {

@@ -2,8 +2,7 @@ import * as Colyseus from '@colyseus/sdk';
 import { EventNames, deserialize, applyDelta } from 'net-protocol';
 import type { SnapshotMsg, DeltaEventMsg } from 'net-protocol';
 import type { GameState } from 'shared-types';
-
-const SIM_URL = import.meta.env['VITE_SIM_URL'] ?? 'ws://localhost:2567';
+import { SIM_URL } from './sim-url';
 
 export interface HostSession {
   roomId: string;

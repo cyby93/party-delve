@@ -451,8 +451,8 @@ This package attempts a Redis connection on import. In Phase 1 local mode, no Re
 **D18 — Hostname fallback wrong for multi-machine setups** (`apps/mobile-controller/src/session/mobile-session.ts`)
 `window.location.hostname` is the correct fallback when Vite and the sim server share the same dev machine. If they run on different machines, the fallback silently points to the wrong host. By design — `VITE_SIM_URL` is the override for non-standard topologies. Not a regression from the old behavior.
 
-**D19 — `LobbyScreen.tsx` has its own `SIM_URL` constant** (`apps/host-client/src/screens/LobbyScreen.tsx`)
-Separate `const SIM_URL` in the host client used for the `/local-ip` HTTP fetch. Intentional — host client always runs on the same machine as the sim server, so `localhost` is correct there. Undocumented duplication; a future rename could miss it.
+**D19 — `LobbyScreen.tsx` has its own `SIM_URL` constant** (`apps/host-client/src/screens/LobbyScreen.tsx`) — **CLOSED 2026-08-12**
+Separate `const SIM_URL` in the host client used for the `/local-ip` HTTP fetch. The original rationale ("host client always runs on the same machine as the sim server, so `localhost` is correct there") proved false once the host client was served over the LAN — it caused `MatchMakeError: Failed to fetch`. Both constants now come from `apps/host-client/src/session/sim-url.ts`, which derives host and protocol from the page origin.
 
 **D20 — `SIM_URL` module-level constant goes stale if phone roams mid-session** (`apps/mobile-controller/src/session/mobile-session.ts`)
 Evaluated once at import time. If a phone changes network mid-session the stored URL becomes unreachable. Inherent limitation; the reconnect token is also invalidated at that point, so the failure mode is not worse than the existing reconnect path.
@@ -784,8 +784,8 @@ If `app.canvas` is appended to the DOM but `pixiAppRef.current = app` is not yet
 **D-3.8-A — useEffect `/local-ip` fetch has no retry or user-visible failure feedback** [apps/host-client/src/screens/LobbyScreen.tsx:17]
 `.catch(() => {})` silently swallows errors; `mobileHost` stays `null` and the QR encodes `localhost` for the session with no indication to the user. Extremely low probability in practice (WS connection on same port 2567 guarantees the HTTP server is up when LobbyScreen renders), so not blocking for Phase 3. Add a visible warning or retry if fetch failure rate becomes observable.
 
-**D-3.8-B — `SIM_HTTP` regex silently fails for bare-hostname `VITE_SIM_URL`** [apps/host-client/src/screens/LobbyScreen.tsx:5]
-`SIM_URL.replace(/^ws(s?):\/\//, 'http$1://')` is a no-op if `VITE_SIM_URL` is set to a hostname without a `ws://` prefix — the fetch URL becomes malformed. Misconfiguration case only; the default `ws://localhost:2567` transforms correctly. Add validation or a comment when the env var documentation is formalized.
+**D-3.8-B — `SIM_HTTP` regex silently fails for bare-hostname `VITE_SIM_URL`** [apps/host-client/src/session/sim-url.ts:23] — **PARTIALLY ADDRESSED 2026-08-12**
+The regex moved to `sim-url.ts` and is now case-insensitive with trailing slashes stripped. Still a no-op for a bare hostname with no `ws://` prefix — but that input now fails earlier and louder: `new Colyseus.Client('192.168.1.5:2567')` throws `TypeError: Invalid URL` because a scheme cannot start with a digit. Remaining work is explicit validation of `VITE_SIM_URL` shape at startup.
 
 **D-3.8-C — `getLocalIp()` returns `'localhost'` silently on IPv6-only or dual-stack hosts** [apps/simulation-server/src/index.ts:12]
 Hard-filters `iface.family === 'IPv4'`; on an IPv6-only LAN the fallback kicks in with no log. Rare for Phase 3 local couch play. Add a `logger.warn` in the fallback path and revisit in Phase 5 cloud deployment where network topology is more varied.
@@ -1534,3 +1534,14 @@ Every existing `onMessage` handler in `GameRoom.ts` (RUN_PROPOSE, VOTE, CLASS_SE
 
 **D-4.15c-A — No client-side debounce on the "Leave" button before the server round-trip disables it** [`apps/mobile-controller/src/screens/ControllerScreen.tsx:1327`]
 `onPointerDown` calls `session?.sendAbandonPropose()` unconditionally; the button only becomes inert once `gameState.abandonProposal !== null` comes back from the server (a round-trip), so a fast double-tap or multi-touch before that response arrives can fire multiple `run:abandon-propose` messages. Found independently by the Blind Hunter and Edge Case Hunter layers. Not exploitable: `GameRoom.ts:266` (`if (this.gameState.abandonProposal !== null) return;`) discards duplicate proposals server-side, so no functional bug results. Not patched in-story because it matches the file's existing propose-action idiom exactly (e.g. `DungeonEntranceScreen`'s "Propose Run" button has the same no-local-debounce shape, relying on the same server-side guard pattern), and the story's own Dev Notes prescribed this exact JSX verbatim. Revisit only if a broader "local pending-state debounce for all propose-type actions" pass is ever done across the file.
+
+## Deferred from: code review of host-client LAN sim-url fix (2026-08-12)
+
+**D-LAN-A — QR join URL still depends on the server self-reporting its IP via `/local-ip`** [`apps/host-client/src/screens/LobbyScreen.tsx:23-25`]
+`getLocalIp()` (`apps/simulation-server/src/index.ts:18-27`) picks the first non-internal IPv4 interface. On WSL2 the only such interface is the NAT address (e.g. `172.25.98.210`), which is unreachable from phones on the real LAN, so the QR encodes a dead URL even though session creation now succeeds. `window.location.hostname` is reachable by construction whenever the operator opened the host page over the LAN, but falls back to `localhost` when the operator uses `localhost:5173` on the sim machine — which is exactly why `/local-ip` exists. Correct fix is to prefer the page hostname when it is not a loopback name and fall back to `/local-ip` otherwise. Surfaced to the user 2026-08-12; not bundled into the session-creation fix because it is a distinct failure in a distinct flow.
+
+**D-LAN-B — `VITE_MOBILE_URL` override is ignored whenever `/local-ip` succeeds** [`apps/host-client/src/screens/LobbyScreen.tsx:23-25`]
+The ternary only consults `VITE_MOBILE_URL` when `mobileHost` is `null`. An operator who explicitly pins the mobile URL is silently overridden by whatever the server reports — and per D-LAN-A that value can be the wrong one, making the one obvious escape hatch unreachable. An explicit env override should take precedence over auto-detection.
+
+**D-LAN-C — sim URL derivation is duplicated between host-client and mobile-controller** [`apps/host-client/src/session/sim-url.ts`, `apps/mobile-controller/src/session/mobile-session.ts:6`]
+Both apps derive the sim address from the page origin. `sim-url.ts` now carries protocol derivation, a `VITE_SIM_PORT` override, an empty-env guard and a non-DOM guard that `mobile-session.ts` still lacks. Consolidating into a shared package crosses into Protocol Architect ownership (`packages/net-protocol` / `packages/ui-kit`), so it needs its own task rather than being folded into a host-client bugfix.
